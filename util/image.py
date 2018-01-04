@@ -163,3 +163,39 @@ def combine_bbox(bbox_list):
     bbox[2:4] = np.max(bbox_mat[:,2:4], axis = 0)
     return bbox.tolist()
 
+
+def align_image(im, p_src, p_tar, sz_tar):
+    '''
+    align image by affine transform
+    
+    input:
+        im: input image
+        p_src: list of source key points
+        p_tar: list of target key points
+        sz_tar: target image size
+    '''
+
+    p_src = np.array(p_src, dtype = np.float32)
+    p_tar = np.array(p_tar, dtype = np.float32)
+    
+    assert p_src.shape == p_tar.shape
+    num_p = p_src.shape[0]
+
+    X = np.zeros((num_p * 2, 4), dtype = np.float32)
+    U = np.zeros((num_p * 2, 1), dtype = np.float32)
+
+    X[0:num_p, 0:2] = p_src
+    X[0:num_p, 2] = 1
+    X[num_p::, 0] = p_src[:,1]
+    X[num_p::, 1] = -p_src[:,0]
+    X[num_p::, 3] = 1
+
+    U[0:num_p, 0] = p_tar[:,0]
+    U[num_p::, 0] = p_tar[:,1]
+
+    M = np.linalg.pinv(X).dot(U).flatten()
+    trans_mat = np.array([[M[0], M[1], M[2]], [-M[1], M[0], M[3]]], dtype = np.float32)
+
+    im_out = cv2.warpAffine(im, trans_mat, dsize = sz_tar, borderMode = cv2.BORDER_REPLICATE)
+
+    return im_out
