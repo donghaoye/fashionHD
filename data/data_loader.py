@@ -1,11 +1,32 @@
 from __future__ import division, print_function
 
 import torch.utils.data
+import copy
 
-def CreateDataLoader(opt):
-    loader = CustomDataLoader()
-    loader.initialize(opt)
-    return loader
+# Todo: disentangle data-related parameters from model options
+
+def CreateDataLoader(opt, is_train = None):
+    # loader = CustomDataLoader()
+    # loader.initialize(opt)
+    # return loader
+
+    if is_train is not None:
+        # this is used when creating a val dataset (using test split and settings) during training
+        # will be deprecated when data-related parameters are disentangled from model options
+        opt = copy.deepcopy(opt)
+        opt.is_train = is_train
+
+    dataset = CreateDataset(opt)
+    shuffle = (opt.shuffle==1)
+    dataloader = torch.utils.data.DataLoader(
+        dataset = dataset, 
+        batch_size = opt.batch_size,
+        shuffle = shuffle, 
+        num_workers = int(opt.nThreads), 
+        drop_last = opt.is_train,
+        pin_memory = True)
+
+    return dataloader
 
 
 def CreateDataset(opt):
@@ -31,14 +52,7 @@ class CustomDataLoader():
         self.opt = opt
         self.dataset = CreateDataset(opt)
 
-        if opt.shuffle == 1:
-            shuffle = True
-        elif opt.shuffle == -1:
-            shuffle = False
-        else:
-            # shuffle for training, not shuffle otherwise
-            shuffle = opt.is_train
-
+        shuffle = (opt.shuffle == 1)
         self.dataloader = torch.utils.data.DataLoader(
             self.dataset,
             batch_size = opt.batch_size,

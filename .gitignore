@@ -2,6 +2,7 @@ datasets/*
 output/*
 checkpoints/*
 external/*
+temp/
 !*.gitkeep
 
 *.pyc

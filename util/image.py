@@ -196,6 +196,22 @@ def align_image(im, p_src, p_tar, sz_tar):
     M = np.linalg.pinv(X).dot(U).flatten()
     trans_mat = np.array([[M[0], M[1], M[2]], [-M[1], M[0], M[3]]], dtype = np.float32)
 
-    im_out = cv2.warpAffine(im, trans_mat, dsize = sz_tar, borderMode = cv2.BORDER_REPLICATE)
+    im_out = cv2.warpAffine(im, trans_mat, dsize = sz_tar, flags = cv2.INTER_CUBIC, borderMode = cv2.BORDER_REPLICATE)
 
-    return im_out
+    return im_out, trans_mat
+
+
+def transform_coordinate(p_src, t_mat):
+    '''
+    Input:
+        p_src: Nx2, 2-D coordinate array of source points
+        t_mat: 2x2 or 2x3, transform matrix
+
+    Output:
+        p_tar: Nx2, 2-D coordinate array of target points
+    '''
+
+    p_src = p_src[:, np.newaxis, :]
+    p_tar = cv2.transform(p_src, t_mat).squeeze()
+
+    return p_tar

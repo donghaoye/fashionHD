@@ -8,70 +8,88 @@ from collections import defaultdict
 import util.io as io
 
 
-root = '/data2/ynli/datasets/DeepFashion/In-shop/'
+inshop_root = 'datasets/DeepFashion/In-shop/'
+design_root = 'datasets/DeepFashion/Fashion_design/'
 
 
-def create_sample_index():
+def create_sample_index_and_label():
     '''
-    Create sample file from original annotation files
-    - Assign an unique id for each sample (one item may contain multiple samples)
+    Create sample index and label for In-shop datasets
+    - sample index
+    - landmark label
+    - bbox label
     '''
 
-    high_res = True
+    # config
+    dir_label = design_root + 'Label/'
 
-    bbox_list = io.load_str_list(root + '/Anno/list_bbox_inshop.txt')[2::]
+    # create sampel index and landmark label
+    landmark_list = io.load_str_list(inshop_root + 'Anno/list_landmarks_inshop.txt')[2::]
+    img_root_org = inshop_root + 'Img/'
+
     samples = {}
+    landmark_label = {}
 
-
-    if high_res:
-        img_root = root + 'Img/img_highres/'
-        fn_out = root + 'Label/samples_highres.json'
-    else:
-        img_root = root + 'Img/img/'
-        fn_out = root + 'Label/samples.json'
-
-    fail_list = []
-    for idx, s in enumerate(bbox_list):
-        img_id = str(idx)
+    for idx, s in enumerate(landmark_list):
+        img_id = 'inshop_' + str(idx)
 
         s = s.split()
-        assert len(s) == 7
+        img_path_org = os.path.join(img_root_org, s[0])
 
-        path = s[0]
-        path_split = path.split('/')[1:]
-        path = '/'.join(path_split)
+        item_id = img_path_org.split('/')[-2]
+        category = img_path_org.split('/')[-3]
 
-        gender = path_split[0]
-        category = path_split[1]
-        item_id = path_split[2]
-        img_path_org = img_root + '/' + path
-        pose = path_split[3].split('_')[2][0:-4]
-        assert pose in {'front', 'back', 'side', 'full', 'flat', 'additional'}
+        # 1: upper-body, 2: lower-body, 3: full-body
+        cloth_type = str(s[1])
 
+        # 1: normal, 2: medium, 3: large, 4: medium zoom-in, 5: larg zoom-in, 6: flat (no person)
+        pose_type = str(s[2])
 
-        if not os.path.isfile(img_path_org):
-            fail_list.append(img_path_org)
-            continue
+        lm_str = s[3::]
+        if cloth_type == 1:
+            assert len(lm_str) == 18
+        elif cloth_type == 2:
+            assert len(lm_str) == 12
+        elif cloth_type == 3:
+            assert len(lm_str) == 24
+
+        # lm is a list: [(x_i, y_i, v_i)]
+        lm = [(float(lm_str[i+1]), float(lm_str[i+2]), int(lm_str[i])) for i in range(0,len(lm_str),3)]
 
         samples[img_id] = {
             'img_id': img_id,
             'item_id': item_id,
-            'gender': gender,
             'category': category,
-            'pose': pose,
-            'img_path_org': img_path_org,
+            'cloth_type': cloth_type,
+            'pose_type': pose_type,
+            'img_path_org': img_path_org
         }
+        
+        landmark_label[img_id] = lm
 
+    io.mkdir_if_missing(dir_label)
+    io.save_json(samples, os.path.join(dir_label, 'inshop_samples.json'))
+    io.save_data(landmark_label, os.path.join(dir_label, 'inshop_landmark_label.pkl'))
 
-        print('%s' % img_id)
+    print('create sample index (%d samples)' % len(samples))
+    print('create landmark label')
 
-    io.save_json(samples, fn_out)
+    img2id = {s['img_path_org'][s['img_path_org'].find('img')::]:s_id for s_id, s in samples.iteritems()}
 
-    print('\n')
-    print('save sample index to %s' % fn_out)
-    print('%d samples not found!' % len(fail_list))
-    for s in fail_list:
-        print(s)
+    # create bbox label
+    bbox_list = io.load_str_list(inshop_root + 'Anno/list_bbox_inshop.txt')[2::]
+    bbox_label = {}
+
+    for s in bbox_list:
+        s = s.split()
+        assert len(s) == 7
+        s_id = img2id[s[0]]
+        bbox = [float(x) for x in s[3::]]
+        bbox_label[s_id] = bbox
+
+    io.save_data(bbox_label, os.path.join(dir_label, 'inshop_bbox_label.pkl'))
+    print('create bbox label')
+
 
 def create_split():
     '''
@@ -84,11 +102,11 @@ def create_split():
     train_rate = 0.8
 
     # load sample
-    samples = io.load_json(root + 'Label/samples.json')
+    samples = io.load_json(design_root + 'Label/inshop_samples.json')
 
     if use_original:
         # load split file
-        split_list = io.load_str_list(root + 'Eval/list_eval_partition.txt')[2::]
+        split_list = io.load_str_list(inshop_root + 'Eval/list_eval_partition.txt')[2::]
         item2split = {}
 
         for line in split_list:
@@ -140,105 +158,93 @@ def create_split():
     print('train set: %d items, %d images' % (item2split.values().count('train'), len(split['train'])))
     print('test set:  %d items, %d images' % (item2split.values().count('test'), len(split['test'])))
 
-    fn_out = root + 'Label/split_attr.json'
+    fn_out = design_root + 'Split/inshop_split.json'
     io.save_json(split, fn_out)
 
 
-def create_attribute_entry():
+def create_color_entry_and_label():
     '''
-    Create attribute entries
-    - Using attribute entries defined in Category_and_Attribute branch
-    - Add color entries, which are extracted from the In-shop description annotation
+    Create color attribute entries and color labels
     '''
 
-    # config
-    fn_out = root + 'Label/attribute_entry.json'
+    print('loading data')
+    # load description
+    desc_list = io.load_json(inshop_root + 'Anno/list_description_inshop.json')
+    item2color = {d['item']:d['color'].lower().replace('-', ' ').split() for d in desc_list}
+    colors = set([c[0] for c in item2color.values() if len(c) == 1])
+    color_entry = [{'entry': c, 'type': 0, 'pos_rate': -1} for c in colors]
 
-    # load attribute entry from Category_and_Attribute branch
-    attr_list = io.load_str_list('/data2/ynli/datasets/DeepFashion/Category_and_Attribute/Anno/list_attr_cloth.txt')[2::]
-
-    attr_entry = []
-    for s in attr_list:
-        s = s.split()
-        att_name = ' '.join(s[0:-1])
-        att_type = int(s[-1])
-        attr_entry.append({'entry': att_name, 'type': att_type})
-
-    attr_name = set([att['entry'] for att in attr_entry])
+    # load sample index
+    samples = io.load_json(design_root + 'Label/inshop_samples.json')
+    split = io.load_json(design_root + 'Split/inshop_split.json')
+    train_ids = set(split['train'])
 
 
-    # add color entries
-    description = io.load_json(root + 'Anno/list_description_inshop.json')
-    colors = [d['color'].lower().replace('-', ' ').split() for d in description]
-    colors = set([c[0] for c in colors if len(c) == 1])
+    print('computing positive rates')
+    color_label = {}
+    for s_id, s in samples.iteritems():
+        color = item2color[s['item_id']]
+        label = [1 if c['entry'] in color else 0 for c in color_entry]
+        color_label[s_id] = label
 
-    for c in colors:
-        if c in attr_name:
-            print('color [%s] already in attribute entry list' % c)
-        else:
-            attr_entry.append({'entry': c, 'type': 0})
 
-    # manually revise attribute type of some color-attributes
-    revise_list = ['pink', 'rose', 'cloud', 'red']
-    for idx, att in enumerate(attr_entry):
-        if att['entry'] in revise_list:
-            revise_list.remove(att['entry'])
-            # set type of this attribute to be 0-color
-            attr_entry[idx]['type'] = 0
+    color_mat = np.array([v for k, v in color_label.iteritems() if k in train_ids], dtype = np.float32)
+    num_sample = len(train_ids)
+    pos_rate = (color_mat.sum(axis = 0)/num_sample).tolist()
 
-    
-    print('attribute entry number: %d' % len(attr_entry))
-    print('save to %s' % fn_out)
-    io.save_json(attr_entry, fn_out)
+    for idx, att in enumerate(color_entry):
+        color_entry[idx]['pos_rate'] = pos_rate[idx]
+
+    print('saving data')
+    io.save_json(color_entry, design_root + 'Label/color_entry.json')
+    io.save_data(color_label, design_root + 'Label/inshop_attr_label.pkl')
+
+
 
 
 def create_attribute_label():
     '''
-    Create attribute label by matching attribute entries (defined in create_attribute_entry) in language description annotations.
+    Create attribute label using predifined attribute entries
     '''
 
     # config
-    fn_out = root + 'Label/attribute_label.json'
+    attr_entry = io.load_json(design_root + 'Label/attr_entry.json')
 
     puncs = u'.,!?"%'
     trans_table = {ord(c): u' ' for c  in puncs}
 
-
     # load attribute entry
-    attr_entry = io.load_json(root + 'Label/attribute_entry.json')
     num_attr = len(attr_entry)
-    attr_label_item = defaultdict(lambda : [0] * num_attr)
+    item2attr = defaultdict(lambda : [0] * num_attr)
 
     # load language description
-    description = io.load_json(root + 'Anno/list_description_inshop.json')
-    description = {d['item']:d for d in description}
+    desc_list = io.load_json(inshop_root + 'Anno/list_description_inshop.json')
+    item2desc = {d['item']:d for d in desc_list}
 
     # attribute matching
-    
     i_item = 0
 
-    for item_id, d in description.iteritems():
+    for item_id, d in item2desc.iteritems():
         
         color = d['color'].replace('-', ' ')
         d_str = ' ' + ' '.join([color] + d['description']) + ' '
         d_str = d_str.lower().translate(trans_table)
-        label = attr_label_item[item_id]
+        label = item2attr[item_id]
         
         for idx, att in enumerate(attr_entry):
 
             if ' '+att['entry']+' ' in d_str:
                 label[idx] = 1
 
-        print('extract attribute label: %d / %d' % (i_item, len(description)))
+        print('extract attribute label: %d / %d' % (i_item, len(item2desc)))
         i_item += 1
         
-        #if i_item == 10:
-            #break
 
-    samples = io.load_json(root + 'Label/samples.json')
-    attr_label = {s_id : attr_label_item[s['item_id']] for s_id, s in samples.iteritems()}
+    samples = io.load_json(design_root + 'Label/inshop_samples.json')
+    attr_label = {s_id : item2attr[s['item_id']] for s_id, s in samples.iteritems()}
 
-    io.save_json(attr_label, fn_out)
+    io.save_data(attr_label, design_root + 'Label/inshop_attr_label.pkl')
+    print('create attribute label')
 
 
 def clean_attribute_label():
@@ -284,6 +290,8 @@ def clean_attribute_label():
     fn_label = root + 'Label/attribute_label_top%d.json' % attr_top
     io.save_json(attr_label_t, fn_label)
 
+
+
 def create_sample_index_for_attribute_dataset():
     '''
     Simply add "img_path" field for each sample, which is the image path used in training and testing
@@ -303,12 +311,24 @@ def create_sample_index_for_attribute_dataset():
 
             
 if __name__ == '__main__':
+
+    ##############################################
+    # old version, to be deprecated
+
+
     # create_sample_index()
     # create_split()
     # create_attribute_entry()
     # create_attribute_label()
     # clean_attribute_label()
 
-    create_sample_index_for_attribute_dataset()
+    # create_sample_index_for_attribute_dataset()
 
-        
+    ##############################################
+
+    create_sample_index_and_label()
+    # create_split()
+
+    # create_color_entry_and_label()
+    # create_attribute_label()
+    

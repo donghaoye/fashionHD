@@ -15,6 +15,7 @@ class AttributeDataset(BaseDataset):
         return 'AttributeDataset'
 
     def initialize(self, opt):
+
         self.opt = opt
         self.root = opt.data_root
 
@@ -33,7 +34,7 @@ class AttributeDataset(BaseDataset):
             else:
                 transform_list.append(transforms.CenterCrop(opt.fine_size))
 
-        if opt.flip == 1 or (opt.flip == 0 and opt.is_train):
+        if opt.flip == 1:
             transform_list.append(transforms.RandomHorizontalFlip())
 
         transform_list.append(transforms.ToTensor())
@@ -47,8 +48,9 @@ class AttributeDataset(BaseDataset):
 
 
         # load sample list
+        print('loading data ...')
         samples = io.load_json(os.path.join(opt.data_root, opt.fn_sample))
-        attr_label = io.load_json(os.path.join(opt.data_root, opt.fn_label))
+        attr_label = io.load_data(os.path.join(opt.data_root, opt.fn_label))
         attr_entry = io.load_json(os.path.join(opt.data_root, opt.fn_entry))
         attr_split = io.load_json(os.path.join(opt.data_root, opt.fn_split))
 
@@ -63,6 +65,7 @@ class AttributeDataset(BaseDataset):
 
         # check data
         assert len(self.attr_entry) == len(self.attr_label_list[0]) == opt.n_attr, 'Attribute number not match!'
+        print('dataset created (%d samples)' % len(self))
 
     def __len__(self):
         return len(self.id_list)

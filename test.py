@@ -1,10 +1,15 @@
-import util.image as image
+import argparse
 
-img = image.imread('demo.jpg')
+parser = argparse.ArgumentParser()
+parser.add_argument('--a', type = bool, default = True)
+parser.add_argument('--b', default = False, action = 'store_true')
 
-p_src = [(10,10), (10,20), (20,10), (20,20)]
-p_tar = [(20,20), (20,40), (40,20), (40,40)]
+def f(opt):
+    opt = copy(opt)
+    opt.a = False
 
-img_out = image.align_image(img, p_src, p_tar, sz_tar = (1024, 1024))
-
-image.imwrite(img_out, 'aligned.jpg')
+if __name__ == '__main__':
+    opt = parser.parse_args()
+    print(opt)
+    f(opt)
+    print(opt)

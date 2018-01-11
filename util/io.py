@@ -1,6 +1,7 @@
 import json
 import cPickle
 import os
+import shutil
 
 #io functions of SCRC
 def load_str_list(filename, end = '\n'):
@@ -38,3 +39,8 @@ def load_data(filename):
     with open(filename, 'rb') as f:
         data = cPickle.load(f)
     return data
+
+def copy(fn_src, fn_tar):
+    shutil.copyfile(fn_src, fn_tar)
+
+
