@@ -11,8 +11,17 @@ class BaseAttributeOptions(BaseOptions):
         parser.add_argument('--input_nc', type = int, default = 3, help = 'channel number of input images')
         parser.add_argument('--spatial_pool', type = str, default = 'none', help = 'spatial pooling method [max|noisy-or]',
             choices = ['max', 'noisyor', 'none'])
-        parser.add_argument('--convnet', type = str, default = 'resnet101', help = 'CNN architecture [resnetX]')
+        parser.add_argument('--convnet', type = str, default = 'resnet18', help = 'CNN architecture [resnetX]')
         
+        parser.add_argument('--which_epoch', type = str, default = 'latest', help = 'which epoch to load? set to latest to use the latest cached model')
+        parser.add_argument('--balanced', default = False, action = 'store_true', help = 'balanced loss weight for positive and negative samples')
+        parser.add_argument('--loss_weight', type = float, default = 1.0, help = 'loss multiplier coefficient')
+        parser.add_argument('--loss_type', type = str, default = 'bce', help = '[bce|wbce] bce: use torch.nn.BCELoss(); wbce: use models.network.WeightBCELoss()', 
+            choices = ['bce', 'wbce'])
+        parser.add_argument('--wbce_class_norm', default = False, action = 'store_true', help = 'when using WeightBCELoss, normalize loss within each class by the sum of weights.')
+        parser.add_argument('--no_size_avg', default = False, action = 'store_true', help = 'do not average loss over observations')
+        
+
         # data files
         # refer to "scripts/preproc_inshop.py" for more information
         parser.add_argument('--benchmark', type = str, default = 'ca', help = 'set benchmark [ca|inshop|user]',
@@ -21,6 +30,9 @@ class BaseAttributeOptions(BaseOptions):
         parser.add_argument('--fn_label', type = str, default = 'default', help = 'path of attribute label file')
         parser.add_argument('--fn_entry', type = str, default = 'default', help = 'path of attribute entry file')
         parser.add_argument('--fn_split', type = str, default = 'default', help = 'path of split file')
+
+        # misc
+        self.parser.add_argument('--pavi', default = False, action = 'store_true', help = 'activate pavi log')
 
     def auto_set(self):
         super(BaseAttributeOptions, self).auto_set()
@@ -67,31 +79,27 @@ class TrainAttributeOptions(BaseAttributeOptions):
         
         # train
         parser.add_argument('--continue_train', action = 'store_true', default = False, help = 'coninue training from saved model')
-        parser.add_argument('--which_epoch', type = str, default = 'latest', help = 'which epoch to load? set to latest to use the latest cached model')
-        parser.add_argument('--balanced', default = False, action = 'store_true', help = 'balanced loss weight for positive and negative samples')
-
+        
         # optimizer (we use Adam)
         parser.add_argument('--optim', type = str, default = 'adam', help = 'optimizer type [adam|sgd]', 
             choices = ['adam', 'sgd'])
         parser.add_argument('--lr', type = float, default = 1e-4, help = 'initial learning rate')
         parser.add_argument('--beta1', type = float, default = 0.9, help = 'momentum term for Adam')
+        parser.add_argument('--weight_decay', type = float, default = 1e-10, help = 'weight decay')
+        
 
         # scheduler
         self.parser.add_argument('--lr_policy', type=str, default='step', help='learning rate policy: lambda|step|plateau',
             choices = ['step', 'plateau', 'lambda'])
         self.parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
-        self.parser.add_argument('--niter', type = int, default = 15, help = '# of iter at starting learning rate')
+        self.parser.add_argument('--niter', type = int, default = 30, help = '# of iter at starting learning rate')
         self.parser.add_argument('--niter_decay', type=int, default=0, help='# of iter to linearly decay learning rate to zero')
-        self.parser.add_argument('--lr_decay', type=int, default=5, help='multiply by a gamma every lr_decay_interval epochs')
+        self.parser.add_argument('--lr_decay', type=int, default=10, help='multiply by a gamma every lr_decay_interval epochs')
         self.parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')
 
         self.parser.add_argument('--display_freq', type = int, default = 10, help='frequency of showing training results on screen')
         self.parser.add_argument('--test_epoch_freq', type = int, default = 1, help='frequency of testing model')
         self.parser.add_argument('--save_epoch_freq', type = int, default = 1, help='frequency of saving model to disk' )
-
-        # misc
-        self.parser.add_argument('--pavi', default = False, action = 'store_true', help = 'activate pavi log')
-
 
         # set train
         self.is_train = True

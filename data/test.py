@@ -1,5 +1,6 @@
 from __future__ import division, print_function
 
+import torch    
 from util.timer import Timer
 
 def test_AttributeDataset():

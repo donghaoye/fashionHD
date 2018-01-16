@@ -33,26 +33,36 @@ class AttributeEncoder(BaseModel):
             self.load_network(self.net, network_label = 'AE', epoch_label = opt.which_epoch)
 
         
-        # define loss functions
-        # Todo: implement BalanceBCELoss()
-        self.crit_attr = networks.Smooth_Loss(torch.nn.BCELoss())
-
-        # initialize optimizers
+        
         self.schedulers = []
         self.optimizers = []
         self.loss_functions = []
 
-        if opt.optim == 'adam':
-            self.optim_attr = torch.optim.Adam(self.net.parameters(),
-                lr = opt.lr, betas = (opt.beta1, 0.999), weight_decay = 5e-4)
-        elif opt.optim == 'sgd':
-            self.optim_attr = torch.optim.SGD(self.net.parameters(),
-                lr = opt.lr, momentum = 0.9, weight_decay = 5e-4)
-        self.optimizers.append(self.optim_attr)
+        # define loss functions        
+        if opt.loss_type == 'bce':
+            self.crit_attr = networks.Smooth_Loss(torch.nn.BCELoss(size_average = not opt.no_size_avg))
+        elif opt.loss_type == 'wbce':
+            attr_entry = io.load_json(os.path.join(opt.data_root, opt.fn_entry))
+            pos_rate = self.Tensor([att['pos_rate'] for att in attr_entry])
+            pos_rate.clamp_(min = 0.01, max = 0.99)
+            self.crit_attr = networks.Smooth_Loss(networks.WeightedBCELoss(pos_rate = pos_rate, class_norm = opt.wbce_class_norm, size_average = not opt.no_size_avg))
+        else:
+            raise ValueError('attribute loss type "%s" is not defined' % opt.loss_type)
         self.loss_functions.append(self.crit_attr)
 
-        for optim in self.optimizers:
-            self.schedulers.append(networks.get_scheduler(optim, opt))
+        # initialize optimizers
+        if opt.is_train:
+            if opt.optim == 'adam':
+                self.optim_attr = torch.optim.Adam(self.net.parameters(),
+                    lr = opt.lr, betas = (opt.beta1, 0.999), weight_decay = opt.weight_decay)
+            elif opt.optim == 'sgd':
+                self.optim_attr = torch.optim.SGD(self.net.parameters(),
+                    lr = opt.lr, momentum = 0.9, weight_decay = opt.weight_decay)
+            self.optimizers.append(self.optim_attr)
+        
+
+            for optim in self.optimizers:
+                self.schedulers.append(networks.get_scheduler(optim, opt))
 
 
     def set_input(self, data):
@@ -62,25 +72,21 @@ class AttributeEncoder(BaseModel):
 
     
     def forward(self):
-        # assert self.net.training
-        if not self.net.training:
-            self.net.train()
+        # assert self.net.training        
 
         v_img = Variable(self.input_img)
         v_label = Variable(self.input_label)
         self.output_prob, self.output_map = self.net(v_img)
-        self.loss_attr = self.crit_attr(self.output_prob, v_label)
+        self.loss_attr = self.crit_attr(self.output_prob, v_label) * self.opt.loss_weight
 
 
     def test(self):
         # assert not self.net.training
-        if self.net.training:
-            self.net.eval()
 
         v_img = Variable(self.input_img, volatile = True)
         v_label = Variable(self.input_label)
         self.output_prob, self.output_map = self.net(v_img)
-        self.loss_attr = self.crit_attr(self.output_prob, v_label)
+        self.loss_attr = self.crit_attr(self.output_prob, v_label) * self.opt.loss_weight
 
 
     def optimize_parameters(self):
@@ -95,11 +101,13 @@ class AttributeEncoder(BaseModel):
             ('loss_attr', self.crit_attr.smooth_loss(clear)),
             ])
 
+    def train(self):
+        self.net.train()
+
+    def eval(self):
+        self.net.eval()
 
     def save(self, label):
         self.save_network(self.net, 'AE', label, self.gpu_ids)
-
-
-
 
 

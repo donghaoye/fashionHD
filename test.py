@@ -1,15 +1,15 @@
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--a', type = bool, default = True)
-parser.add_argument('--b', default = False, action = 'store_true')
+parser.add_argument('--a', type = int, default = -1)
 
-def f(opt):
-    opt = copy(opt)
-    opt.a = False
+def f(parser, *argv):
+    if argv:
+        return parser.parse_args(argv[0])
+    else:
+        return parser.parse_args()
 
 if __name__ == '__main__':
-    opt = parser.parse_args()
+    opt = f(parser, ['--a', '0'])
     print(opt)
-    f(opt)
-    print(opt)
+

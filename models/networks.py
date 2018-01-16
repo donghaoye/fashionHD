@@ -139,6 +139,73 @@ class Smooth_Loss():
             self.clear()
         return loss
 
+class WeightedBCELoss(nn.Module):
+    '''
+    Binary Cross Entropy Loss for multilabel classification task. For each class, the positive and negative samples
+    have different loss weight according to the positive rates.
+
+    .. math:: loss(o, t) = -1/n \sum_i (t[i] * log(o[i]) * weight_pos[i] + (1-t[i]) * log(1 - o[i]) * weight_neg[i])
+    
+
+    Args:
+        pos_rate (Tensor): positive rate of each class. This will be used to compute the pos/neg loss weight for each class
+        class_norm (bool): normalize loss in each class if true. otherwise normalize loss over all classes
+
+    Shape:
+        - Input: (N, *)
+        - Target: (N, *)
+
+    '''
+
+    def __init__(self, pos_rate, class_norm = True, size_average = True):
+        super(WeightedBCELoss, self).__init__()
+        self.class_norm = class_norm
+        self.size_average = size_average
+        self.register_buffer('w_pos', Variable(0.5 / pos_rate))
+        self.register_buffer('w_neg', Variable(0.5 / (1-pos_rate)))
+
+    def forward(self, input, target):
+        assert not target.requires_grad, 'criterions do not compute the gradient w.r.t. targets - please'\
+        'mark these variables as volatile or not requiring gradients'
+        
+        # if not (isinstance(self.w_pos, Variable) and isinstance(self.w_neg, Variable)):
+        #     self.w_pos = target.data.new(self.w_pos.size()).copy_(self.w_pos)
+        #     self.w_neg = target.data.new(self.w_neg.size()).copy_(self.w_net)
+
+        w_mask = target * self.w_pos + (1-target) * self.w_neg
+        input = input.clamp(min = 1e-7, max = 1-1e-7)
+        loss = -target * input.log() - (1-target) * (1-input).log()
+        loss = loss * w_mask
+
+        if self.class_norm:
+            loss = loss / w_mask.mean(dim = 0)
+        else:
+            loss = loss / w_mask.mean()
+
+        if self.size_average:
+            return loss.mean()
+        else:
+            return loss.sum()
+        # try:
+        #     if self.size_average:
+        #         return loss.mean()
+        #     else:
+        #         return loss.sum()
+        # except:
+        #     obj = {
+        #         'input': input.data.cpu(),
+        #         'loss': loss.data.cpu(),
+        #         'w_mask': w_mask.data.cpu()
+        #         }
+        #     torch.save(obj, 'debug.pth')
+        #     print('debug data saved!')
+        #     exit(0)
+
+    
+
+
+
+
 class MeanAP():
     '''
     compute meanAP
@@ -213,7 +280,18 @@ class MeanAP():
 
         return meanAP, AP
 
-    def compute_balance_ap(self):
+    def compute_recall(self, k = 3):
+        score, label = self.score, self.label
+        # for each sample, assigned attributes with top-k socre as its tags
+        tag = np.where((-score).argsort().argsort() < k, 1, 0)
+        tag_rec = tag * label
+
+        rec_overall = tag_rec.sum() / label.sum() * 100.
+        rec_per_class = (tag_rec.sum(axis=0) / label.sum(axis=0)).mean() * 100.
+
+        return rec_per_class, rec_overall
+
+    def compute_balanced_precision(self):
         '''
         compute the average of true-positive-rate and true-negative-rate
         '''
@@ -232,12 +310,12 @@ class MeanAP():
         p_pos = tp.sum(axis = 0) / (label == 1).sum(axis = 0)
         p_neg = tn.sum(axis = 0) / (label == 0).sum(axis = 0)
 
-        ave_p = (p_pos + p_neg) / 2
+        BP = (p_pos + p_neg) / 2
 
-        ave_p = ave_p * 100.
-        ave_ave_p = ave_p.mean()
+        BP = BP * 100.
+        mBP = BP.mean()
 
-        return ave_ave_p, ave_p
+        return mBP, BP
 
 ###############################################################################
 # Optimizer and Scheduler
@@ -350,14 +428,17 @@ class SpatialAttributeEncoderNet(nn.Module):
         if spatial_pool == 'noisyor':
             # special initialization
             init.constant(self.cls.bias, -6.58)
+            
         if pretrain:
+            print('load CNN weight pretrained on ImageNet!')
+        else:
             init_weights(self.conv, init_type = init_type)
 
 
 
     def forward(self, input_img):
         bsz = input_img.size(0)
-        if self.gpu_ids and isinstance(input_img, torch.cuda.FloatTensor):
+        if self.gpu_ids:
             feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
         else:
             feat_map = self.conv(input_img)

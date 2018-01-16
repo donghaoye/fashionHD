@@ -1,5 +1,6 @@
 from __future__ import division
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import io
 
@@ -8,10 +9,30 @@ def imread(filename):
     return cv2.imread(filename)
 
 def imwrite(im, filename):
-    cv2.imwrite(filename, im)
-    return
+    return cv2.imwrite(filename, im)
+    
 
-def resize(im,  new_shape_t):
+def imshow_cv(im, window_name = 'default'):
+    cv2.namedWindow(window_name)
+    cv2.imshow(window_name, im)
+    key = cv2.waitKey(0)
+    cv2.destroyWindow(window_name)
+    # if key ==27:
+    #     raise Exception('Esc pressed!')
+    # return
+
+def imshow(im):
+    '''
+    "im" show be a numpy.ndarray instance
+    '''
+    if im.ndim == 3:
+        # convert BGR to RGB
+        im = im[:,:,[2,1,0]]
+    im_plot = plt.imshow(im)
+    plt.show()
+
+
+def resize(im,  new_shape_t, interpolation = cv2.INTER_LINEAR):
     ''' im_out = resize(im_in, new_shape = (w, h)) '''
     new_shape = list(new_shape_t)
     assert(new_shape[0] > 0 or new_shape[1] > 0)
@@ -20,7 +41,7 @@ def resize(im,  new_shape_t):
     elif new_shape[1] < 0:
         new_shape[1] = int(new_shape[0] / im.shape[1] * im.shape[0])
 
-    return cv2.resize(im, tuple(new_shape), interpolation = cv2.INTER_LINEAR)
+    return cv2.resize(im, tuple(new_shape), interpolation = interpolation)
     
 def crop(im, bbox):
     ''' im_patch = crop(im, bbox = (x1, y1, x2, y2))'''
@@ -83,14 +104,6 @@ def draw_text(im, str_text, position, color, font_size = 1):
     cv2.putText(im, str_text.encode('ascii', 'replace'), position, cv2.FONT_HERSHEY_SIMPLEX, font_size, tuple(color[::-1]))
     return im
 
-def imshow(im, window_name = 'default'):
-    cv2.imshow(window_name, im)
-    key = cv2.waitKey(0)
-    # print(key)
-    cv2.destroyWindow(window_name)
-    if key ==27:
-        raise Exception('Esc pressed!')
-    return
 
 def add_tag(im, tag_list, color_list = None):
     if color_list == None or len(color_list) != len(tag_list):

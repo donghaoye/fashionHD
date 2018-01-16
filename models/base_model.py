@@ -35,6 +35,11 @@ class BaseModel(object):
     def get_current_errors(self):
         return {}
 
+    def train(self):
+        pass
+
+    def eval(self):
+        pass
 
     def save(self, label):
         pass

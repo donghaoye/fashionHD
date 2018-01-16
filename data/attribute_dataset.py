@@ -14,7 +14,7 @@ class AttributeDataset(BaseDataset):
     def name(self):
         return 'AttributeDataset'
 
-    def initialize(self, opt):
+    def initialize(self, opt, split):
 
         self.opt = opt
         self.root = opt.data_root
@@ -29,13 +29,11 @@ class AttributeDataset(BaseDataset):
         elif opt.resize_or_crop == 'resize_and_crop':
             # scale and crop
             transform_list.append(transforms.Resize(opt.load_size, Image.BICUBIC))
-            if opt.is_train:
+            if split == 'train':
                 transform_list.append(transforms.RandomCrop(opt.fine_size))
+                transform_list.append(transforms.RandomHorizontalFlip())
             else:
                 transform_list.append(transforms.CenterCrop(opt.fine_size))
-
-        if opt.flip == 1:
-            transform_list.append(transforms.RandomHorizontalFlip())
 
         transform_list.append(transforms.ToTensor())
 
@@ -54,11 +52,7 @@ class AttributeDataset(BaseDataset):
         attr_entry = io.load_json(os.path.join(opt.data_root, opt.fn_entry))
         attr_split = io.load_json(os.path.join(opt.data_root, opt.fn_split))
 
-        if opt.is_train == True:
-            self.id_list = attr_split['train']
-        else:
-            self.id_list = attr_split['test']
-
+        self.id_list = attr_split[split]
         self.sample_list = [samples[s_id] for s_id in self.id_list]
         self.attr_label_list = [attr_label[s_id] for s_id in self.id_list]
         self.attr_entry = attr_entry

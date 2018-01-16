@@ -5,31 +5,28 @@ import copy
 
 # Todo: disentangle data-related parameters from model options
 
-def CreateDataLoader(opt, is_train = None):
+def CreateDataLoader(opt, split = None):
     # loader = CustomDataLoader()
     # loader.initialize(opt)
     # return loader
 
-    if is_train is not None:
-        # this is used when creating a val dataset (using test split and settings) during training
-        # will be deprecated when data-related parameters are disentangled from model options
-        opt = copy.deepcopy(opt)
-        opt.is_train = is_train
+    if split is None:
+        split = 'train' if opt.is_train else 'test'
 
-    dataset = CreateDataset(opt)
-    shuffle = (opt.shuffle==1)
+    dataset = CreateDataset(opt, split)
+    shuffle = (split == 'train')
     dataloader = torch.utils.data.DataLoader(
         dataset = dataset, 
         batch_size = opt.batch_size,
         shuffle = shuffle, 
         num_workers = int(opt.nThreads), 
-        drop_last = opt.is_train,
+        drop_last = (split == 'train' and opt.is_train),
         pin_memory = True)
 
     return dataloader
 
 
-def CreateDataset(opt):
+def CreateDataset(opt, split):
     dataset = None
 
     if opt.dataset_mode == 'attribute':
@@ -38,10 +35,11 @@ def CreateDataset(opt):
     else:
         raise ValueError('Dataset mode [%s] not recognized.' % opt.dataset_mode)
 
-    dataset.initialize(opt)
+    dataset.initialize(opt, split)
     print('Dataset [%s] was created (size: %d).' % (dataset.name(), len(dataset)))
 
     return dataset
+
 
 class CustomDataLoader():
 

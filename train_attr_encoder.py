@@ -3,47 +3,39 @@ from __future__ import division, print_function
 from models.attribute_encoder import AttributeEncoder
 from data.data_loader import CreateDataLoader
 from options.attribute_options import TrainAttributeOptions
-from options.base_options import opt_to_str
 from models.networks import MeanAP
+from misc.visualizer import AttributeVisualizer
 
 import os
 import sys
 import time
-from util.pavi import PaviClient
+import numpy as np
 import util.io as io
-# Todo: implement visualizer
-# from util.visualizer import AttributeVisualizer
+from collections import OrderedDict
 
 
 opt = TrainAttributeOptions().parse()
-train_loader = CreateDataLoader(opt)
-train_dataset_size = len(train_loader)
 
-val_loader = CreateDataLoader(opt, is_train = False)
-val_dataset_size = len(val_loader)
-
+# create model
 model = AttributeEncoder()
 model.initialize(opt)
 
+# create data loader
+train_loader = CreateDataLoader(opt, split = 'train')
+val_loader = CreateDataLoader(opt, split = 'test')
 
-# Pavi client
-if opt.pavi:
-    pavi = PaviClient(username = 'ly015', password = '123456')
-    pavi.connect(model_name = opt.id, info = {'session_text': opt_to_str(opt)})
+# create visualizer
+visualizer = AttributeVisualizer(opt)
 
 total_steps = 0
-f_log = open(os.path.join('checkpoints', opt.id, 'train_log.txt'), 'w')
 
 for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
-    epoch_start_time = time.time()
-
-    epoch_samples = 0
-
+    model.update_learning_rate()
+    model.train()
+    
     for i, data in enumerate(train_loader):
         iter_start_time = time.time()
         total_steps += 1
-        
-        epoch_samples += opt.batch_size
         
 
         model.set_input(data)
@@ -51,27 +43,27 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
 
         if total_steps % opt.display_freq == 0:
             train_error = model.get_current_errors()
-            t = time.time() - iter_start_time
-            log = '[%s] Train Epoch %d, [%d/%d (%.2f%%)] t_cost: %.1f   lr: %.3e   ' % \
-                    (opt.id, epoch, epoch_samples, len(train_loader.dataset), 100.*epoch_samples/len(train_loader.dataset), t, model.optimizers[0].param_groups[0]['lr'])
-
-            log += '   '.join(['%s: %.6f' % (name, value) for name, value in train_error.iteritems()])
-
-            print(log)
-            print(log, file = f_log)
+            
+            visualizer.print_train_error(
+                iter_num = total_steps,
+                epoch = epoch, 
+                num_batch = len(train_loader), 
+                lr = model.optimizers[0].param_groups[0]['lr'], 
+                error = train_error)
 
             if opt.pavi:
-                pavi_log = {
+                pavi_outputs = {
                     'loss_attr': train_error['loss_attr'],
                 }
-                pavi.log(phase = 'train', iter_num = total_steps, outputs = pavi_log)
+                visualizer.pavi_log(phase = 'train', iter_num = total_steps, outputs = pavi_outputs)
+
 
 
     if epoch % opt.test_epoch_freq == 0:
-        test_start_time = time.time()
         crit_ap = MeanAP()
         _ = model.get_current_errors()# clean loss buffer
 
+        model.eval()
         for i, data in enumerate(val_loader):
             model.set_input(data)
             model.test()
@@ -79,56 +71,38 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
 
             print('\rTesting %d/%d (%.2f%%)' % (i, len(val_loader), 100.*i/len(val_loader)), end = '')
             sys.stdout.flush()
+        print('\n')
 
-        mean_ap, ap_list = crit_ap.compute_mean_ap()
-        balance_ap, balance_ap_list = crit_ap.compute_balance_ap()
-        
-        t = time.time() - test_start_time
         test_error = model.get_current_errors()
-        log = '[%s] Test Epoch %d, time taken: %d sec,  loss: %.6f   meanAP: %.4f' % \
-            (opt.id, epoch, t, test_error['loss_attr'], mean_ap)
-
+        mean_ap, ap_list = crit_ap.compute_mean_ap()
+        mean_bp, bp_list = crit_ap.compute_balanced_precision()
+        rec3_perclass, rec3_overall = crit_ap.compute_recall(k=3)
+        rec5_perclass, rec5_overall = crit_ap.compute_recall(k=5)
         crit_ap.clear()
-        print(log)
-        print(log, file = f_log)
+
+        test_result = OrderedDict([
+            ('loss_attr', test_error['loss_attr']),
+            ('mAP', mean_ap),
+            ('mBP', mean_bp),
+            ('rec3_perclass', rec3_perclass),
+            ('rec5_perclass', rec5_perclass),
+            ('rec3_overall', rec3_overall),
+            ('rec5_overall', rec5_overall)
+            ])
+        
+
+        visualizer.print_test_error(iter_num = total_steps, epoch = epoch, result = test_result)
 
         if opt.pavi:
-            pavi_log = {
+            pavi_outputs = {
                 'loss_attr': test_error['loss_attr'],
-                'mean_ap_upper': float(mean_ap),
-                'balance_ap_upper': float(balance_ap),
+                'mAP_upper': float(mean_ap),
+                'mBP_upper': float(mean_bp),
             }
-            pavi.log(phase = 'test', iter_num = total_steps, outputs = pavi_log)
+            visualizer.pavi_log(phase = 'test', iter_num = total_steps, outputs = pavi_outputs)
 
 
         # save model
         if epoch % opt.save_epoch_freq == 0:
-            log = 'saving the model at the end of epoch %d, iters %d' % (epoch, total_steps)
-            print(log)
-            print(log, file = f_log)
             model.save(epoch)
             model.save('latest')
-
-            test_info = {
-                'mean_ap': mean_ap,
-                'ap_list': ap_list,
-                'balance_ap': balance_ap,
-                'balance_ap_list': balance_ap_list,
-            }
-            io.save_data(test_info, os.path.join('checkpoints', opt.id, 'test_info_%d.pkl'%epoch))
-
-
-    log = 'end of epoch %d / %d, time taken: %d sec' % \
-        (epoch, opt.niter + opt.niter_decay, time.time() - epoch_start_time)
-    print(log)
-    print(log, file = f_log)
-    model.update_learning_rate()
-
-
-f_log.close()
-
-
-
-
-
-

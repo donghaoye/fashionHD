@@ -32,11 +32,11 @@ class BaseOptions(object):
             choices = ['attribute'])
         parser.add_argument('--data_root', type = str, default = './datasets/DeepFashion/Fashion_design/', help = 'data root path')
         parser.add_argument('--nThreads', type = int, default = 2, help = 'number of workers to load data')
-        parser.add_argument('--shuffle', type = int, default = 0, help = 'shuffle dataset [1:True|-1:False|0:Auto]',
-            choices = [0,1,-1])
-        parser.add_argument('--flip', type = int, default = 0, help = 'flip images [1:True|-1:False|0:Auto]',
-            choices = [0,1,-1])
-        parser.add_argument('--max_dataset_size', type = int, default = float('inf'), help = 'maximum number of samples')
+        # parser.add_argument('--shuffle', type = int, default = 0, help = 'shuffle dataset [1:True|-1:False|0:Auto]',
+        #     choices = [0,1,-1])
+        # parser.add_argument('--flip', type = int, default = 0, help = 'flip images [1:True|-1:False|0:Auto]',
+        #     choices = [0,1,-1])
+        # parser.add_argument('--max_dataset_size', type = int, default = float('inf'), help = 'maximum number of samples')
         parser.add_argument('--batch_size', type = int, default = 128, help = 'batch size')
         parser.add_argument('--load_size', type = int, default = 256, help = 'scale input image to this size')
         parser.add_argument('--fine_size', type = int, default = 224, help = 'crop input image to this size')
@@ -66,20 +66,19 @@ class BaseOptions(object):
         if len(self.opt.gpu_ids) > 0:
             torch.cuda.set_device(self.opt.gpu_ids[0])
 
-        # set dataset options
-        if self.opt.shuffle == 0:
-            self.opt.shuffle = 1 if self.is_train else -1
-        if self.opt.flip == 0:
-            self.opt.flip = 1 if self.is_train else -1
 
 
-
-    def parse(self):
+    def parse(self, ord_str = None):
 
         if not self.initialized:
             self.initialize()
 
-        self.opt = self.parser.parse_args()
+        if ord_str is None:
+            self.opt = self.parser.parse_args()
+        else:
+            ord_list = ord_str.split()
+            self.opt = self.parser.parse_args(ord_list)
+            
         self.auto_set()       
 
         args = vars(self.opt)
@@ -101,3 +100,7 @@ class BaseOptions(object):
         io.save_json(args, fn_out)
 
         return self.opt
+
+    def load(self, fn):
+        args = io.load_json(fn)
+        return argparse.Namespace(**args)
