@@ -21,24 +21,22 @@ class AttributeEncoder(BaseModel):
         super(AttributeEncoder, self).initialize(opt)
 
         # define tensors
-        self.input_img = self.Tensor(opt.batch_size, opt.input_nc, opt.fine_size, opt.fine_size)
-        self.input_label = self.Tensor(opt.batch_size, opt.n_attr)
+        self.input['img'] = self.Tensor(opt.batch_size, opt.input_nc, opt.fine_size, opt.fine_size)
+        self.input['label'] = self.Tensor(opt.batch_size, opt.n_attr)
 
         # load/define networks
-        self.net = networks.define_attr_encoder_net(convnet = opt.convnet, input_nc = opt.input_nc,
-            output_nc = opt.n_attr, spatial_pool = opt.spatial_pool, init_type = opt.init_type,
-            gpu_ids = opt.gpu_ids)
+        self.net = networks.define_attr_encoder_net(opt)
 
         if not self.is_train or opt.continue_train:
             self.load_network(self.net, network_label = 'AE', epoch_label = opt.which_epoch)
 
-        
-        
+                
         self.schedulers = []
         self.optimizers = []
         self.loss_functions = []
 
-        # define loss functions        
+        # define loss functions
+        # attribute
         if opt.loss_type == 'bce':
             self.crit_attr = networks.Smooth_Loss(torch.nn.BCELoss(size_average = not opt.no_size_avg))
         elif opt.loss_type == 'wbce':
@@ -49,6 +47,12 @@ class AttributeEncoder(BaseModel):
         else:
             raise ValueError('attribute loss type "%s" is not defined' % opt.loss_type)
         self.loss_functions.append(self.crit_attr)
+        
+        # joint task
+        if opt.joint_cat:
+            self.crit_cat = networks.Smooth_Loss(torch.nn.CrossEntropyLoss())
+            self.loss_functions.append(self.crit_cat)
+
 
         # initialize optimizers
         if opt.is_train:
@@ -60,46 +64,79 @@ class AttributeEncoder(BaseModel):
                     lr = opt.lr, momentum = 0.9, weight_decay = opt.weight_decay)
             self.optimizers.append(self.optim_attr)
         
-
             for optim in self.optimizers:
                 self.schedulers.append(networks.get_scheduler(optim, opt))
 
 
     def set_input(self, data):
         # Todo: add support to spatial info input (seg map, landmark heatmap, etc)
-        self.input_img.resize_(data['img'].size()).copy_(data['img'])
-        self.input_label.resize_(data['att'].size()).copy_(data['att'])
+        self.input['img'].resize_(data['img'].size()).copy_(data['img'])
+        self.input['label'].resize_(data['att'].size()).copy_(data['att'])
+        if self.opt.joint_cat:
+            if 'cat_label' not in self.input:
+                self.input['cat_label'] = self.Tensor(self.opt.batch_size)
+            self.input['cat_label'].resize_(data['cat'].size()).copy_(data['cat']).squeeze_()
+
+
 
     
     def forward(self):
         # assert self.net.training        
 
-        v_img = Variable(self.input_img)
-        v_label = Variable(self.input_label)
-        self.output_prob, self.output_map = self.net(v_img)
-        self.loss_attr = self.crit_attr(self.output_prob, v_label) * self.opt.loss_weight
+        v_img = Variable(self.input['img'])
+        v_label = Variable(self.input['label'])
+
+        if self.opt.joint_cat:
+            v_cat_label = Variable(self.input['cat_label'].long())
+            output_prob, output_map, output_cat_pred = self.net(v_img)
+            self.output['cat_pred'] = output_cat_pred
+            self.output['loss_cat'] = self.crit_cat(output_cat_pred, v_cat_label)
+        else:
+            output_prob, output_map = self.net(v_img)
+
+        self.output['prob'] = output_prob
+        self.output['map'] = output_map
+        self.output['loss_attr'] = self.crit_attr(output_prob, v_label)
 
 
     def test(self):
         # assert not self.net.training
 
-        v_img = Variable(self.input_img, volatile = True)
-        v_label = Variable(self.input_label)
-        self.output_prob, self.output_map = self.net(v_img)
-        self.loss_attr = self.crit_attr(self.output_prob, v_label) * self.opt.loss_weight
+        v_img = Variable(self.input['img'], volatile = True)
+        v_label = Variable(self.input['label'])
+
+        if self.opt.joint_cat:
+            v_cat_label = Variable(self.input['cat_label'].long())
+            output_prob, output_map, output_cat_pred = self.net(v_img)
+            self.output['cat_pred'] = output_cat_pred
+            self.output['loss_cat'] = self.crit_cat(output_cat_pred, v_cat_label)
+        else:
+            output_prob, output_map = self.net(v_img)
+
+        self.output['prob'] = output_prob
+        self.output['map'] = output_map
+        self.output['loss_attr'] = self.crit_attr(output_prob, v_label)
 
 
     def optimize_parameters(self):
         self.net.train()
         self.optim_attr.zero_grad()
         self.forward()
-        self.loss_attr.backward()
+
+        loss = self.output['loss_attr']
+        if self.opt.joint_cat:
+            loss += self.output['loss_cat'] * self.opt.cat_loss_weight
+        
+        loss.backward()
         self.optim_attr.step()
 
     def get_current_errors(self, clear = True):
-        return OrderedDict([
+        error = OrderedDict([
             ('loss_attr', self.crit_attr.smooth_loss(clear)),
             ])
+        if self.opt.joint_cat:
+            error['loss_cat'] = self.crit_cat.smooth_loss(clear)
+        return error
 
     def train(self):
         self.net.train()

@@ -14,6 +14,9 @@ class BaseModel(object):
         self.Tensor = torch.cuda.FloatTensor if self.gpu_ids else torch.Tensor
         self.save_dir = os.path.join('checkpoints', opt.id)
 
+        self.input = {}
+        self.output = {}
+
     def set_input(self, data):
         self.input = data
 

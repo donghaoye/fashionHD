@@ -40,10 +40,10 @@ def create_sample_index_and_label():
         category = img_path_org.split('/')[-3]
 
         # 1: upper-body, 2: lower-body, 3: full-body
-        cloth_type = str(s[1])
+        cloth_type = int(s[1])
 
         # 1: normal, 2: medium, 3: large, 4: medium zoom-in, 5: larg zoom-in, 6: flat (no person)
-        pose_type = str(s[2])
+        pose_type = int(s[2])
 
         lm_str = s[3::]
         if cloth_type == 1:

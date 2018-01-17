@@ -33,7 +33,7 @@ crit_ap = MeanAP()
 for i, data in enumerate(test_loader):
     model.set_input(data)
     model.test()
-    crit_ap.add(model.output_prob, model.input_label)
+    crit_ap.add(model.output['prob'], model.input['label'])
 
     print('\rTesting %d/%d (%.2f%%)' % (i, len(test_loader), 100.*i/len(test_loader)), end = '')
     sys.stdout.flush()

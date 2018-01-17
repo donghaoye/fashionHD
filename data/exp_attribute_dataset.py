@@ -1,5 +1,5 @@
 from __future__ import division
-
+import torch
 import torchvision.transforms as transforms
 from base_dataset import BaseDataset
 
@@ -10,7 +10,7 @@ import os
 import util.io as io
 
 
-def landmark_to_heatmap(img_sz, lm_label, cloth_type, delta = 6.):
+def landmark_to_heatmap(img_sz, lm_label, cloth_type, delta = 15.):
     '''
     Generate a landmark heatmap from landmark coordinates
     Input:
@@ -30,21 +30,26 @@ def landmark_to_heatmap(img_sz, lm_label, cloth_type, delta = 6.):
     x_grid, y_grid = np.meshgrid(range(w), range(h), indexing = 'xy')
 
     channels = []
-    for x_lm, y_lm in lm_label:
-        channel = np.exp(-((x_grid - x_lm)**2 + (y_grid - y_lm)**2)/(delta**2))
+    for x_lm, y_lm, v in lm_label:
+        if v == 2:
+            channel = np.zeros((h, w))
+        else:
+            channel = np.exp(-((x_grid - x_lm)**2 + (y_grid - y_lm)**2)/(delta**2))
         channels.append(channel)
 
     channels = np.stack(channels).astype(np.float32)
 
     if cloth_type == 1:
         assert channels.shape[0] == 6, 'upperbody cloth (1) should have 6 landmarks'
-        heatmap[0:6] = channels
+        heatmap[0:6,:] = channels
     elif cloth_type == 2:
         assert channels.shape[0] == 4, 'lowerbody cloth (2) should have 4 landmarks'
-        heatmap[6:10] = channels
+        heatmap[6:10,:] = channels
     elif cloth_type == 3:
         assert channels.shape[0] == 8, 'fullbody cloth (3) should have 8 landmarks'
-        heatmap[10:18] = channels
+        heatmap[10:18,:] = channels
+    else:
+        raise ValueError('invalid cloth type %d' % cloth_type)
 
     return heatmap.transpose([1,2,0]) # transpose to HxWxC
 
@@ -84,18 +89,20 @@ def _trans_random_crop(img, size):
 
 def _trans_random_horizontal_flip(img):
     if np.random.rand() >= 0.5:
-        return cv2.flip(img, flipCode = 1) # horizontal fhip
+        return cv2.flip(img, flipCode = 1) # horizontal flip
     else:
         return img
 
 ###############################################################################
 
 class EXPAttributeDataset(BaseDataset):
-
+    '''
+    Attribute dataset with auxiliary data, like landmark heatmap.
+    '''
     def name(self):
         return 'EXPAttributeDataset'
 
-    def initialize(self, opt, spilt):
+    def initialize(self, opt, split):
         self.opt = opt
         self.root = opt.data_root
         self.split = split
@@ -105,7 +112,7 @@ class EXPAttributeDataset(BaseDataset):
         attr_label = io.load_data(os.path.join(opt.data_root, opt.fn_label))
         attr_entry = io.load_json(os.path.join(opt.data_root, opt.fn_entry))
         attr_split = io.load_json(os.path.join(opt.data_root, opt.fn_split))
-        lm_label = iio.load_data(os.path.join(opt.data_root, opt.fn_landmark))
+        lm_label = io.load_data(os.path.join(opt.data_root, opt.fn_landmark))
 
         self.id_list = attr_split[split]
         self.sample_list = [samples[s_id] for s_id in self.id_list]
@@ -134,7 +141,7 @@ class EXPAttributeDataset(BaseDataset):
         s_id = self.id_list[index]
 
         # load image
-        img = cv2.imread(self.sample_list[index]['image_path'])
+        img = cv2.imread(self.sample_list[index]['img_path'])
         if img.ndim == 3:
             # convert BRG to RBG
             img = img[:,:,[2,1,0]]
@@ -147,8 +154,9 @@ class EXPAttributeDataset(BaseDataset):
             cloth_type = self.sample_list[index]['cloth_type']
             )
 
-        mix = np.concatenate((img, lm_heatmap))
-
+        
+        mix = np.concatenate((img, lm_heatmap), axis = 2)
+        
         # transform
         if self.opt.resize_or_crop == 'resize':
             # only resize
@@ -165,7 +173,7 @@ class EXPAttributeDataset(BaseDataset):
         img = self.tensor_normalize(self.to_tensor(img))
 
         lm_heatmap = mix[:,:,3::]
-        lm_heatmap = torch.Tensor(lm_heatmap.transpose([2, 0, 1]))
+        lm_heatmap = torch.Tensor(lm_heatmap.transpose([2, 0, 1])) # convert to CxHxW
 
 
         # load label

@@ -28,7 +28,9 @@ def imshow(im):
     if im.ndim == 3:
         # convert BGR to RGB
         im = im[:,:,[2,1,0]]
-    im_plot = plt.imshow(im)
+        m_plot = plt.imshow(im)
+    else:
+        m_plot = plt.imshow(im, cmap = 'gray')
     plt.show()
 
 

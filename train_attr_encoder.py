@@ -3,7 +3,7 @@ from __future__ import division, print_function
 from models.attribute_encoder import AttributeEncoder
 from data.data_loader import CreateDataLoader
 from options.attribute_options import TrainAttributeOptions
-from models.networks import MeanAP
+from models.networks import MeanAP, ClassificationAccuracy
 from misc.visualizer import AttributeVisualizer
 
 import os
@@ -61,13 +61,18 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
 
     if epoch % opt.test_epoch_freq == 0:
         crit_ap = MeanAP()
+        crit_cat = ClassificationAccuracy()
+
         _ = model.get_current_errors()# clean loss buffer
 
         model.eval()
         for i, data in enumerate(val_loader):
             model.set_input(data)
             model.test()
-            crit_ap.add(model.output_prob, model.input_label)
+            crit_ap.add(model.output['prob'], model.input['label'])
+
+            if opt.joint_cat:
+                crit_cat.add(model.output['cat_pred'], model.input['cat_label'])
 
             print('\rTesting %d/%d (%.2f%%)' % (i, len(val_loader), 100.*i/len(val_loader)), end = '')
             sys.stdout.flush()
@@ -89,7 +94,10 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
             ('rec3_overall', rec3_overall),
             ('rec5_overall', rec5_overall)
             ])
-        
+
+        if opt.joint_cat:
+            test_result['cat_acc3'] = crit_cat.compute_accuracy(k=3)
+            test_result['cat_acc5'] = crit_cat.compute_accuracy(k=5)
 
         visualizer.print_test_error(iter_num = total_steps, epoch = epoch, result = test_result)
 

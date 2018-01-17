@@ -38,7 +38,7 @@ def create_sample_index_and_label():
         img_path_org = os.path.join(img_root_org, s[0])
 
         # 1: upper-body, 2: lower-body, 3: full-body
-        cloth_type = str(s[1])
+        cloth_type = int(s[1])
         pose_type = -1
 
         lm_str = s[2::]
@@ -101,6 +101,37 @@ def create_sample_index_and_label():
     io.save_data(attr_label, os.path.join(dir_label, 'ca_attr_label.pkl'))
     print('\ncreate attribute label')
 
+def create_category_label():
+
+    samples = io.load_json(design_root + 'Label/ca_samples.json')
+    cat_entry_list = io.load_str_list(ca_root + 'Anno/list_category_cloth.txt')[2::]
+    cat_list = io.load_str_list(ca_root + 'Anno/list_category_img.txt')[2::]
+
+    # create category entry
+    cat_entry = []
+    for cat_str in cat_entry_list:
+        cat_name = ' '.join(cat_str.split()[0:-1])
+        cat_type = int(cat_str.split()[-1])
+        cat_entry.append({'entry': cat_name, 'type': cat_type})
+
+    io.save_json(cat_entry, design_root + 'Label/cat_entry.json')
+    print('create category entry')
+
+    # create category label
+    img2id = {s['img_path_org'][s['img_path_org'].find('img')::]:s_id for s_id, s in samples.iteritems()}
+    cat_label ={}
+
+    for idx, s in enumerate(cat_list):
+        s = s.split()
+        s_id = img2id[s[0]]
+        cat = int(s[1]) - 1
+        cat_label[s_id] = cat
+
+    io.save_data(cat_label, design_root + 'Label/ca_cat_label.pkl')
+    print('create category label')
+
+
+
 def create_split():
     '''
     Create split following the original partition
@@ -161,9 +192,9 @@ def create_attr_entry():
 
 
 
-
 if __name__ == '__main__':
-    create_sample_index_and_label()
+    # create_sample_index_and_label()
     # create_split()
     # create_attr_entry()
+    create_category_label()
 

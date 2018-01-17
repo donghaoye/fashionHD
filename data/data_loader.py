@@ -32,6 +32,9 @@ def CreateDataset(opt, split):
     if opt.dataset_mode == 'attribute':
         from data.attribute_dataset import AttributeDataset
         dataset = AttributeDataset()
+    elif opt.dataset_mode == 'attribute_exp':
+        from data.exp_attribute_dataset import EXPAttributeDataset
+        dataset = EXPAttributeDataset()
     else:
         raise ValueError('Dataset mode [%s] not recognized.' % opt.dataset_mode)
 

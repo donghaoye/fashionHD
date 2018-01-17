@@ -186,25 +186,10 @@ class WeightedBCELoss(nn.Module):
             return loss.mean()
         else:
             return loss.sum()
-        # try:
-        #     if self.size_average:
-        #         return loss.mean()
-        #     else:
-        #         return loss.sum()
-        # except:
-        #     obj = {
-        #         'input': input.data.cpu(),
-        #         'loss': loss.data.cpu(),
-        #         'w_mask': w_mask.data.cpu()
-        #         }
-        #     torch.save(obj, 'debug.pth')
-        #     print('debug data saved!')
-        #     exit(0)
-
     
-
-
-
+###############################################################################
+# Metrics
+###############################################################################
 
 class MeanAP():
     '''
@@ -317,6 +302,57 @@ class MeanAP():
 
         return mBP, BP
 
+
+class ClassificationAccuracy():
+    '''
+    compute meanAP
+    '''
+    def __init__(self):
+        self.clear()
+
+    def clear(self):
+        self.score = None
+        self.label = None
+
+    def add(self, new_score, new_label):
+
+        inputs = [new_score, new_label]
+
+        for i in range(len(inputs)):
+
+            if isinstance(inputs[i], list):
+                inputs[i] = np.array(inputs[i], dtype = np.float32)
+
+            elif isinstance(inputs[i], np.ndarray):
+                inputs[i] = inputs[i].astype(np.float32)
+
+            elif isinstance(inputs[i], torch.tensor._TensorBase):
+                inputs[i] = inputs[i].cpu().numpy().astype(np.float32)
+
+            elif isinstance(inputs[i], Variable):
+                inputs[i] = inputs[i].data.cpu().numpy().astype(np.float32)
+
+        new_score, new_label = inputs
+        assert new_score.shape[0] == new_label.shape[0], 'shape mismatch: %s vs. %s' % (new_score.shape, new_label.shape)
+        assert new_label.max() < new_score.shape[1], 'invalid label value %f' % new_label.max()
+
+        new_label = new_label.flatten()
+        self.score = np.concatenate((self.score, new_score), axis = 0) if self.score is not None else new_score
+        self.label = np.concatenate((self.label, new_label), axis = 0) if self.label is not None else new_label
+
+    def compute_accuracy(self, k = 1):
+        score = self.score
+        label = self.label
+
+        num_sample = score.shape[0]
+        label_one_hot = np.zeros(score.shape)
+        label_one_hot[np.arange(num_sample), label.astype(np.int)] = 1
+        pred_k_hot = np.where((-score).argsort().argsort() < k, 1, 0)
+
+        num_hit = (pred_k_hot * label_one_hot).sum()
+        return num_hit / num_sample * 100.
+
+
 ###############################################################################
 # Optimizer and Scheduler
 ###############################################################################
@@ -338,17 +374,24 @@ def get_scheduler(optimizer, opt):
 ###############################################################################
 # Attribute
 ###############################################################################
-def define_attr_encoder_net(convnet, input_nc, output_nc, spatial_pool = 'none', init_type = 'normal', gpu_ids = []):
 
-    if spatial_pool == 'none':
-        net = NoneSpatialAttributeEncoderNet(convnet, input_nc, output_nc,
-            gpu_ids, init_type)
-    elif spatial_pool in {'max', 'noisyor'}:
-        net = SpatialAttributeEncoderNet(convnet, spatial_pool, input_nc, output_nc,
-            gpu_ids, init_type)
+def define_attr_encoder_net(opt):
+    if opt.joint_cat:
+        if opt.spatial_pool == 'none':
+            net = JointNoneSpatialAttributeEncoderNet(convnet = opt.convnet, input_nc = opt.input_nc,
+                output_nc = opt.n_attr, output_nc1 = opt.n_cat, gpu_ids = opt.gpu_ids, init_type = opt.init_type)
+            # def __init__(self, convnet, input_nc, output_nc, output_nc1, gpu_ids, init_type):
+    else:
 
-    if len(gpu_ids) > 0:
-        net.cuda(gpu_ids[0])
+        if opt.spatial_pool == 'none':
+            net = NoneSpatialAttributeEncoderNet(convnet = opt.convnet, input_nc = opt.input_nc, 
+                output_nc = opt.n_attr, gpu_ids = opt.gpu_ids, init_type = opt.init_type)
+        elif opt.spatial_pool in {'max', 'noisyor'}:
+            net = SpatialAttributeEncoderNet(convnet = opt.convnet, spatial_pool = opt.spatial_pool, input_nc = opt.input_nc, 
+                output_nc = opt.n_attr, gpu_ids = opt.gpu_ids, init_type = opt.init_type)
+
+    if len(opt.gpu_ids) > 0:
+        net.cuda(opt.gpu_ids[0])
 
     return net
 
@@ -447,3 +490,56 @@ class SpatialAttributeEncoderNet(nn.Module):
         prob = self.pool(prob_map).view(bsz, -1)
 
         return prob, prob_map
+
+class DualSpatialAttributeEncoderNet(nn.Module):
+    '''
+    Attribute Encoder with 2 branches of ConvNet, for RGB image and Landmark heatmap respectively.
+    '''
+
+
+class JointNoneSpatialAttributeEncoderNet(nn.Module):
+    def __init__(self, convnet, input_nc, output_nc, output_nc1, gpu_ids, init_type):
+        '''
+        Args:
+            convnet (str): convnet architecture.
+            input_nc (int): number of input channels.
+            output_nc (int): number of output channels (number of attribute entries)
+            output_nc1 (int): number of auxiliary output chnnels (number of category entries)
+        '''
+
+        super(JointNoneSpatialAttributeEncoderNet, self).__init__()
+        self.gpu_ids = gpu_ids
+
+        pretrain = (input_nc == 3)
+        self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
+        self.avgpool = nn.AvgPool2d(7, stride=1)
+        self.fc = nn.Linear(self.conv.output_nc, output_nc)
+        self.fc_cat = nn.Linear(self.conv.output_nc, output_nc1)
+
+        # initialize weights
+        init_weights(self.fc, init_type = init_type)
+        init_weights(self.fc_cat, init_type = init_type)
+        if not pretrain:
+            init_weights(self.conv, init_type = init_type)
+
+        if pretrain:
+            print('load CNN weight pretrained on ImageNet!')
+
+    def forward(self, input_img):
+        bsz = input_img.size(0)
+        if self.gpu_ids:
+            feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+        else:
+            feat_map = self.conv(input_img)
+
+
+        feat = self.avgpool(feat_map).view(bsz, -1)
+        prob = F.sigmoid(self.fc(feat))
+        pred_cat = self.fc_cat(feat)
+
+        return prob, None, pred_cat
+
+
+
+
+

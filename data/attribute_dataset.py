@@ -57,6 +57,10 @@ class AttributeDataset(BaseDataset):
         self.attr_label_list = [attr_label[s_id] for s_id in self.id_list]
         self.attr_entry = attr_entry
 
+        if opt.joint_cat:
+            cat_label = io.load_data(os.path.join(opt.data_root, opt.fn_cat))
+            self.cat_list = [cat_label[s_id] for s_id in self.id_list]
+
         # check data
         assert len(self.attr_entry) == len(self.attr_label_list[0]) == opt.n_attr, 'Attribute number not match!'
         print('dataset created (%d samples)' % len(self))
@@ -78,6 +82,9 @@ class AttributeDataset(BaseDataset):
             'att': att,
             'id': s_id
         }
+
+        if self.opt.joint_cat:
+            data['cat'] = self.cat_list[index]
 
         return data
 
