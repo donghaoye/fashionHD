@@ -77,7 +77,10 @@ class AttributeEncoder(BaseModel):
                 self.input['cat_label'] = self.Tensor(self.opt.batch_size)
             self.input['cat_label'].resize_(data['cat'].size()).copy_(data['cat']).squeeze_()
 
-
+        if self.opt.input_lm:
+            if 'lm_heatmap' not in self.input:
+                self.input['lm_heatmap'] = self.Tensor(self.opt.batch_size, self.opt.lm_input_nc, self.opt.fine_size, self.opt.fine_size)
+            self.input['lm_heatmap'].resize_(data['landmark_heatmap'].size()).copy_(data['landmark_heatmap'])
 
     
     def forward(self):
@@ -91,6 +94,9 @@ class AttributeEncoder(BaseModel):
             output_prob, output_map, output_cat_pred = self.net(v_img)
             self.output['cat_pred'] = output_cat_pred
             self.output['loss_cat'] = self.crit_cat(output_cat_pred, v_cat_label)
+        elif self.opt.input_lm:
+            v_lm_heatmap = Variable(self.input['lm_heatmap'])
+            output_prob, output_map = self.net(v_img, v_lm_heatmap)
         else:
             output_prob, output_map = self.net(v_img)
 
@@ -110,6 +116,9 @@ class AttributeEncoder(BaseModel):
             output_prob, output_map, output_cat_pred = self.net(v_img)
             self.output['cat_pred'] = output_cat_pred
             self.output['loss_cat'] = self.crit_cat(output_cat_pred, v_cat_label)
+        elif self.opt.input_lm:
+            v_lm_heatmap = Variable(self.input['lm_heatmap'], volatile = True)
+            output_prob, output_map = self.net(v_img, v_lm_heatmap)
         else:
             output_prob, output_map = self.net(v_img)
 

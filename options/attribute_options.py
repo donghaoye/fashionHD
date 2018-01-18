@@ -25,6 +25,12 @@ class BaseAttributeOptions(BaseOptions):
         parser.add_argument('--n_cat', type = int, default = 50, help = 'number of cloth categories for joint learning')
         parser.add_argument('--cat_loss_weight', type = float, default = 1e-2, help = 'loss weight of category classification loss')
 
+        parser.add_argument('--input_lm', default = False, action = 'store_true', help = 'use landmark heatmap input')
+        parser.add_argument('--lm_input_nc', type = int, default = 18, help = 'landmark number')
+        parser.add_argument('--lm_output_nc', type = int, default = 128, help = 'landmark branch output feature channels')
+        parser.add_argument('--lm_fusion', type = str, default = 'concat', help = 'fusion method of RGB channel and landmark channel [concat|channel]',
+            choices = ['concat', 'attention'])
+
         # data files
         # refer to "scripts/preproc_inshop.py" for more information
         parser.add_argument('--benchmark', type = str, default = 'ca', help = 'set benchmark [ca|ca_org|inshop|user|debug]',
@@ -42,9 +48,13 @@ class BaseAttributeOptions(BaseOptions):
     def auto_set(self):
         super(BaseAttributeOptions, self).auto_set()
 
+        ###########################################
+        # Add id profix
         if not self.opt.id.startswith('AE_'):
             self.opt.id = 'AE_' + self.opt.id
 
+        ###########################################
+        # Set default dataset file pathes
         if self.opt.benchmark == 'ca':
             if self.opt.fn_sample == 'default':
                 self.opt.fn_sample = 'Label/ca_samples.json'
@@ -92,6 +102,11 @@ class BaseAttributeOptions(BaseOptions):
             self.opt.fn_split = 'Split/debugca_split.json'
             self.opt.fn_landmark = 'Label/debugca_landmark_label.pkl'
             self.opt.fn_cat = 'Label/ca_cat_label.pkl'
+
+        ###########################################
+        # Set dataset mode
+        if self.opt.input_lm:
+            self.opt.dataset_mode = 'attribute_exp'
 
 
 

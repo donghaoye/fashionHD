@@ -1,4 +1,5 @@
 from __future__ import division, print_function
+
 import torch
 from models.attribute_encoder import AttributeEncoder
 from data.data_loader import CreateDataLoader
@@ -6,11 +7,11 @@ from options.attribute_options import TrainAttributeOptions
 from models.networks import MeanAP, ClassificationAccuracy
 from misc.visualizer import AttributeVisualizer
 
+import util.io as io
 import os
 import sys
 import time
 import numpy as np
-import util.io as io
 from collections import OrderedDict
 
 

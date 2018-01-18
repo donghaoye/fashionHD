@@ -28,7 +28,7 @@ def CreateDataLoader(opt, split = None):
 
 def CreateDataset(opt, split):
     dataset = None
-
+    
     if opt.dataset_mode == 'attribute':
         from data.attribute_dataset import AttributeDataset
         dataset = AttributeDataset()

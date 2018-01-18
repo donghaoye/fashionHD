@@ -377,18 +377,47 @@ def get_scheduler(optimizer, opt):
 
 def define_attr_encoder_net(opt):
     if opt.joint_cat:
+        if opt.spatial_pool != 'none' or opt.input_lm:
+            raise NotImplementedError()
         if opt.spatial_pool == 'none':
-            net = JointNoneSpatialAttributeEncoderNet(convnet = opt.convnet, input_nc = opt.input_nc,
-                output_nc = opt.n_attr, output_nc1 = opt.n_cat, gpu_ids = opt.gpu_ids, init_type = opt.init_type)
-            # def __init__(self, convnet, input_nc, output_nc, output_nc1, gpu_ids, init_type):
+            net = JointNoneSpatialAttributeEncoderNet(
+                convnet = opt.convnet,
+                input_nc = opt.input_nc,
+                output_nc = opt.n_attr,
+                output_nc1 = opt.n_cat,
+                gpu_ids = opt.gpu_ids,
+                init_type = opt.init_type)
     else:
-
-        if opt.spatial_pool == 'none':
-            net = NoneSpatialAttributeEncoderNet(convnet = opt.convnet, input_nc = opt.input_nc, 
-                output_nc = opt.n_attr, gpu_ids = opt.gpu_ids, init_type = opt.init_type)
-        elif opt.spatial_pool in {'max', 'noisyor'}:
-            net = SpatialAttributeEncoderNet(convnet = opt.convnet, spatial_pool = opt.spatial_pool, input_nc = opt.input_nc, 
-                output_nc = opt.n_attr, gpu_ids = opt.gpu_ids, init_type = opt.init_type)
+        if opt.input_lm:
+            if opt.spatial_pool == 'none':
+                raise NotImplementedError()
+            else:
+                net = DualSpatialAttributeEncoderNet(
+                    convnet = opt.convnet,
+                    spatial_pool = opt.spatial_pool,
+                    input_nc = opt.input_nc,
+                    output_nc = opt.n_attr,
+                    lm_input_nc = opt.lm_input_nc,
+                    lm_output_nc = opt.lm_output_nc,
+                    lm_fusion = opt.lm_fusion,
+                    gpu_ids = opt.gpu_ids,
+                    init_type = opt.init_type)
+        else:
+            if opt.spatial_pool == 'none':
+                net = NoneSpatialAttributeEncoderNet(
+                    convnet = opt.convnet,
+                    input_nc = opt.input_nc,
+                    output_nc = opt.n_attr,
+                    gpu_ids = opt.gpu_ids,
+                    init_type = opt.init_type)
+            elif opt.spatial_pool in {'max', 'noisyor'}:
+                net = SpatialAttributeEncoderNet(
+                    convnet = opt.convnet,
+                    spatial_pool = opt.spatial_pool,
+                    input_nc = opt.input_nc, 
+                    output_nc = opt.n_attr,
+                    gpu_ids = opt.gpu_ids,
+                    init_type = opt.init_type)
 
     if len(opt.gpu_ids) > 0:
         net.cuda(opt.gpu_ids[0])
@@ -410,6 +439,16 @@ class NoisyOR(nn.Module):
             neg_prob = neg_prob * neg_prob_map[:,:,i]
 
         return 1 - neg_prob
+
+class LandmarkPool(nn.Module):
+    def __init__(self, pool = 'max', region_size = (3,3)):
+        super(LandmarkPool, self).__init__()
+
+    def forward(feat_map, lm_list):
+        raise NotImplementedError('LandmarkPool.forward not implemented')
+
+        
+
 
 
 
@@ -455,7 +494,6 @@ class SpatialAttributeEncoderNet(nn.Module):
     def __init__(self, convnet, spatial_pool, input_nc, output_nc, gpu_ids, init_type):
         super(SpatialAttributeEncoderNet, self).__init__()
         self.gpu_ids = gpu_ids
-        self.spatial_pool = spatial_pool
 
         pretrain = (input_nc == 3)
         self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
@@ -491,10 +529,80 @@ class SpatialAttributeEncoderNet(nn.Module):
 
         return prob, prob_map
 
+
 class DualSpatialAttributeEncoderNet(nn.Module):
     '''
     Attribute Encoder with 2 branches of ConvNet, for RGB image and Landmark heatmap respectively.
     '''
+    def __init__(self, convnet, spatial_pool, input_nc, output_nc, lm_input_nc, lm_output_nc, lm_fusion, gpu_ids, init_type):
+        super(DualSpatialAttributeEncoderNet, self).__init__()
+        # create RGB channel
+        self.gpu_ids = gpu_ids
+        self.spatial_pool = spatial_pool
+        pretrain = (input_nc == 3)
+        self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
+        self.fusion = lm_fusion
+
+        # create landmark channel
+        lm_layer_list = []
+        c_in = lm_input_nc
+        c_out = lm_output_nc // (2**4)
+
+        for n in range(5):
+            lm_layer_list.append(nn.Conv2d(c_in, c_out, 4, 2, 1, bias = False))
+            lm_layer_list.append(nn.BatchNorm2d(c_out))
+            lm_layer_list.append(nn.ReLU())
+            c_in = c_out
+            c_out *= 2
+
+        self.conv_lm = nn.Sequential(*lm_layer_list)
+
+        if lm_fusion == 'concat':
+            feat_nc = self.conv.output_nc + lm_output_nc
+        elif lm_fusion == 'attention':
+            raise NotImplementedError()
+
+
+        # create cls layers
+        self.cls = nn.Conv2d(feat_nc, output_nc, kernel_size = 1)
+        if spatial_pool == 'max':
+            self.pool = nn.MaxPool2d(7, stride=1)
+        elif spatial_pool == 'noisyor':
+            self.pool = NoisyOR()
+
+        # initialize weights
+        init_weights(self.cls, init_type = init_type)
+        init_weights(self.conv_lm, init_type = init_type)
+        if spatial_pool == 'noisyor':
+            # special initialization
+            init.constant(self.cls.bias, -6.58)
+            
+        if pretrain:
+            print('load CNN weight pretrained on ImageNet!')
+        else:
+            init_weights(self.conv, init_type = init_type)
+
+    def forward(self, input_img, input_lm_heatmap):
+        bsz = input_img.size(0)
+        if self.gpu_ids:
+            img_feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+            lm_feat_map = nn.parallel.data_parallel(self.conv_lm, input_lm_heatmap, self.gpu_ids)
+        else:
+            img_feat_map = self.conv(input_img)
+            lm_feat_map = self.conv_lm(input_lm_heatmap)
+
+        feat_map = None
+        if self.fusion == 'concat':
+            feat_map = torch.cat((img_feat_map, lm_feat_map), dim = 1)
+
+        prob_map = F.sigmoid(self.cls(feat_map))
+        prob = self.pool(prob_map).view(bsz, -1)
+
+        return prob, prob_map
+
+
+
+
 
 
 class JointNoneSpatialAttributeEncoderNet(nn.Module):

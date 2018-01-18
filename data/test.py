@@ -66,8 +66,6 @@ def test_EXPAttributeDataset():
         image.imshow(img_maps)
 
 
-
-
 if __name__ == '__main__':
     # test_AttributeDataset()
     test_EXPAttributeDataset()
