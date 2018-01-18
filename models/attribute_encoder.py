@@ -126,6 +126,19 @@ class AttributeEncoder(BaseModel):
         self.output['map'] = output_map
         self.output['loss_attr'] = self.crit_attr(output_prob, v_label)
 
+    def extract_feat(self):
+        v_img = Variable(self.input['img'], volatile = True)
+        v_label = Variable(self.input['label'])
+
+        if self.opt.input_lm:
+            v_lm_heatmap = Variable(self.input['lm_heatmap'], volatile = True)
+            output_feat, output_feat_map = self.net.extract_feat(v_img, v_lm_heatmap)
+        else:
+            output_feat, output_feat_map = self.net.extract_feat(v_img)
+
+        self.output['feat'] = output_feat
+        self.output['feat_map'] = output_feat_map
+        
 
     def optimize_parameters(self):
         self.net.train()

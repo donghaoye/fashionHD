@@ -267,14 +267,17 @@ class MeanAP():
 
     def compute_recall(self, k = 3):
         score, label = self.score, self.label
+
         # for each sample, assigned attributes with top-k socre as its tags
         tag = np.where((-score).argsort().argsort() < k, 1, 0)
         tag_rec = tag * label
 
         rec_overall = tag_rec.sum() / label.sum() * 100.
-        rec_per_class = (tag_rec.sum(axis=0) / label.sum(axis=0)).mean() * 100.
+        rec_class = (tag_rec.sum(axis=0) / label.sum(axis=0))*100.
+        rec_class_avg = rec_class.mean()
 
-        return rec_per_class, rec_overall
+        return rec_class_avg, rec_class, rec_overall
+
 
     def compute_balanced_precision(self):
         '''
@@ -490,6 +493,19 @@ class NoneSpatialAttributeEncoderNet(nn.Module):
 
         return prob, None
 
+    def extract_feat(self, input_img):
+        bsz = input_img.size(0)
+
+        if self.gpu_ids:
+            feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+        else:
+            feat_map = self.conv(input_img)
+
+        feat = self.avgpool(feat_map).view(bsz, -1)
+
+        return feat, feat_map
+
+
 class SpatialAttributeEncoderNet(nn.Module):
     def __init__(self, convnet, spatial_pool, input_nc, output_nc, gpu_ids, init_type):
         super(SpatialAttributeEncoderNet, self).__init__()
@@ -529,6 +545,17 @@ class SpatialAttributeEncoderNet(nn.Module):
 
         return prob, prob_map
 
+    def extract_feat(self, input_img):
+        bsz = input_img.size(0)
+        if self.gpu_ids:
+            feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+        else:
+            feat_map = self.conv(input_img)
+
+        feat = F.avg_pool2d(feat_map, kernel_size = 7, stride = 1).view(bsz, -1)
+
+        return feat, feat_map
+
 
 class DualSpatialAttributeEncoderNet(nn.Module):
     '''
@@ -557,14 +584,19 @@ class DualSpatialAttributeEncoderNet(nn.Module):
 
         self.conv_lm = nn.Sequential(*lm_layer_list)
 
+        # create fusion layers
         if lm_fusion == 'concat':
             feat_nc = self.conv.output_nc + lm_output_nc
-        elif lm_fusion == 'attention':
+            self.cls = nn.Conv2d(feat_nc, output_nc, kernel_size = 1)
+        elif lm_fusion == 'linear':
+            feat_nc = self.conv.output_nc + lm_output_nc
+            self.fuse_layer = nn.Conv2d(feat_nc, self.conv.output_nc, kernel_size = 1)
+            self.cls = nn.Conv2d(self.conv.output_nc, output_nc, kernel_size = 1)
+        else:
             raise NotImplementedError()
 
 
-        # create cls layers
-        self.cls = nn.Conv2d(feat_nc, output_nc, kernel_size = 1)
+        # create pooling layers
         if spatial_pool == 'max':
             self.pool = nn.MaxPool2d(7, stride=1)
         elif spatial_pool == 'noisyor':
@@ -573,6 +605,7 @@ class DualSpatialAttributeEncoderNet(nn.Module):
         # initialize weights
         init_weights(self.cls, init_type = init_type)
         init_weights(self.conv_lm, init_type = init_type)
+        init_weights(self.fuse_layer, init_type = init_type)
         if spatial_pool == 'noisyor':
             # special initialization
             init.constant(self.cls.bias, -6.58)
@@ -592,15 +625,36 @@ class DualSpatialAttributeEncoderNet(nn.Module):
             lm_feat_map = self.conv_lm(input_lm_heatmap)
 
         feat_map = None
-        if self.fusion == 'concat':
+        if self.fusion == 'cancat':
             feat_map = torch.cat((img_feat_map, lm_feat_map), dim = 1)
-
+        elif self.fusion == 'linear':
+            feat_map = self.fuse_layer(torch.cat((img_feat_map, lm_feat_map), dim = 1))
+            feat_map = F.relu(feat_map)
+        
         prob_map = F.sigmoid(self.cls(feat_map))
         prob = self.pool(prob_map).view(bsz, -1)
 
         return prob, prob_map
 
+    def extract_feat(self, input_img, input_lm_heatmap):
+        bsz = input_img.size(0)
+        if self.gpu_ids:
+            img_feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+            lm_feat_map = nn.parallel.data_parallel(self.conv_lm, input_lm_heatmap, self.gpu_ids)
+        else:
+            img_feat_map = self.conv(input_img)
+            lm_feat_map = self.conv_lm(input_lm_heatmap)
 
+        feat_map = None
+        if self.fusion == 'cancat':
+            feat_map = torch.cat((img_feat_map, lm_feat_map), dim = 1)
+        elif self.fusion == 'linear':
+            feat_map = self.fuse_layer(torch.cat((img_feat_map, lm_feat_map), dim = 1))
+            feat_map = F.relu(feat_map)
+
+        feat = F.avg_pool2d(feat_map, kernel_size = 7, stride = 1).view(bsz, -1)
+
+        return feat, feat_map
 
 
 
@@ -640,12 +694,23 @@ class JointNoneSpatialAttributeEncoderNet(nn.Module):
         else:
             feat_map = self.conv(input_img)
 
-
         feat = self.avgpool(feat_map).view(bsz, -1)
         prob = F.sigmoid(self.fc(feat))
         pred_cat = self.fc_cat(feat)
 
         return prob, None, pred_cat
+
+    def extract_feat(self, input_img):
+        bsz = input_img.size(0)
+        if self.gpu_ids:
+            feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+        else:
+            feat_map = self.conv(input_img)
+
+        feat = self.avgpool(feat_map).view(bsz, -1)
+
+        return feat, feat_map
+
 
 
 

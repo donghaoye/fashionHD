@@ -89,7 +89,8 @@ class BaseVisualizer(object):
         '''
         Display result info on screen
         '''
-        log = '\n'.join(['%s: %.6f' % (k,v) for k,v in result.iteritems()])
+        log = '[%s] Test [Epoch: %s]\n' % (self.opt.id, self.opt.which_epoch)
+        log += '\n'.join(['%s: %.6f' % (k,v) for k,v in result.iteritems()])
         log = '\n'.join(['', '#'*50, log, '#'*50, ''])
         print(log)
 

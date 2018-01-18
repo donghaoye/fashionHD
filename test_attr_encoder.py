@@ -42,17 +42,18 @@ print('\n')
 test_error = model.get_current_errors()
 mean_ap, ap_list = crit_ap.compute_mean_ap()
 mean_bp, bp_list = crit_ap.compute_balanced_precision()
-rec3_perclass, rec3_overall = crit_ap.compute_recall(k=3)
-rec5_perclass, rec5_overall = crit_ap.compute_recall(k=5)
+rec3_avg, _, rec3_overall = crit_ap.compute_recall(k=3)
+rec5_avg, _, rec5_overall = crit_ap.compute_recall(k=5)
+
 
 result = OrderedDict([
     ('loss_attr', test_error['loss_attr']),
     ('mAP', mean_ap),
     ('mBP', mean_bp),
-    ('rec3_perclass', rec3_perclass),
-    ('rec5_perclass', rec5_perclass),
+    ('rec3_avg', rec3_avg),
+    ('rec5_avg', rec5_avg),
     ('rec3_overall', rec3_overall),
-    ('rec5_overall', rec5_overall)
+    ('rec5_overall', rec5_overall),
     ])
 
 visualizer.print_error(result)
