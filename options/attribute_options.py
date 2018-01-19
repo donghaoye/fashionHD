@@ -29,7 +29,7 @@ class BaseAttributeOptions(BaseOptions):
         parser.add_argument('--lm_input_nc', type = int, default = 18, help = 'landmark number')
         parser.add_argument('--lm_output_nc', type = int, default = 128, help = 'landmark branch output feature channels')
         parser.add_argument('--lm_fusion', type = str, default = 'concat', help = 'fusion method of RGB channel and landmark channel [concat|channel]',
-            choices = ['concat', 'attention'])
+            choices = ['concat', 'linear'])
 
         # data files
         # refer to "scripts/preproc_inshop.py" for more information

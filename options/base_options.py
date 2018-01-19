@@ -36,7 +36,7 @@ class BaseOptions(object):
         #     choices = [0,1,-1])
         # parser.add_argument('--flip', type = int, default = 0, help = 'flip images [1:True|-1:False|0:Auto]',
         #     choices = [0,1,-1])
-        # parser.add_argument('--max_dataset_size', type = int, default = float('inf'), help = 'maximum number of samples')
+        parser.add_argument('--max_dataset_size', type = int, default = float('inf'), help = 'maximum number of samples')
         parser.add_argument('--batch_size', type = int, default = 128, help = 'batch size')
         parser.add_argument('--load_size', type = int, default = 256, help = 'scale input image to this size')
         parser.add_argument('--fine_size', type = int, default = 224, help = 'crop input image to this size')

@@ -59,8 +59,6 @@ def extract_feature(model, save_feat = True):
 
     return feat_data
 
-
-
 def _svm_test_attr_unit(worker_idx, idx_attr_rng, feat_train, label_train, feat_test, output_pred_list):
     idx_list = range(idx_attr_rng[0], idx_attr_rng[1])
 
@@ -77,14 +75,15 @@ def _svm_test_attr_unit(worker_idx, idx_attr_rng, feat_train, label_train, feat_
         k = svm_model.get_labels().index(1)
         prob = np.array(svm_out[2])[:,k]
         output_pred_list[idx] = prob
-        print('[%d] test attribute %d / %d, cost %.2f sec' % (worker_idx, idx, len(idx_list), time.time() - t))
+        print('[%d] test attribute %d [%d/%d], cost %.2f sec' % (worker_idx, idx, idx - idx_list[0], len(idx_list), time.time() - t))
+        sys.stdout.flush()
 
 
 if __name__ == '__main__':
 
     # config
     train_on_val_set = True
-    num_worker = 32
+    num_worker = 20
 
     opt = TestAttributeOptions().parse()
     # create model

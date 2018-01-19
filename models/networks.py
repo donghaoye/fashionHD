@@ -452,6 +452,18 @@ class LandmarkPool(nn.Module):
 
         
 
+class NaiveAttributeEncoderNet(nn.Module):
+    '''
+    Attribute Encoder composed of stacked conv layers
+    '''
+    def __init__(self, input_nc, output_nc, first_feat_nc, final_feat_nc, gpu_ids, init_type):
+        '''
+        Args:
+            
+        '''
+        super(NaiveAttributeEncoderNet, self).__init__()
+        self.gpu_ids = gpu_ids
+
 
 
 
@@ -557,6 +569,8 @@ class SpatialAttributeEncoderNet(nn.Module):
         return feat, feat_map
 
 
+
+
 class DualSpatialAttributeEncoderNet(nn.Module):
     '''
     Attribute Encoder with 2 branches of ConvNet, for RGB image and Landmark heatmap respectively.
@@ -593,6 +607,7 @@ class DualSpatialAttributeEncoderNet(nn.Module):
             self.fuse_layer = nn.Conv2d(feat_nc, self.conv.output_nc, kernel_size = 1)
             self.cls = nn.Conv2d(self.conv.output_nc, output_nc, kernel_size = 1)
         else:
+            print(lm_fusion)
             raise NotImplementedError()
 
 
@@ -605,7 +620,8 @@ class DualSpatialAttributeEncoderNet(nn.Module):
         # initialize weights
         init_weights(self.cls, init_type = init_type)
         init_weights(self.conv_lm, init_type = init_type)
-        init_weights(self.fuse_layer, init_type = init_type)
+        if lm_fusion == 'linear':
+            init_weights(self.fuse_layer, init_type = init_type)
         if spatial_pool == 'noisyor':
             # special initialization
             init.constant(self.cls.bias, -6.58)
@@ -625,11 +641,14 @@ class DualSpatialAttributeEncoderNet(nn.Module):
             lm_feat_map = self.conv_lm(input_lm_heatmap)
 
         feat_map = None
-        if self.fusion == 'cancat':
+        if self.fusion == 'concat':
             feat_map = torch.cat((img_feat_map, lm_feat_map), dim = 1)
         elif self.fusion == 'linear':
             feat_map = self.fuse_layer(torch.cat((img_feat_map, lm_feat_map), dim = 1))
             feat_map = F.relu(feat_map)
+        else:
+            print(self.fusion)
+            raise NotImplementedError()
         
         prob_map = F.sigmoid(self.cls(feat_map))
         prob = self.pool(prob_map).view(bsz, -1)

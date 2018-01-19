@@ -53,6 +53,9 @@ class AttributeDataset(BaseDataset):
         attr_split = io.load_json(os.path.join(opt.data_root, opt.fn_split))
 
         self.id_list = attr_split[split]
+        if opt.max_dataset_size != float('inf'):
+            self.id_list = self.id_list[0:opt.max_dataset_size]
+
         self.sample_list = [samples[s_id] for s_id in self.id_list]
         self.attr_label_list = [attr_label[s_id] for s_id in self.id_list]
         self.attr_entry = attr_entry

@@ -72,6 +72,8 @@ class AttributeEncoder(BaseModel):
         # Todo: add support to spatial info input (seg map, landmark heatmap, etc)
         self.input['img'].resize_(data['img'].size()).copy_(data['img'])
         self.input['label'].resize_(data['att'].size()).copy_(data['att'])
+        self.input['id'] = data['id']
+        
         if self.opt.joint_cat:
             if 'cat_label' not in self.input:
                 self.input['cat_label'] = self.Tensor(self.opt.batch_size)
@@ -138,7 +140,7 @@ class AttributeEncoder(BaseModel):
 
         self.output['feat'] = output_feat
         self.output['feat_map'] = output_feat_map
-        
+
 
     def optimize_parameters(self):
         self.net.train()
