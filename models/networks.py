@@ -11,6 +11,7 @@ from torch.optim import lr_scheduler
 from resnet_wrapper import create_resnet_conv_layers
 
 import numpy as np
+import functools
 
 ###############################################################################
 # Functions
@@ -374,6 +375,65 @@ def get_scheduler(optimizer, opt):
         return NotImplementedError('learning rate policy [%s] is not implemented', opt.lr_policy)
     return scheduler
 
+
+###############################################################################
+# GAN
+###############################################################################
+def get_norm_layer(norm_type = 'instance'):
+    if norm_type == 'batch':
+        norm_layer == functools.partial(nn.BatchNorm2d, affine=True)
+    elif norm_type == 'instance':
+        norm_layer == functools.partial(nn.InstanceNorm2d, affine =False)
+    elif norm_type == 'none':
+        norm_layer = None
+    else:
+        raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
+    return norm_layer
+
+
+class ResnetBlock(nn.Module):
+    def __init__(self, dim, padding_type, norm_layer, use_dropout, use_bias):
+        super(ResnetBlock, self).__init__()
+        self.conv_block = self.build_conv_block(dim, padding_type, norm_layer, use_dropout, use_bias)
+
+    def build_conv_block(self, dim, padding_type, norm_layer, use_dropout, use_bias):
+        conv_block = []
+        p = 0
+        if padding_type == 'reflect':
+            conv_block += [nn.ReflectionPad2d(1)]
+        elif padding_type == 'replicate':
+            conv_block += [nn.ReplicationPad2d(1)]
+        elif padding_type == 'zero':
+            p = 1
+        else:
+            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
+
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias),
+                       norm_layer(dim),
+                       nn.ReLU(True)]
+        if use_dropout:
+            conv_block += [nn.Dropout(0.5)]
+
+        p = 0
+        if padding_type == 'reflect':
+            conv_block += [nn.ReflectionPad2d(1)]
+        elif padding_type == 'replicate':
+            conv_block += [nn.ReplicationPad2d(1)]
+        elif padding_type == 'zero':
+            p = 1
+        else:
+            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias),
+                       norm_layer(dim)]
+
+        return nn.Sequential(*conv_block)
+
+    def forward(self, x):
+        out = x + self.conv_block(x)
+        return out
+
+
+
 ###############################################################################
 # Attribute
 ###############################################################################
@@ -388,6 +448,7 @@ def define_attr_encoder_net(opt):
                 input_nc = opt.input_nc,
                 output_nc = opt.n_attr,
                 output_nc1 = opt.n_cat,
+                feat_norm = opt.feat_norm,
                 gpu_ids = opt.gpu_ids,
                 init_type = opt.init_type)
     else:
@@ -403,6 +464,7 @@ def define_attr_encoder_net(opt):
                     lm_input_nc = opt.lm_input_nc,
                     lm_output_nc = opt.lm_output_nc,
                     lm_fusion = opt.lm_fusion,
+                    feat_norm = opt.feat_norm,
                     gpu_ids = opt.gpu_ids,
                     init_type = opt.init_type)
         else:
@@ -411,6 +473,7 @@ def define_attr_encoder_net(opt):
                     convnet = opt.convnet,
                     input_nc = opt.input_nc,
                     output_nc = opt.n_attr,
+                    feat_norm = opt.feat_norm,
                     gpu_ids = opt.gpu_ids,
                     init_type = opt.init_type)
             elif opt.spatial_pool in {'max', 'noisyor'}:
@@ -419,6 +482,7 @@ def define_attr_encoder_net(opt):
                     spatial_pool = opt.spatial_pool,
                     input_nc = opt.input_nc, 
                     output_nc = opt.n_attr,
+                    feat_norm = opt.feat_norm,
                     gpu_ids = opt.gpu_ids,
                     init_type = opt.init_type)
 
@@ -452,23 +516,28 @@ class LandmarkPool(nn.Module):
 
         
 
-class NaiveAttributeEncoderNet(nn.Module):
-    '''
-    Attribute Encoder composed of stacked conv layers
-    '''
-    def __init__(self, input_nc, output_nc, first_feat_nc, final_feat_nc, gpu_ids, init_type):
-        '''
-        Args:
-            
-        '''
-        super(NaiveAttributeEncoderNet, self).__init__()
-        self.gpu_ids = gpu_ids
+def create_stack_conv_layers(input_nc, feat_nc_s = 64, feat_nc_f = 1024, num_layer = 5):
+    
+    c_in = input_nc
+    c_out = feat_nc_s
+    conv_layers = []
 
+    for n in range(num_layer):
+        conv_layers.append(nn.Conv2d(c_in, c_out, 4,2,1, bias = False))
+        conv_layers.append(nn.BatchNorm2d(c_out))
+        conv_layers.append(nn.ReLU())
 
+        c_in = c_out
+        c_out = feat_nc_f if n == num_layer-2 else c_out * 2
+
+    conv = nn.Sequential(*conv_layers)
+    conv.output_nc = feat_nc_f
+
+    return conv
 
 
 class NoneSpatialAttributeEncoderNet(nn.Module):
-    def __init__(self, convnet, input_nc, output_nc, gpu_ids, init_type):
+    def __init__(self, convnet, input_nc, output_nc, feat_norm, gpu_ids, init_type):
         '''
         Args:
             convnet (str): convnet architecture.
@@ -477,9 +546,14 @@ class NoneSpatialAttributeEncoderNet(nn.Module):
         '''
         super(NoneSpatialAttributeEncoderNet, self).__init__()
         self.gpu_ids = gpu_ids
+        self.feat_norm = feat_norm
 
-        pretrain = (input_nc == 3)
-        self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
+        if convnet == 'stackconv':
+            pretrain = False
+            self.conv = create_stack_conv_layers(input_nc)
+        else:
+            pretrain = (input_nc == 3)
+            self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
         self.avgpool = nn.AvgPool2d(7, stride=1)
         self.fc = nn.Linear(self.conv.output_nc, output_nc)
 
@@ -500,6 +574,9 @@ class NoneSpatialAttributeEncoderNet(nn.Module):
         else:
             feat_map = self.conv(input_img)
 
+        if self.feat_norm:
+            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
+
         feat = self.avgpool(feat_map).view(bsz, -1)
         prob = F.sigmoid(self.fc(feat))
 
@@ -513,18 +590,27 @@ class NoneSpatialAttributeEncoderNet(nn.Module):
         else:
             feat_map = self.conv(input_img)
 
+        if self.feat_norm:
+            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
+
         feat = self.avgpool(feat_map).view(bsz, -1)
 
         return feat, feat_map
 
 
 class SpatialAttributeEncoderNet(nn.Module):
-    def __init__(self, convnet, spatial_pool, input_nc, output_nc, gpu_ids, init_type):
+    def __init__(self, convnet, spatial_pool, input_nc, output_nc, feat_norm, gpu_ids, init_type):
         super(SpatialAttributeEncoderNet, self).__init__()
         self.gpu_ids = gpu_ids
+        self.feat_norm = feat_norm
 
-        pretrain = (input_nc == 3)
-        self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
+        if convnet == 'stackconv':
+            pretrain = False
+            self.conv = create_stack_conv_layers(input_nc)
+        else:
+            pretrain = (input_nc == 3)
+            self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
+
         self.cls = nn.Conv2d(self.conv.output_nc, output_nc, kernel_size = 1)
 
         if spatial_pool == 'max':
@@ -552,6 +638,9 @@ class SpatialAttributeEncoderNet(nn.Module):
         else:
             feat_map = self.conv(input_img)
 
+        if self.feat_norm:
+            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
+
         prob_map = F.sigmoid(self.cls(feat_map))
         prob = self.pool(prob_map).view(bsz, -1)
 
@@ -564,6 +653,8 @@ class SpatialAttributeEncoderNet(nn.Module):
         else:
             feat_map = self.conv(input_img)
 
+        if self.feat_norm:
+            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
         feat = F.avg_pool2d(feat_map, kernel_size = 7, stride = 1).view(bsz, -1)
 
         return feat, feat_map
@@ -575,14 +666,20 @@ class DualSpatialAttributeEncoderNet(nn.Module):
     '''
     Attribute Encoder with 2 branches of ConvNet, for RGB image and Landmark heatmap respectively.
     '''
-    def __init__(self, convnet, spatial_pool, input_nc, output_nc, lm_input_nc, lm_output_nc, lm_fusion, gpu_ids, init_type):
+    def __init__(self, convnet, spatial_pool, input_nc, output_nc, lm_input_nc, lm_output_nc, lm_fusion, feat_norm, gpu_ids, init_type):
         super(DualSpatialAttributeEncoderNet, self).__init__()
         # create RGB channel
         self.gpu_ids = gpu_ids
+        self.feat_norm = feat_norm
         self.spatial_pool = spatial_pool
-        pretrain = (input_nc == 3)
-        self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
         self.fusion = lm_fusion
+        if convnet == 'stackconv':
+            pretrain = False
+            self.conv = create_stack_conv_layers(input_nc)
+        else:
+            pretrain = (input_nc == 3)
+            self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
+        
 
         # create landmark channel
         lm_layer_list = []
@@ -604,7 +701,11 @@ class DualSpatialAttributeEncoderNet(nn.Module):
             self.cls = nn.Conv2d(feat_nc, output_nc, kernel_size = 1)
         elif lm_fusion == 'linear':
             feat_nc = self.conv.output_nc + lm_output_nc
-            self.fuse_layer = nn.Conv2d(feat_nc, self.conv.output_nc, kernel_size = 1)
+            self.fuse_layer = nn.Sequential(
+                nn.Conv2d(feat_nc, self.conv.output_nc, kernel_size = 1),
+                nn.BatchNorm1d(self.conv.output_nc),
+                nn.ReLu()
+                )
             self.cls = nn.Conv2d(self.conv.output_nc, output_nc, kernel_size = 1)
         else:
             print(lm_fusion)
@@ -645,10 +746,12 @@ class DualSpatialAttributeEncoderNet(nn.Module):
             feat_map = torch.cat((img_feat_map, lm_feat_map), dim = 1)
         elif self.fusion == 'linear':
             feat_map = self.fuse_layer(torch.cat((img_feat_map, lm_feat_map), dim = 1))
-            feat_map = F.relu(feat_map)
         else:
             print(self.fusion)
             raise NotImplementedError()
+
+        if self.feat_norm:
+            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
         
         prob_map = F.sigmoid(self.cls(feat_map))
         prob = self.pool(prob_map).view(bsz, -1)
@@ -669,7 +772,9 @@ class DualSpatialAttributeEncoderNet(nn.Module):
             feat_map = torch.cat((img_feat_map, lm_feat_map), dim = 1)
         elif self.fusion == 'linear':
             feat_map = self.fuse_layer(torch.cat((img_feat_map, lm_feat_map), dim = 1))
-            feat_map = F.relu(feat_map)
+
+        if self.feat_norm:
+            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
 
         feat = F.avg_pool2d(feat_map, kernel_size = 7, stride = 1).view(bsz, -1)
 
@@ -679,7 +784,7 @@ class DualSpatialAttributeEncoderNet(nn.Module):
 
 
 class JointNoneSpatialAttributeEncoderNet(nn.Module):
-    def __init__(self, convnet, input_nc, output_nc, output_nc1, gpu_ids, init_type):
+    def __init__(self, convnet, input_nc, output_nc, output_nc1, feat_norm, gpu_ids, init_type):
         '''
         Args:
             convnet (str): convnet architecture.
@@ -690,9 +795,14 @@ class JointNoneSpatialAttributeEncoderNet(nn.Module):
 
         super(JointNoneSpatialAttributeEncoderNet, self).__init__()
         self.gpu_ids = gpu_ids
+        self.feat_norm = feat_norm
 
-        pretrain = (input_nc == 3)
-        self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
+        if convnet == 'stackconv':
+            pretrain = False
+            self.conv = create_stack_conv_layers(input_nc)
+        else:
+            pretrain = (input_nc == 3)
+            self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
         self.avgpool = nn.AvgPool2d(7, stride=1)
         self.fc = nn.Linear(self.conv.output_nc, output_nc)
         self.fc_cat = nn.Linear(self.conv.output_nc, output_nc1)
@@ -713,6 +823,9 @@ class JointNoneSpatialAttributeEncoderNet(nn.Module):
         else:
             feat_map = self.conv(input_img)
 
+        if self.feat_norm:
+            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
+
         feat = self.avgpool(feat_map).view(bsz, -1)
         prob = F.sigmoid(self.fc(feat))
         pred_cat = self.fc_cat(feat)
@@ -726,11 +839,12 @@ class JointNoneSpatialAttributeEncoderNet(nn.Module):
         else:
             feat_map = self.conv(input_img)
 
+        if self.feat_norm:
+            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
+
         feat = self.avgpool(feat_map).view(bsz, -1)
 
         return feat, feat_map
-
-
 
 
 

@@ -10,6 +10,7 @@ import util.image as image
 from util.pavi import PaviClient
 from options.base_options import opt_to_str
 import numpy as np
+from collections import OrderedDict
 
 
 class BaseVisualizer(object):
@@ -118,6 +119,18 @@ class AttributeVisualizer(BaseVisualizer):
         self.data_loaded = True
 
     def visualize_attr_pred(self, model, num_top_attr = 5):
+        '''
+        This method visualize attribute prediction result of each sample in an image:
+        - original image
+        - top-k predicted attributes
+        - annotated attributes
+        - top-k predicted attribute spatial maps (if available)
+
+        Input:
+            model: AttributeEncoderModel instance (to get model output)
+            num_top_attr
+        '''
+
         if not self.data_loaded:
             self.load_attr_data()
 
@@ -161,16 +174,76 @@ class AttributeVisualizer(BaseVisualizer):
             image.imwrite(img_out, fn_output)
 
 
+    def show_attr_pred_statistic(self, result):
+        '''
+        Save attribute predction statistic information into json and txt file.
+        Input:
+            result (dict): test result with fields
+        '''
+
+        if hasattr(self, 'attr_entry'):
+            attr_entry = self.attr_entry
+        else:
+            attr_entry = io.load_json(os.path.join(self.opt.data_root, self.opt.fn_entry))
 
 
+        # add results of interest
+        type_entry = {1:'texture', 2:'fabric', 3:'shape', 4:'part', 5:'style'}
+        result['type_info'] = []
+        for t in range(1, 6):
+            idx_list = [i for i,att in enumerate(attr_entry) if att['type'] == t]
+            ap = (np.array(result['AP_list'])[idx_list]).mean().tolist()
+            rec3 = (np.array(result['rec3_list'])[idx_list]).mean().tolist()
+            rec5 = (np.array(result['rec5_list'])[idx_list]).mean().tolist()
+            result['type_info'].append({
+                'type': '%d-%s' % (t, type_entry[t]),
+                'ap': ap,
+                'rec3': rec3,
+                'rec5': rec5
+            })
 
-                
+        ap_order = np.argsort(result['AP_list'])
+        result['top_attr_list'] = [(attr_entry[i]['entry'], attr_entry[i]['type'], result['AP_list'][i]) \
+            for i in ap_order[::-1][0:20]]
+        result['worst_attr_list'] = [(attr_entry[i]['entry'], attr_entry[i]['type'], result['AP_list'][i]) \
+            for i in ap_order[0:20]]
 
 
+        # display
+        result_disp = OrderedDict()
+        for k, v in result.iteritems():
+            if isinstance(v, float):
+                result_disp[k] = v
+        self.print_error(result_disp)
 
 
+        # save json
+        dir_test = os.path.join('checkpoints', self.opt.id, 'test')
+        io.mkdir_if_missing(dir_test)
+        fn_json = os.path.join(dir_test, 'test_result.json')
+        for k, v in result.iteritems():
+            if isinstance(v, np.ndarray):
+                result[k] = v.tolist()
 
+        io.save_json(result, fn_json)
 
+        # save txt summary
+        str_output = ['AttributeType\tAP\trec3\trec5']
+        str_output += ['%s\t%f\t%f\t%f' % (t['type'], t['ap'], t['rec3'], t['rec5']) for t in result['type_info']]
+        str_output += ['', 'Top Attribute']
+        str_output += ['%s(%d)\t%f' % a for a in result['top_attr_list']]
+        str_output += ['', 'Worst Attribute']
+        str_output += ['%s(%d)\t%f' % a for a in result['worst_attr_list']]
+
+        fn_txt = os.path.join('checkpoints', self.opt.id, 'test', 'test_result_summary.txt')
+        io.save_str_list(str_output, fn_txt)
+
+        # save txt detail
+        str_output = ['%s\t%d\t%f\t%.2f\t%.2f\t%.2f' % (att['entry'],att['type'], att['pos_rate'], ap, rec3, rec5) 
+            for (att, ap, rec3, rec5) in zip(attr_entry, result['AP_list'], result['rec5_list'], result['rec5_list'])]
+        fn_txt = os.path.join('checkpoints', self.opt.id, 'test', 'test_result_detail.txt')
+
+        io.save_str_list(str_output, fn_txt)
 
 
 

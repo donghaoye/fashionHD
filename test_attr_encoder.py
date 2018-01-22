@@ -34,7 +34,6 @@ for i, data in enumerate(test_loader):
     model.set_input(data)
     model.test()
     crit_ap.add(model.output['prob'], model.input['label'])
-
     print('\rTesting %d/%d (%.2f%%)' % (i, len(test_loader), 100.*i/len(test_loader)), end = '')
     sys.stdout.flush()
 print('\n')
@@ -42,9 +41,8 @@ print('\n')
 test_error = model.get_current_errors()
 mean_ap, ap_list = crit_ap.compute_mean_ap()
 mean_bp, bp_list = crit_ap.compute_balanced_precision()
-rec3_avg, _, rec3_overall = crit_ap.compute_recall(k=3)
-rec5_avg, _, rec5_overall = crit_ap.compute_recall(k=5)
-
+rec3_avg, rec3_list, rec3_overall = crit_ap.compute_recall(k=3)
+rec5_avg, rec5_list, rec5_overall = crit_ap.compute_recall(k=5)
 
 result = OrderedDict([
     ('loss_attr', test_error['loss_attr']),
@@ -54,8 +52,10 @@ result = OrderedDict([
     ('rec5_avg', rec5_avg),
     ('rec3_overall', rec3_overall),
     ('rec5_overall', rec5_overall),
+    ('AP_list', ap_list),
+    ('rec3_list', rec3_list),
+    ('rec5_list', rec5_list)
     ])
 
-visualizer.print_error(result)
+visualizer.show_attr_pred_statistic(result)
 
-# Todo: visualize.display_img
