@@ -5,8 +5,11 @@ import numpy as np
 import io
 
 # basic image processing interface based on openCV
-def imread(filename):
-    return cv2.imread(filename)
+def imread(filename, mode = 'rgb'):
+    if mode == 'grayscale':
+        return cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
+    else:
+        return cv2.imread(filename)
 
 def imwrite(im, filename):
     return cv2.imwrite(filename, im)

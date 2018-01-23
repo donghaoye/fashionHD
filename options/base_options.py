@@ -68,7 +68,7 @@ class BaseOptions(object):
 
 
 
-    def parse(self, ord_str = None):
+    def parse(self, ord_str = None, save_to_file = True, display = True):
 
         if not self.initialized:
             self.initialize()
@@ -79,25 +79,26 @@ class BaseOptions(object):
             ord_list = ord_str.split()
             self.opt = self.parser.parse_args(ord_list)
             
-        self.auto_set()       
+        self.auto_set()
 
         args = vars(self.opt)
 
         # display options
-        print('------------ Options -------------')
-        for k, v in sorted(args.items()):
-            print('%s: %s' % (str(k), str(v)))
-        print('-------------- End ----------------')
+        if display:
+            print('------------ Options -------------')
+            for k, v in sorted(args.items()):
+                print('%s: %s' % (str(k), str(v)))
+            print('-------------- End ----------------')
 
-        # save to disk
-        expr_dir = os.path.join('checkpoints', self.opt.id)
-        io.mkdir_if_missing(expr_dir)
-        
-        if self.opt.is_train:
-            fn_out = os.path.join(expr_dir, 'train_opt.json')
-        else:
-            fn_out = os.path.join(expr_dir, 'test_opt.json')
-        io.save_json(args, fn_out)
+        # save to disk        
+        if save_to_file:
+            expr_dir = os.path.join('checkpoints', self.opt.id)
+            io.mkdir_if_missing(expr_dir)
+            if self.opt.is_train:
+                fn_out = os.path.join(expr_dir, 'train_opt.json')
+            else:
+                fn_out = os.path.join(expr_dir, 'test_opt.json')
+            io.save_json(args, fn_out)
 
         return self.opt
 

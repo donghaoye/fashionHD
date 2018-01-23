@@ -31,7 +31,16 @@ def test_AttributeEncoder():
         print(error)
 
         model.save_network(model.net, 'AE', 'ep0', model.opt.gpu_ids)
-        
+
+def test_DesignerGAN():
+    # from designer_gan_model import DesignerGAN
+    from designer_gan_model import load_attribute_encoder_net
+    net, opt = load_attribute_encoder_net(id = '1.5', gpu_ids = [0,1,2,3], is_train = False)
+    
+    for k, v in sorted(opt.__dict__.items()):
+        print('%s: %s' % (str(k), str(v)))
+
 
 if __name__ == '__main__':
-    test_AttributeEncoder()
+    # test_AttributeEncoder()
+    test_DesignerGAN()

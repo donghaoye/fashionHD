@@ -204,8 +204,41 @@ def search_unmatched_HR_image():
     io.save_str_list(missing_list, os.path.join(output_dir, 'missing_images.txt'))
 
 
+def merge_seg_map():
+    '''
+    input seg map:
+        0-background, 1-hair, 2-head, 3-upperbody, 4-lowerbody, 5-leg, 6-arm
+    '''
+
+    # config
+    seg_root = '/data2/ynli/Fashion/ICCV17-fashionGAN/complete_demo/output/img_ca_256/seg_7'
+    tar_root = 'datasets/DeepFashion/Fashion_design/Img/seq_ca_256'
+    io.mkdir_if_missing(tar_root)
+
+    samples = io.load_json('datasets/DeepFashion/Fashion_design/Label/ca_samples.json')
+
+
+    for i, (s_id, s) in enumerate(samples.items()):
+        seg_org = image.imread(os.path.join(seg_root, s_id + '.bmp'), mode = 'grayscale')
+        # assert seg_org
+        if s['cloth_type'] == 1:
+            seg_mrg = (seg_org == 3).astype(np.uint8)
+        elif s['cloth_type'] == 2:
+            seg_mrg = (seg_org == 4).astype(np.uint8)
+        else:
+            seg_mrg = np.logical_or(seg_org == 3, seg_org == 4).astype(np.uint8)
+
+        fn_out = os.path.join(tar_root, s_id + '.bmp')
+        image.imwrite(seg_mrg, fn_out)
+        samples[s_id]['seg_path'] = fn_out
+
+        print('\rmerge segmentation map: %d / %d' % (i, len(samples)))
+    print('\n')
+
+
 
 if __name__ == '__main__':
 
     # align_and_resize_image()
-    search_unmatched_HR_image()
+    # search_unmatched_HR_image()
+    merge_seg_map()

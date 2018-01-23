@@ -42,7 +42,7 @@ class BaseAttributeOptions(BaseOptions):
         parser.add_argument('--fn_split', type = str, default = 'default', help = 'path of split file')
         parser.add_argument('--fn_landmark', type = str, default = 'default', help = 'path of landmark label file')
         parser.add_argument('--fn_cat', type = str, default = 'default', help = 'path of category label file')
-
+        parser.add_argument('--unmatch', default = False, action = 'store_true', help = 'use unmatched training sample and label for debug')
         # misc
         self.parser.add_argument('--pavi', default = False, action = 'store_true', help = 'activate pavi log')
 

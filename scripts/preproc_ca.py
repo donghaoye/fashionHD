@@ -191,10 +191,42 @@ def create_attr_entry():
     io.save_json(attr_entry, design_root + 'Label/attr_entry.json')
 
 
+def visualize_samples():
+
+    num_sample = 10
+    dir_out = 'temp/attr_example'
+
+    io.mkdir_if_missing(dir_out)
+    samples = io.load_json(design_root + 'Label/ca_samples.json')
+    attr_label = io.load_data(design_root + 'Label/ca_attr_label.pkl')
+    attr_entry = io.load_json(design_root + 'Label/attr_entry.json')
+
+    id_set = set(samples.keys())
+
+    for i, att in enumerate(attr_entry):
+        print('attribute %d / %d: %s' % (i, len(attr_entry), att['entry']))
+        dir_att = os.path.join(dir_out, att['entry'])
+        io.mkdir_if_missing(dir_att)
+        pos_id_list = [s_id for s_id, label in attr_label.iteritems() if label[i] == 1]
+        np.random.shuffle(pos_id_list)
+        for s_id in pos_id_list[0:num_sample]:
+            fn_src = samples[s_id]['img_path']
+            fn_tar = os.path.join(dir_att, 'pos_' + s_id + '.jpg')
+            shutil.copyfile(fn_src, fn_tar)
+
+        neg_id_list = list(id_set - set(pos_id_list))
+        np.random.shuffle(neg_id_list)
+        for s_id in neg_id_list[0:num_sample]:
+            fn_src = samples[s_id]['img_path']
+            fn_tar = os.path.join(dir_att, 'neg_' + s_id + '.jpg')
+            shutil.copyfile(fn_src, fn_tar)
+
+
 
 if __name__ == '__main__':
     # create_sample_index_and_label()
     # create_split()
     # create_attr_entry()
-    create_category_label()
+    # create_category_label()
+    visualize_samples()
 

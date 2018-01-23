@@ -64,6 +64,9 @@ class AttributeDataset(BaseDataset):
             cat_label = io.load_data(os.path.join(opt.data_root, opt.fn_cat))
             self.cat_list = [cat_label[s_id] for s_id in self.id_list]
 
+        if opt.unmatch:
+            np.random.shuffle(self.sample_list)
+
         # check data
         assert len(self.attr_entry) == len(self.attr_label_list[0]) == opt.n_attr, 'Attribute number not match!'
         print('dataset created (%d samples)' % len(self))

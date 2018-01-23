@@ -70,6 +70,7 @@ def _svm_test_attr_unit(worker_idx, idx_attr_rng, feat_train, feat_val, feat_tes
         if param_C_by_CV:
             l_val = label_val[:, idx].astype(np.int)
             c, _ = liblinear.train(l_val, feat_val, '-s 0 -B 1. -C -w1 %f -q' % w1)
+            c = max(1., c)
         else:
             c = 512.
 
