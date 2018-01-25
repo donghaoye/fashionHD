@@ -63,27 +63,36 @@ def extract_feature(opt, save_feat = True):
 
     return feat_data
 
-def _svm_test_attr_unit(worker_idx, idx_attr_rng, feat_train, feat_test, label_train, label_test, param_C_by_CV, output_pred_list):
+def _svm_test_attr_unit(worker_idx, idx_attr_rng, feat_train, feat_test, label_train, label_test, attr_entry, cache_dir):
     idx_list = range(idx_attr_rng[0], idx_attr_rng[1])
-
-    for idx in idx_list:
+    c_list = [0.1, 1., 10.]
+    pred = np.zeros((label_test.shape[0], len(idx_list)), dtype = np.float32)
+    for i,idx in enumerate(idx_list):
         t = time.time()
         l_train = label_train[:, idx].astype(np.int)
-        w1 = l_train.size/l_train.sum() - 1
+        l_test = label_test[:, idx].astype(np.int)
+        # w1 = l_train.size/l_train.sum() - 1
+        w1 = 1.
+        # if param_C_by_CV:
+        #     c, _ = liblinear.train(l_train, feat_train, '-s 0 -B 1. -C -w1 %f -q' % w1)
+        #     c = max(0.1, c)
+        # else:
+        #     c = 512.
+        best_acc = -1.
+        for c in c_list:
+            svm_model = liblinear.train(l_train, feat_train, '-s 0 -B 1. -c %f -w1 %f -q' % (c,w1))
+            svm_out = liblinear.predict(l_test, feat_test, svm_model, '-b 1 -q')
+            acc = svm_out[1][0]
+            if acc > best_acc:
+                best_acc = acc
+                best_c = c
+                k = svm_model.get_labels().index(1)
+                prob = np.array(svm_out[2])[:,k]
         
-        if param_C_by_CV:
-            c, _ = liblinear.train(l_train, feat_train, '-s 0 -B 1. -C -w1 %f -q' % w1)
-            c = max(0.1, c)
-        else:
-            c = 512.
+        pred[:, i] = prob
+        print('worker [%d]: "%s(%d)" [%d/%d], acc: %f, c: %f, time cost: %.2f sec' % (worker_idx, attr_entry[idx]['entry'], idx, i, len(idx_list), best_acc, best_c, time.time()-t))
 
-        svm_model = liblinear.train(l_train, feat_train, '-s 0 -B 1. -c %f -w1 %f -q' % (c,w1))
-        svm_out = liblinear.predict([], feat_test, svm_model, '-b 1 -q')
-        k = svm_model.get_labels().index(1)
-        prob = np.array(svm_out[2])[:,k]
-        output_pred_list[idx] = prob
-        print('[%d] test attribute %d [%d/%d], cost %.2f sec' % (worker_idx, idx, idx - idx_list[0], len(idx_list), time.time() - t))
-        sys.stdout.flush()
+    io.save_data(pred, os.path.join(cache_dir, '%d.pkl' % worker_idx))
 
 
 def svm_test_all_attr():
@@ -94,7 +103,7 @@ def svm_test_all_attr():
     num_worker = 20
     param_C_by_CV = True
 
-    num_attr = 20
+    num_attr = 1000
     reduced_dim = 512
     whiten = True
 
@@ -113,16 +122,11 @@ def svm_test_all_attr():
     attr_label = io.load_data('datasets/DeepFashion/Fashion_design/' + opt.fn_label)
     attr_entry = io.load_json('datasets/DeepFashion/Fashion_design/' + opt.fn_entry)
     label_train = np.array([attr_label[s_id] for s_id in feat_data['id_list_train']])
-    label_test = np.array([attr_label[s_id] for s_id in feat_data['id_list_test']])
-
-    # label_train = np.zeros((feat_train.shape[0], num_attr))
-    # label_test = np.zeros((feat_test.shape[0], num_attr))
-
-    if num_attr == -1:
-        num_attr = label_train.shape[1]
-    else:
-        label_train = label_train[:,0:num_attr]
-        label_test = label_test[:,0:num_attr]
+    label_test = np.array([attr_label[s_id] for s_id in feat_data['id_list_test']])    
+    # label_train = np.random.choice([0,1], size = (feat_train.shape[0], num_attr))
+    # label_test = np.random.choice([0,1], size = (feat_test.shape[0], num_attr))
+    label_train = label_train[:,0:num_attr]
+    label_test = label_test[:,0:num_attr]
 
     # get validation feature and label
     id_list_val = io.load_json('datasets/DeepFashion/Fashion_design/Split/ca_split.json')['val']
@@ -134,27 +138,26 @@ def svm_test_all_attr():
         feat_train = feat_val
         label_train = label_val
 
-
-
-    print('start to train SVMs!')
-    block_size = int(round(num_attr / num_worker))
-    pred_list = Manager().list(range(num_attr))
-
-
     print('PCA reduction and whitening...')
     t = time.time()
     pca = PCA(n_components = reduced_dim, whiten = whiten)
     pca.fit(feat_train)
     feat_train = pca.transform(feat_train)
-    feat_val = pca.transform(feat_val)
     feat_test = pca.transform(feat_test)
     print('PCA done! (%f sec)' % (time.time() -t))
 
+
+    print('start to train SVMs!')
+    cache_dir = os.path.join('checkpoints', opt.id, 'test', 'cache')
+    io.mkdir_if_missing(os.path.join('checkpoints', opt.id, 'test'))
+    io.mkdir_if_missing(cache_dir)
+
+    block_size = int(round(num_attr / num_worker))
     p_list = []
     for worker_idx in range(num_worker):
         idx_attr_rng = [block_size * worker_idx, min(num_attr, block_size * (worker_idx + 1))]
         p = Process(target = _svm_test_attr_unit, 
-            args = (worker_idx, idx_attr_rng, feat_train, feat_test, label_train, label_test, param_C_by_CV, pred_list))
+            args = (worker_idx, idx_attr_rng, feat_train, feat_test, label_train, label_test, attr_entry, cache_dir))
         p.start()
         p_list.append(p)
         print('worker %d for attribute %d-%d' % (worker_idx, idx_attr_rng[0], idx_attr_rng[1]))
@@ -162,7 +165,11 @@ def svm_test_all_attr():
     for p in p_list:
         p.join()
 
-    pred_test = np.stack(pred_list, axis = 1)
+    # load cached result
+    pred_test = []
+    for worker_idx in range(num_worker):
+        pred_test.append(io.load_data(os.path.join(cache_dir, '%d.pkl' % worker_idx)))
+    pred_test = np.concatenate(pred_test, axis = 1)
 
     crit_ap = MeanAP()
     crit_ap.add(pred_test, label_test)
@@ -194,59 +201,72 @@ def svm_test_all_attr():
         'rec5_attr': rec5_attr
     }
 
-    io.mkdir_if_missing(os.path.join('checkpoints', opt.id, 'test'))
-    io.save_json(result_output, os.path.join('checkpoints', opt.id, 'test', '%s.json'))
+    io.save_json(result_output, os.path.join('checkpoints', opt.id, 'test', 'svm_test.json'))
 
 
 def svm_test_single_attr():
     # config
     tar_attr_idx = 1
     train_on_val_set = True
+    reduced_dim = 512
+    whiten = True
+    num_attr = 1000
 
     opt = TestAttributeOptions().parse()
 
     # extract feature
     feat_data = extract_feature(opt)
+    feat_train = feat_data['feat_train']
+    feat_test = feat_data['feat_test']
     print('extract feature done!')
 
     # load attribute label
     attr_label = io.load_data('datasets/DeepFashion/Fashion_design/' + opt.fn_label)
-    print('load label done!')
     attr_entry = io.load_json('datasets/DeepFashion/Fashion_design/' + opt.fn_entry)
-    print('load entry done!')
-
-    print(len(feat_data['id_list_train']))
-
-    feat_train = feat_data['feat_train']
-    feat_test = feat_data['feat_test']
     label_train = np.array([attr_label[s_id] for s_id in feat_data['id_list_train']])
     label_test = np.array([attr_label[s_id] for s_id in feat_data['id_list_test']])
+    label_train = label_train[:,0:num_attr]
+    label_test = label_test[:,0:num_attr]
 
+    # label_train = np.random.choice([0,1], size = (feat_train.shape[0], num_attr))
+    # label_test = np.random.choice([0,1], size = (feat_test.shape[0], num_attr))
+
+    # get validation feature and label
+    id_list_val = io.load_json('datasets/DeepFashion/Fashion_design/Split/ca_split.json')['val']
+    id2idx = {s_id:idx for idx, s_id in enumerate(feat_data['id_list_train'])}
+    idx_list_val = [id2idx[s_id] for s_id in id_list_val]
+    feat_val = feat_train[idx_list_val, :]
+    label_val = label_train[idx_list_val, :]
     if train_on_val_set:
-        id_list_val = io.load_json('datasets/DeepFashion/Fashion_design/Split/ca_split.json')['val']
-        id2idx = {s_id:idx for idx, s_id in enumerate(feat_data['id_list_train'])}
+        feat_train = feat_val
+        label_train = label_val
 
-        idx_list_val = [id2idx[s_id] for s_id in id_list_val]
-        feat_train = feat_train[idx_list_val, :]
-        label_train = label_train[idx_list_val, :]
-
-    print('organize label done!')
-
-    assert feat_train.shape[1] == feat_test.shape[1]
-    assert feat_train.shape[0] == label_train.shape[0]
-    assert feat_test.shape[0] == label_test.shape[0]
+    print('PCA reduction and whitening...')
+    t = time.time()
+    pca = PCA(n_components = reduced_dim, whiten = whiten)
+    pca.fit(feat_train)
+    feat_train = pca.transform(feat_train)
+    feat_test = pca.transform(feat_test)
+    print('PCA done! (%f sec)' % (time.time() -t))
 
 
     t = time.time()
     print('selected attribute: %s(%d)' % (attr_entry[tar_attr_idx]['entry'], attr_entry[tar_attr_idx]['type']))
     label_train = label_train[:, tar_attr_idx].astype(np.int)
     label_test = label_test[:, tar_attr_idx].astype(np.int)
-    w1 = label_train.size / label_train.sum() - 1
-    best_c , _= liblinear.train(label_train, feat_train, '-s 0 -B 1. -C -w1 %f -q' % w1)
-    svm_model = liblinear.train(label_train, feat_train, '-s 0 -B 1. -c %f -w1 %f -q' % (best_c, w1))
-    svm_out = liblinear.predict(label_test, feat_test, svm_model, '-b 1 -q')
-    k = svm_model.get_labels().index(1)
-    prob = np.array(svm_out[2])[:,k]
+
+    # w1 = label_train.size / label_train.sum() - 1
+    w1 = 1.
+    print('w1: %f'%w1)
+
+    # best_c , _= liblinear.train(label_train, feat_train, '-s 0 -B 1. -C -w1 %f -q' % w1)
+    for c in [0.1, 1., 10.]:
+        svm_model = liblinear.train(label_train, feat_train, '-s 0 -B 1. -c %f -w1 %f -q' % (c, w1))
+        svm_out = liblinear.predict(label_test, feat_test, svm_model, '-b 1 -q')
+        print('c = %f, acc = %f' % (c, svm_out[1][0]))
+        k = svm_model.get_labels().index(1)
+        prob = np.array(svm_out[2])[:,k]
+    
     print('SVM training time: %f sec' % (time.time()-t))
 
     crit_ap = MeanAP()
