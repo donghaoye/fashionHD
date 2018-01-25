@@ -221,6 +221,40 @@ def visualize_samples():
             fn_tar = os.path.join(dir_att, 'neg_' + s_id + '.jpg')
             shutil.copyfile(fn_src, fn_tar)
 
+def create_gan_split():
+    '''
+    create split for gan training
+    ca_gan: containing all frontal images
+    ca_gan_upper: containing all frontial, upperbody images
+    '''
+
+    samples = io.load_json(design_root + 'Label/ca_samples.json')
+    split = io.load_json(design_root + 'Split/ca_split_trainval.json')
+
+    # use same image set as in Zhu Shizhan's ICCV17 FashionGAN paper
+    img_list = io.load_str_list('datasets/DeepFashion/Fashion_synthesis/data_release/benchmark/name_list.txt')
+    img_set = set(img_list)
+
+    split_gan = {'train':[], 'test':[]}
+    split_gan_upper = {'train': [], 'test':[]}
+
+    for set_name in ['train', 'test']:
+        for s_id in split[set_name]:
+            s = samples[s_id]
+            img_name = s['img_path_org']
+            img_name = img_name[img_name.find('img/')::]
+            if img_name in img_set:
+                split_gan[set_name].append(s_id)
+                if s['cloth_type'] == 1:
+                    split_gan_upper[set_name].append(s_id)
+
+    print('create split "split_gan"')
+    print('train: %d, test: %d, total: %d' % (len(split_gan['train']), len(split_gan['test']), len(split_gan['train']) + len(split_gan['test'])))
+    print('create split "split_gan_upper"')
+    print('train: %d, test: %d, total: %d' % (len(split_gan_upper['train']), len(split_gan_upper['test']), len(split_gan_upper['train']) + len(split_gan['test'])))
+
+    io.save_json(split_gan, design_root + 'Split/ca_gan_split_trainval.json')
+    io.save_json(split_gan_upper, design_root + 'Split/ca_gan_split_trainval_upper.json')
 
 
 if __name__ == '__main__':
@@ -228,5 +262,6 @@ if __name__ == '__main__':
     # create_split()
     # create_attr_entry()
     # create_category_label()
-    visualize_samples()
+    # visualize_samples()
+    create_gan_split()
 

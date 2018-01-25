@@ -9,12 +9,13 @@ import os
 import util.io as io
 
 
-class EXPAttributeDataset(BaseDataset):
+class GANDataset(BaseDataset):
     '''
-    Attribute dataset with auxiliary data, like landmark heatmap.
+    Dataset for GAN model training and testing
     '''
+
     def name(self):
-        return 'EXPAttributeDataset'
+        return 'GANDataset'
 
     def initialize(self, opt, split):
         self.opt = opt
@@ -27,28 +28,27 @@ class EXPAttributeDataset(BaseDataset):
         attr_entry = io.load_json(os.path.join(opt.data_root, opt.fn_entry))
         attr_split = io.load_json(os.path.join(opt.data_root, opt.fn_split))
         lm_label = io.load_data(os.path.join(opt.data_root, opt.fn_landmark))
+        seg_paths = io.load_json(os.path.join(opt.data_root, opt.fn_seg_path))
 
         self.id_list = attr_split[split]
+        self.attr_entry = attr_entry
         if opt.max_dataset_size != float('inf'):
             self.id_list = self.id_list[0:opt.max_dataset_size]
         self.sample_list = [samples[s_id] for s_id in self.id_list]
         self.attr_label_list = [attr_label[s_id] for s_id in self.id_list]
         self.lm_list = [lm_label[s_id] for s_id in self.id_list]
-        self.attr_entry = attr_entry
+        self.seg_path_list = [seg_paths[s_id] for s_id in self.id_list]
 
         # check data
         assert len(self.attr_entry) == len(self.attr_label_list[0]) == opt.n_attr, 'Attribute number not match!'
         print('dataset created (%d samples)' % len(self))
 
-
         # get transform
         self.to_tensor = transforms.ToTensor()
 
-        if opt.image_normalize == 'imagenet':
-            self.tensor_normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        else:
-            self.tensor_normalize = transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-
+        # use standard normalization, which is different from attribute dataset
+        # image will be normalized again (under imagenet distribution) before fed into attribute encoder in GAN model
+        self.tensor_normalize = transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
 
     def __len__(self):
         return len(self.id_list)
@@ -64,15 +64,17 @@ class EXPAttributeDataset(BaseDataset):
 
         # create landmark heatmap
         h, w = img.shape[0:2]
-        lm_heatmap = landmark_to_heatmap(
+        lm_map = landmark_to_heatmap(
             img_sz = (w, h),
             lm_label = self.lm_list[index],
             cloth_type = self.sample_list[index]['cloth_type']
             )
 
-        
-        mix = np.concatenate((img, lm_heatmap), axis = 2)
-        
+        # load segmentation map
+        seg_map = cv2.imread(self.seg_path_list[index], cv2.IMREAD_GRAYSCALE)[:,:,np.newaxis]
+
+        mix = np.concatenate((img, lm_map, seg_map), axis = 2)
+
         # transform
         if self.opt.resize_or_crop == 'resize':
             # only resize
@@ -88,18 +90,23 @@ class EXPAttributeDataset(BaseDataset):
         img = mix[:,:,0:3]
         img = self.tensor_normalize(self.to_tensor(img))
 
-        lm_heatmap = mix[:,:,3::]
-        lm_heatmap = torch.Tensor(lm_heatmap.transpose([2, 0, 1])) # convert to CxHxW
+        lm_map = mix[:,:,3:-1]
+        lm_map = torch.Tensor(lm_map.transpose([2, 0, 1])) # convert to CxHxW
 
+        seg_map = mix[:,:,-1::].round()
+        seg_map = torch.Tensor(seg_map.transpose([2, 0, 1]))
 
         # load label
         att = np.array(self.attr_label_list[index], dtype = np.float32)
 
         data = {
             'img': img,
-            'landmark_heatmap': lm_heatmap,
-            'att':att,
+            'lm_map': lm_map,
+            'seg_map': seg_map,
+            'attr_label':att,
             'id': s_id
         }
 
         return data
+
+

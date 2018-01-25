@@ -1,6 +1,8 @@
 from __future__ import division, print_function
-
 import torch.utils.data as data
+import numpy as np
+from PIL import Image
+import cv2
 
 #####################################
 # BaseDataset Class
@@ -18,7 +20,7 @@ class BaseDataset(data.Dataset):
 
 
 #####################################
-# Image Transoform Modules
+# Image Transform Modules
 #####################################
 
 def landmark_to_heatmap(img_sz, lm_label, cloth_type, delta = 15.):
@@ -65,17 +67,15 @@ def landmark_to_heatmap(img_sz, lm_label, cloth_type, delta = 15.):
     return heatmap.transpose([1,2,0]) # transpose to HxWxC
 
 
-
-def _trans_resize(img, size):
+def trans_resize(img, size):
     '''
     img (np.ndarray): image with arbitrary channels, with size HxWxC
     size (tuple): target size (width, height)
     '''
-
     return cv2.resize(img, size, interpolation = cv2.INTER_LINEAR)
 
 
-def _trans_center_crop(img, size):
+def trans_center_crop(img, size):
     '''
     img (np.ndarray): image with arbitrary channels, with size HxWxC
     size (tuple): size of cropped patch (width, height)
@@ -87,7 +87,7 @@ def _trans_center_crop(img, size):
 
     return img[i:(i+th), j:(j+tw), :]
 
-def _trans_random_crop(img, size):
+def trans_random_crop(img, size):
     h, w = img.shape[0:2]
     tw, th = size
     i = np.random.randint(0, h-th+1)
@@ -95,7 +95,7 @@ def _trans_random_crop(img, size):
 
     return img[i:(i+th), j:(j+tw), :]
 
-def _trans_random_horizontal_flip(img):
+def trans_random_horizontal_flip(img):
     if np.random.rand() >= 0.5:
         return cv2.flip(img, flipCode = 1) # horizontal flip
     else:

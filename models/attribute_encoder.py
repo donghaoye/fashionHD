@@ -69,7 +69,6 @@ class AttributeEncoder(BaseModel):
 
 
     def set_input(self, data):
-        # Todo: add support to spatial info input (seg map, landmark heatmap, etc)
         self.input['img'].resize_(data['img'].size()).copy_(data['img'])
         self.input['label'].resize_(data['att'].size()).copy_(data['att'])
         self.input['id'] = data['id']
@@ -155,12 +154,12 @@ class AttributeEncoder(BaseModel):
         self.optim_attr.step()
 
     def get_current_errors(self, clear = True):
-        error = OrderedDict([
+        errors = OrderedDict([
             ('loss_attr', self.crit_attr.smooth_loss(clear)),
             ])
         if self.opt.joint_cat:
-            error['loss_cat'] = self.crit_cat.smooth_loss(clear)
-        return error
+            errors['loss_cat'] = self.crit_cat.smooth_loss(clear)
+        return errors
 
     def train(self):
         self.net.train()

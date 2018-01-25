@@ -35,6 +35,9 @@ def CreateDataset(opt, split):
     elif opt.dataset_mode == 'attribute_exp':
         from data.exp_attribute_dataset import EXPAttributeDataset
         dataset = EXPAttributeDataset()
+    elif opt.dataset_mode in {'gan_self'}:
+        from data.gan_dataset import GANDataset
+        dataset = GANDataset()
     else:
         raise ValueError('Dataset mode [%s] not recognized.' % opt.dataset_mode)
 
@@ -43,34 +46,3 @@ def CreateDataset(opt, split):
 
     return dataset
 
-
-class CustomDataLoader():
-
-    def name(self):
-        return 'CustomDataLoader'
-
-    def initialize(self, opt):
-        self.opt = opt
-        self.dataset = CreateDataset(opt)
-
-        shuffle = (opt.shuffle == 1)
-        self.dataloader = torch.utils.data.DataLoader(
-            self.dataset,
-            batch_size = opt.batch_size,
-            shuffle = shuffle,
-            num_workers = int(opt.nThreads),
-            drop_last = opt.is_train, # only drop last in training
-            pin_memory = True)
-
-    def load_data(self):
-        return self
-
-    def __len__(self):
-        return min(len(self.dataset), self.opt.max_dataset_size)
-
-    def __iter__(self):
-        for i, data in enumerate(self.dataloader):
-            if i >= self.opt.max_dataset_size:
-                break
-
-            yield data

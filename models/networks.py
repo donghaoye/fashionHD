@@ -380,51 +380,73 @@ def get_scheduler(optimizer, opt):
 # GAN
 ###############################################################################
 
-def define_G(input_nc, output_nc, ngf, which_model_netG, norm='batch', use_dropout=False, init_type='normal', gpu_ids=[]):
+def define_G(opt):
+
     netG = None
-    use_gpu = len(gpu_ids) > 0
-    norm_layer = get_norm_layer(norm_type=norm)
+    use_gpu = len(opt.gpu_ids) > 0
+    norm_layer = get_norm_layer(norm_type=opt.norm)
+    acitvation  = nn.ReLU()
+    if opt.attr_condition_type in {'feat'}:
+        attr_nc = opt.n_attr_feat
+    elif opt.attr_condition_type in {'prob'}:
+        attr_nc = opt.n_attr
 
     # Todo: add choice of activation function
     if use_gpu:
         assert(torch.cuda.is_available())
 
-    if which_model_netG == 'resnet_9blocks':
-        netG = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, gpu_ids=gpu_ids)
-    elif which_model_netG == 'resnet_6blocks':
-        netG = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6, gpu_ids=gpu_ids)
-    elif which_model_netG == 'unet_128':
-        netG = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
-    elif which_model_netG == 'unet_256':
-        netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
+    if opt.which_model_netG == 'resnet_9blocks':
+        netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = opt.attr_nc,
+            condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, acitvation = activation,
+            use_dropout = opt.use_dropout, n_blocks = 9, gpu_ids = opt.gpu_ids)
+    elif opt.which_model_netG == 'resnet_6blocks':
+        netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = opt.attr_nc,
+            condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, acitvation = activation,
+            use_dropout = opt.use_dropout, n_blocks = 6, gpu_ids = opt.gpu_ids)
     else:
-        raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
-    if len(gpu_ids) > 0:
-        netG.cuda(gpu_ids[0])
-    init_weights(netG, init_type=init_type)
+        raise NotImplementedError('Generator model name [%s] is not recognized' % opt.which_model_netG)    
+
+
+    # if which_model_netG == 'resnet_9blocks':
+    #     netG = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, gpu_ids=gpu_ids)
+    # elif which_model_netG == 'resnet_6blocks':
+    #     netG = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=6, gpu_ids=gpu_ids)
+    # elif which_model_netG == 'unet_128':
+    #     netG = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
+    # elif which_model_netG == 'unet_256':
+    #     netG = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout, gpu_ids=gpu_ids)
+    # else:
+    #     raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
+
+    if len(opt.gpu_ids) > 0:
+        netG.cuda(opt.gpu_ids[0])
+    init_weights(netG, init_type=opt.init_type)
     return netG
 
 
-def define_D(input_nc, ndf, which_model_netD,
-             n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', gpu_ids=[]):
+# def define_D(input_nc, ndf, which_model_netD,
+#              n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', gpu_ids=[]):
+def define_D(opt):
     netD = None
-    use_gpu = len(gpu_ids) > 0
-    norm_layer = get_norm_layer(norm_type=norm)
+    use_gpu = len(opt.gpu_ids) > 0
+    use_sigmoid = opt.no_lsgan
+    norm_layer = get_norm_layer(norm_type=opt.norm)
 
     if use_gpu:
         assert(torch.cuda.is_available())
-    if which_model_netD == 'basic':
-        netD = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
-    elif which_model_netD == 'n_layers':
-        netD = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
-    elif which_model_netD == 'pixel':
-        netD = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
+
+    if opt.which_model_netD == 'basic':
+        netD = NLayerDiscriminator(input_nc = opt.D_input_nc, ndf = opt.ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=opt.gpu_ids)
+    elif opt.which_model_netD == 'n_layers':
+        netD = NLayerDiscriminator(input_nc = opt.D_input_nc, ndf = opt.ndf, n_layers=opt.n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=opt.gpu_ids)
+    elif opt.which_model_netD == 'pixel':
+        netD = PixelDiscriminator(input_nc = opt.D_input_nc, ndf = opt.ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=opt.gpu_ids)
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' %
-                                  which_model_netD)
+                                  opt.which_model_netD)
     if use_gpu:
-        netD.cuda(gpu_ids[0])
-    init_weights(netD, init_type=init_type)
+        netD.cuda(opt.gpu_ids[0])
+    init_weights(netD, init_type=opt.init_type)
     return netD
 
 def print_network(net):
@@ -433,7 +455,6 @@ def print_network(net):
         num_params += param.numel()
     print(net)
     print('Total number of parameters: %d' % num_params)
-
 
 
 # Defines the GAN loss which uses either LSGAN or the regular GAN.
@@ -475,8 +496,6 @@ class GANLoss(nn.Module):
     def __call__(self, input, target_is_real):
         target_tensor = self.get_target_tensor(input, target_is_real)
         return self.loss(input, target_tensor)
-
-
 
 def get_norm_layer(norm_type = 'instance'):
     if norm_type == 'batch':
@@ -532,7 +551,6 @@ class ResnetBlock(nn.Module):
         out = x + self.conv_block(x)
         return out
 
-
 class ResnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, activation = nn.ReLU, use_dropout=False, n_blocks=6, gpu_ids=[], padding_type='reflect'):
         assert(n_blocks >= 0)
@@ -585,6 +603,167 @@ class ResnetGenerator(nn.Module):
             return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
         else:
             return self.model(input)
+
+class ConditionedResnetBlock(nn.Module):
+    def __init__(self, x_dim, c_dim, padding_type, norm_layer, activation=nn.ReLU(True), use_dropout=False, output_c=False):
+        '''
+        Args:
+            x_dim(int): input feature channel
+            c_dim(int): condition feature channel
+            output_c(bool): whether concat condition feature to the outout
+        Input:
+            x(Variable): size of (bsz, x_dim+c_dim, h, w)
+        Output:
+            y(Variable): size of (bsz, x_dim+c_dim, h, w) if output_c is true, else (bsz, x_dim, h, w)
+        '''
+        super(ResnetBlock, self).__init__()
+        self.conv_block = self.build_conv_block(x_dim, c_dim, padding_type, norm_layer, activation, use_dropout)
+        self.output_c = output_c
+        self.x_dim = x_dim
+        self.c_dim = c_dim
+
+    def build_conv_block(self, x_dim, c_dim, padding_type, norm_layer, activation, use_dropout):
+        conv_block = []
+
+        p = 0
+        if padding_type == 'reflect':
+            conv_block += [nn.ReflectionPad2d(1)]
+        elif padding_type == 'replicate':
+            conv_block += [nn.ReplicationPad2d(1)]
+        elif padding_type == 'zero':
+            p = 1
+        else:
+            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
+
+        conv_block += [nn.Conv2d(x_dim + c_dim, x_dim, kernel_size=3, padding=p),
+                       norm_layer(x_dim),
+                       activation]
+        if use_dropout:
+            conv_block += [nn.Dropout(0.5)]
+
+        p = 0
+        if padding_type == 'reflect':
+            conv_block += [nn.ReflectionPad2d(1)]
+        elif padding_type == 'replicate':
+            conv_block += [nn.ReplicationPad2d(1)]
+        elif padding_type == 'zero':
+            p = 1
+        else:
+            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
+        conv_block += [nn.Conv2d(x_dim, x_dim, kernel_size=3, padding=p),
+                       norm_layer(x_dim)]
+
+        return nn.Sequential(*conv_block)
+
+    def forward(self, x_and_c):
+        # out = x + self.conv_block(x)
+        x = x_and_c[:,0:self.x_dim]
+        c = x_and_c[:,self.x_dim::]
+        x_out = x + self.conv_block(x_and_c)
+        if self.output_c:
+            return torch.cat((x_out, x), dim = 1)
+        else:
+            return x_out
+
+class ConditionedResnetGenerator(nn.Module):
+    def __init__(self, input_nc, output_nc, condition_nc, condition_layer = 'first', ngf=64, norm_layer=nn.BatchNorm2d, activation = nn.ReLU, use_dropout=False, n_blocks=6, gpu_ids=[], padding_type='reflect'):
+        assert(n_blocks >= 0)
+        super(ConditionedResnetGenerator, self).__init__()
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        self.condition_nc = condition_nc
+        self.condition_layer = condition_layer
+        self.gpu_ids = gpu_ids
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        downsample_layers = [
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
+            norm_layer(ngf),
+            activation()]
+
+        n_downsampling = 2
+        for i in range(n_downsampling):
+            mult = 2**i
+            downsample_layers += [
+                nn.Conv2d(ngf*mult, ngf*mult*2, kernel_size = 3, stride = 2, padding = 1, bias = use_bias),
+                norm_layer(ngf*mult*2),
+                activation()
+            ]
+
+        res_blocks = []
+        mult = 2**n_downsampling
+        for i in range(n_blocks):
+            if (condition_layer == 'first' and i == 0) or condition_layer == 'all':
+                output_c = (condition_layer == 'all' and i < n_blocks - 1)
+                res_blocks.append(ConditionedResnetBlock(
+                    x_dim = ngf*mult,
+                    c_dim = condition_nc, 
+                    padding_type=padding_type,
+                    activation = activation(),
+                    normal = norm_layer,
+                    use_dropout = use_dropout,
+                    use_bias = use_bias,
+                    output_c = output_c
+                    ))
+            else:
+                res_blocks.append(ResnetBlock(
+                    dim = ngf*mult,
+                    padding_type=padding_type,
+                    activation = activation(),
+                    normal = norm_layer,
+                    use_dropout = use_dropout,
+                    use_bias = use_bias,
+                    ))
+
+        upsample_layers = []
+        for i in range(n_downsampling):
+            mult = 2**(n_downsampling-i)
+            upsample_layers += [
+                nn.ConvTranspose2d(ngf*mult, int(ngf*mult/2), kernel_size = 3, stride = 2, padding = 1, output_padding = 1, bias = use_bias),
+                norm_layer(int(ngf * mult / 2)),
+                activation()
+            ]
+        upsample_layers += [
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(ngf, output_nc, kernel_size = 7, padding = 0),
+            nn.Tanh()
+        ]
+
+
+        self.down_sample = nn.Sequential(*downsample_layers)
+        self.res_blocks = nn.Sequential(*res_blocks)
+        self.up_sample = nn.Sequential(*upsample_layers)
+
+    
+    def forward(self, input_x, input_c, single_device = False):
+        '''
+        Input:
+            input_x: size of (bsz, input_nc, h, w)
+            input_c: size of (bsz, condition_nc) or (bsz, condition_nc, h_r, w_r)
+        '''
+
+        if self.gpu_ids and isinstance(input_x.data, torch.cuda.FloatTensor) and (not single_device):
+            return nn.parallel.data_parallel(self, (input_x, input_c), self.gpu_ids, module_kwargs = {'single_device': True})
+        else:
+            x = self.down_sample(input_x)
+            bsz, _, h_x, w_x = x.size()
+
+            if input_c.dim() == 2:
+                c = input_c.view(bsz, self.condition_nc, 1, 1).expand(bsz, self.condition_nc, h_x, w_x)
+            elif input_c.dim() == 4:
+                c = F.upsample(input_c, size = (h_x, w_x), mode = 'bilinear')
+
+            x = self.res_blocks(torch.cat((x, c), dim = 1))
+            x = self.up_sample(x)
+
+            return x
+
+
 
 class UnetSkipConnectionBlock(nn.Module):
     def __init__(self, outer_nc, inner_nc, input_nc=None,
@@ -717,6 +896,8 @@ class NLayerDiscriminator(nn.Module):
             return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
         else:
             return self.model(input)
+
+
 
 class PixelDiscriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, norm_layer=nn.BatchNorm2d, use_sigmoid=False, gpu_ids=[]):

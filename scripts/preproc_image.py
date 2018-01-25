@@ -216,7 +216,7 @@ def merge_seg_map():
     io.mkdir_if_missing(tar_root)
 
     samples = io.load_json('datasets/DeepFashion/Fashion_design/Label/ca_samples.json')
-
+    seg_map_paths = {}
 
     for i, (s_id, s) in enumerate(samples.items()):
         seg_org = image.imread(os.path.join(seg_root, s_id + '.bmp'), mode = 'grayscale')
@@ -230,15 +230,35 @@ def merge_seg_map():
 
         fn_out = os.path.join(tar_root, s_id + '.bmp')
         image.imwrite(seg_mrg, fn_out)
-        samples[s_id]['seg_path'] = fn_out
+        seg_map_paths[s_id] = fn_out
 
         print('\rmerge segmentation map: %d / %d' % (i, len(samples)))
     print('\n')
 
+    io.save_json(seg_map_paths, 'datasets/DeepFashion/Fashion_design/Label/ca_seg_paths.json')
 
+def visualize_seg_map():
+
+    num_sample = 1000
+    output_dir = 'temp/seg_map'
+    io.mkdir_if_missing(output_dir)
+    
+    samples = io.load_json('datasets/DeepFashion/Fashion_design/Label/ca_samples.json')
+    seg_map_paths = io.load_json('datasets/DeepFashion/Fashion_design/Label/ca_seg_paths.json')
+
+    org_seg_root = '/data2/ynli/Fashion/ICCV17-fashionGAN/complete_demo/output/img_ca_256/seg_7'
+
+    for i, (s_id, s) in enumerate(samples.items()[0:num_sample]):
+        img = image.imread(s['img_path'])
+        seg = image.imread(seg_map_paths[s_id]) * 20 # original range [0,6]
+        seg_org = image.imread(os.path.join(org_seg_root, s_id + '.bmp')) * 20
+        img = image.stitch([img, seg_org, seg], 0)
+        image.imwrite(img, os.path.join(output_dir, s_id + '.jpg'))
+        print(i)
 
 if __name__ == '__main__':
 
     # align_and_resize_image()
     # search_unmatched_HR_image()
-    merge_seg_map()
+    # merge_seg_map()
+    visualize_seg_map()

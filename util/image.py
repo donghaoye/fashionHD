@@ -152,7 +152,7 @@ def compute_iou(boxes, target):
     assert(np.all(0 <= IoUs) and np.all(IoUs <= 1))
     return IoUs
 
-def stitch(image_list, axis):
+def stitch(image_list, axis = 0):
     '''
     image_list: a list of images (3-d numpy.ndarray)
     axis: 0 for horizontal and 1 for vertical

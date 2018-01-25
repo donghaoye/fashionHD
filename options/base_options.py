@@ -28,8 +28,8 @@ class BaseOptions(object):
 
 
         # data options
-        parser.add_argument('--dataset_mode', type = str, default = 'attribute', help = 'type of dataset',
-            choices = ['attribute', 'attribute_exp'])
+        parser.add_argument('--dataset_mode', type = str, default = 'gan_self', help = 'type of dataset',
+            choices = ['attribute', 'attribute_exp', 'gan_self'])
         parser.add_argument('--data_root', type = str, default = './datasets/DeepFashion/Fashion_design/', help = 'data root path')
         parser.add_argument('--nThreads', type = int, default = 8, help = 'number of workers to load data')
         # parser.add_argument('--shuffle', type = int, default = 0, help = 'shuffle dataset [1:True|-1:False|0:Auto]',

@@ -1,5 +1,6 @@
 from __future__ import division, print_function
 import torch
+from torch.autograd import Variable
 from util.timer import Timer
 
 def test_AttributeEncoder():
@@ -40,7 +41,18 @@ def test_DesignerGAN():
     for k, v in sorted(opt.__dict__.items()):
         print('%s: %s' % (str(k), str(v)))
 
+def test_patchGAN():
+    from networks import NLayerDiscriminator
+
+    input_size = 256
+    input = Variable(torch.zeros(1,3,input_size,input_size))
+    for n in range(1, 7):
+        netD = NLayerDiscriminator(input_nc = 3, ndf = 64, n_layers = n)
+        output = netD(input)
+        print('n_layers=%d, in_size: %d, out_size: %d' % (n, input_size, output.size(2)))
+
 
 if __name__ == '__main__':
     # test_AttributeEncoder()
-    test_DesignerGAN()
+    # test_DesignerGAN()
+    test_patchGAN()

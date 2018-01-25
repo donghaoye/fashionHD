@@ -3,7 +3,7 @@ from base_options import BaseOptions
 class BaseAttributeOptions(BaseOptions):
 
     def initialize(self):
-        BaseOptions.initialize(self)
+        super(BaseAttributeOptions, self).initialize()
         parser = self.parser
 
         # basic options
@@ -49,67 +49,66 @@ class BaseAttributeOptions(BaseOptions):
     def auto_set(self):
         super(BaseAttributeOptions, self).auto_set()
 
+        opt = self.opt
         ###########################################
         # Add id profix
-        if not self.opt.id.startswith('AE_'):
-            self.opt.id = 'AE_' + self.opt.id
+        if not opt.id.startswith('AE_'):
+            opt.id = 'AE_' + opt.id
 
         ###########################################
         # Set default dataset file pathes
-        if self.opt.benchmark == 'ca':
-            if self.opt.fn_sample == 'default':
-                self.opt.fn_sample = 'Label/ca_samples.json'
-            if self.opt.fn_label == 'default':
-                self.opt.fn_label = 'Label/ca_attr_label.pkl'
-            if self.opt.fn_entry == 'default':
-                self.opt.fn_entry = 'Label/attr_entry.json'
-            if self.opt.fn_split == 'default':
-                self.opt.fn_split = 'Split/ca_split_trainval.json'
-            if self.opt.fn_landmark == 'default':
-                self.opt.fn_landmark = 'Label/ca_landmark_label_256.pkl'
-            if self.opt.fn_cat == 'default':
-                self.opt.fn_cat = 'Label/ca_cat_label.pkl'
+        if opt.benchmark == 'ca':
+            if opt.fn_sample == 'default':
+                opt.fn_sample = 'Label/ca_samples.json'
+            if opt.fn_label == 'default':
+                opt.fn_label = 'Label/ca_attr_label.pkl'
+            if opt.fn_entry == 'default':
+                opt.fn_entry = 'Label/attr_entry.json'
+            if opt.fn_split == 'default':
+                opt.fn_split = 'Split/ca_split_trainval.json'
+            if opt.fn_landmark == 'default':
+                opt.fn_landmark = 'Label/ca_landmark_label_256.pkl'
+            if opt.fn_cat == 'default':
+                opt.fn_cat = 'Label/ca_cat_label.pkl'
 
-        elif self.opt.benchmark == 'ca_org':
-            if self.opt.fn_sample == 'default':
-                self.opt.fn_sample = 'Label/ca_samples_org.json'
-            if self.opt.fn_label == 'default':
-                self.opt.fn_label = 'Label/ca_attr_label.pkl'
-            if self.opt.fn_entry == 'default':
-                self.opt.fn_entry = 'Label/attr_entry.json'
-            if self.opt.fn_split == 'default':
-                self.opt.fn_split = 'Split/ca_split_trainval.json'
-            if self.opt.fn_landmark == 'default':
-                self.opt.fn_landmark = 'Label/ca_landmark_label.pkl'
-            if self.opt.fn_cat == 'default':
-                self.opt.fn_cat = 'Label/ca_cat_label.pkl'
+        elif opt.benchmark == 'ca_org':
+            if opt.fn_sample == 'default':
+                opt.fn_sample = 'Label/ca_samples_org.json'
+            if opt.fn_label == 'default':
+                opt.fn_label = 'Label/ca_attr_label.pkl'
+            if opt.fn_entry == 'default':
+                opt.fn_entry = 'Label/attr_entry.json'
+            if opt.fn_split == 'default':
+                opt.fn_split = 'Split/ca_split_trainval.json'
+            if opt.fn_landmark == 'default':
+                opt.fn_landmark = 'Label/ca_landmark_label.pkl'
+            if opt.fn_cat == 'default':
+                opt.fn_cat = 'Label/ca_cat_label.pkl'
 
-        elif self.opt.benchmark == 'inshop':
-            if self.opt.fn_sample == 'default':
-                self.opt.fn_sample = 'Label/inshop_samples.json'
-            if self.opt.fn_label == 'default':
-                self.opt.fn_label = 'Label/inshop_attr_label.pkl'
-            if self.opt.fn_entry == 'default':
-                self.opt.fn_entry = 'Label/attr_entry.json'
-            if self.opt.fn_split == 'default':
-                self.opt.fn_split = 'Split/inshop_split.json'
-            if self.opt.fn_landmark == 'default':
-                self.opt.fn_landmark = 'Label/inshop_landmark_label_256.pkl'
+        elif opt.benchmark == 'inshop':
+            if opt.fn_sample == 'default':
+                opt.fn_sample = 'Label/inshop_samples.json'
+            if opt.fn_label == 'default':
+                opt.fn_label = 'Label/inshop_attr_label.pkl'
+            if opt.fn_entry == 'default':
+                opt.fn_entry = 'Label/attr_entry.json'
+            if opt.fn_split == 'default':
+                opt.fn_split = 'Split/inshop_split.json'
+            if opt.fn_landmark == 'default':
+                opt.fn_landmark = 'Label/inshop_landmark_label_256.pkl'
 
-        elif self.opt.benchmark == 'debug':
-            self.opt.fn_sample = 'Label/debugca_samples.json'
-            self.opt.fn_label = 'Label/debugca_attr_label.pkl'
-            self.opt.fn_entry = 'Label/attr_entry.json'
-            self.opt.fn_split = 'Split/debugca_split.json'
-            self.opt.fn_landmark = 'Label/debugca_landmark_label.pkl'
-            self.opt.fn_cat = 'Label/ca_cat_label.pkl'
+        elif opt.benchmark == 'debug':
+            opt.fn_sample = 'Label/debugca_samples.json'
+            opt.fn_label = 'Label/debugca_attr_label.pkl'
+            opt.fn_entry = 'Label/attr_entry.json'
+            opt.fn_split = 'Split/debugca_split.json'
+            opt.fn_landmark = 'Label/debugca_landmark_label.pkl'
+            opt.fn_cat = 'Label/ca_cat_label.pkl'
 
         ###########################################
         # Set dataset mode
-        if self.opt.input_lm:
-            self.opt.dataset_mode = 'attribute_exp'
-
-
+        if opt.input_lm:
+            opt.dataset_mode = 'attribute_exp'
 
 
 
@@ -117,7 +116,7 @@ class TrainAttributeOptions(BaseAttributeOptions):
 
     def initialize(self):
 
-        BaseAttributeOptions.initialize(self)
+        super(TrainAttributeOptions, self).initialize()
         parser = self.parser
         
         # train
@@ -151,7 +150,7 @@ class TestAttributeOptions(BaseAttributeOptions):
 
     def initialize(self):
 
-        BaseAttributeOptions.initialize(self)
+        super(TestAttributeOptions, self).initialize()
 
         # test
 
