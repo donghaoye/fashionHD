@@ -55,6 +55,7 @@ class BaseAttributeOptions(BaseOptions):
         if not opt.id.startswith('AE_'):
             opt.id = 'AE_' + opt.id
 
+
         ###########################################
         # Set default dataset file pathes
         if opt.benchmark == 'ca':
@@ -109,6 +110,8 @@ class BaseAttributeOptions(BaseOptions):
         # Set dataset mode
         if opt.input_lm:
             opt.dataset_mode = 'attribute_exp'
+        else:
+            opt.dataset_mode = 'attribute'
 
 
 

@@ -26,11 +26,11 @@ class GANDataset(BaseDataset):
         samples = io.load_json(os.path.join(opt.data_root, opt.fn_sample))
         attr_label = io.load_data(os.path.join(opt.data_root, opt.fn_label))
         attr_entry = io.load_json(os.path.join(opt.data_root, opt.fn_entry))
-        attr_split = io.load_json(os.path.join(opt.data_root, opt.fn_split))
+        data_split = io.load_json(os.path.join(opt.data_root, opt.fn_split))
         lm_label = io.load_data(os.path.join(opt.data_root, opt.fn_landmark))
         seg_paths = io.load_json(os.path.join(opt.data_root, opt.fn_seg_path))
 
-        self.id_list = attr_split[split]
+        self.id_list = data_split[split]
         self.attr_entry = attr_entry
         if opt.max_dataset_size != float('inf'):
             self.id_list = self.id_list[0:opt.max_dataset_size]
@@ -48,7 +48,9 @@ class GANDataset(BaseDataset):
 
         # use standard normalization, which is different from attribute dataset
         # image will be normalized again (under imagenet distribution) before fed into attribute encoder in GAN model
-        self.tensor_normalize = transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+        self.tensor_normalize_std = transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+        self.tensor_normalize_imagenet = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        
 
     def __len__(self):
         return len(self.id_list)
@@ -71,9 +73,10 @@ class GANDataset(BaseDataset):
             )
 
         # load segmentation map
-        seg_map = cv2.imread(self.seg_path_list[index], cv2.IMREAD_GRAYSCALE)[:,:,np.newaxis]
-
-        mix = np.concatenate((img, lm_map, seg_map), axis = 2)
+        seg_map = cv2.imread(self.seg_path_list[index], cv2.IMREAD_GRAYSCALE)
+        seg_mask = segmap_to_mask(seg_map, self.opt.seg_mask_part, self.sample_list[index]['cloth_type'])
+        seg_mask = seg_mask[:,:,np.newaxis]
+        mix = np.concatenate((img, lm_map, seg_mask), axis = 2)
 
         # transform
         if self.opt.resize_or_crop == 'resize':
@@ -88,13 +91,14 @@ class GANDataset(BaseDataset):
                 mix = trans_center_crop(mix, size = (self.opt.fine_size, self.opt.fine_size))
 
         img = mix[:,:,0:3]
-        img = self.tensor_normalize(self.to_tensor(img))
+        img_t = self.to_tensor(img)
+        img = self.tensor_normalize_std(img_t)
 
         lm_map = mix[:,:,3:-1]
         lm_map = torch.Tensor(lm_map.transpose([2, 0, 1])) # convert to CxHxW
 
-        seg_map = mix[:,:,-1::].round()
-        seg_map = torch.Tensor(seg_map.transpose([2, 0, 1]))
+        seg_mask = mix[:,:,-1::].round()
+        seg_mask = torch.Tensor(seg_mask.transpose([2, 0, 1]))
 
         # load label
         att = np.array(self.attr_label_list[index], dtype = np.float32)
@@ -102,7 +106,7 @@ class GANDataset(BaseDataset):
         data = {
             'img': img,
             'lm_map': lm_map,
-            'seg_map': seg_map,
+            'seg_mask': seg_mask,
             'attr_label':att,
             'id': s_id
         }

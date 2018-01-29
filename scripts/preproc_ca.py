@@ -257,6 +257,7 @@ def create_gan_split():
     io.save_json(split_gan_upper, design_root + 'Split/ca_gan_split_trainval_upper.json')
 
 
+
 if __name__ == '__main__':
     # create_sample_index_and_label()
     # create_split()

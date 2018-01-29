@@ -71,8 +71,8 @@ def _svm_test_attr_unit(worker_idx, idx_attr_rng, feat_train, feat_test, label_t
         t = time.time()
         l_train = label_train[:, idx].astype(np.int)
         l_test = label_test[:, idx].astype(np.int)
-        # w1 = l_train.size/l_train.sum() - 1
-        w1 = 1.
+        w1 = l_train.size/l_train.sum() - 1
+        # w1 = 1.
         # if param_C_by_CV:
         #     c, _ = liblinear.train(l_train, feat_train, '-s 0 -B 1. -C -w1 %f -q' % w1)
         #     c = max(0.1, c)

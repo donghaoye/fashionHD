@@ -1,4 +1,6 @@
-import util.image as image
+import argparse
 
-im = image.imread('demo.jpg')
-image.imshow(im)
+parser = argparse.ArgumentParser()
+parser.add_argument('--a', action = 'store_true')
+
+print(parser.parse_args())

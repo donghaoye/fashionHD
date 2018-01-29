@@ -66,6 +66,35 @@ def landmark_to_heatmap(img_sz, lm_label, cloth_type, delta = 15.):
 
     return heatmap.transpose([1,2,0]) # transpose to HxWxC
 
+def segmap_to_mask(seg_map, mask_type, cloth_type):
+    '''
+    Generate a mask from a segmentation map.
+    Input:
+        seg_map(np.ndarray): segmentation map
+            0-background, 1-hair, 2-head, 3-upperbody, 4-lowerbody, 5-leg, 6-arm
+        mask_type(str):
+            - 'foreground': body+cloth
+            - 'body': arm+leg+cloth (no head, hair, background)
+            - 'target': target cloth
+        cloth_type(int):
+            - 1: upperdody
+            - 2: lowerbody
+            - 3: full body
+    '''
+    if mask_type == 'foreground':
+        mask = (seg_map != 0).astype(np.float32)
+    elif mask_type == 'body':
+        mask = (seg_map >=3).astype(np.float32)
+    elif mask_type == 'target':
+        if cloth_type == 1:
+            mask = (seg_map == 3).astype(np.float32)
+        elif cloth_type == 2:
+            mask = (seg_map == 4).astype(np.float32)
+        elif cloth_type == 3:
+            mask = np.logical_or(seg_map == 3, seg_map == 4).astype(np.float32)
+
+    return mask
+
 
 def trans_resize(img, size):
     '''

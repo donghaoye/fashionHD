@@ -32,12 +32,8 @@ class BaseOptions(object):
             choices = ['attribute', 'attribute_exp', 'gan_self'])
         parser.add_argument('--data_root', type = str, default = './datasets/DeepFashion/Fashion_design/', help = 'data root path')
         parser.add_argument('--nThreads', type = int, default = 8, help = 'number of workers to load data')
-        # parser.add_argument('--shuffle', type = int, default = 0, help = 'shuffle dataset [1:True|-1:False|0:Auto]',
-        #     choices = [0,1,-1])
-        # parser.add_argument('--flip', type = int, default = 0, help = 'flip images [1:True|-1:False|0:Auto]',
-        #     choices = [0,1,-1])
         parser.add_argument('--max_dataset_size', type = int, default = float('inf'), help = 'maximum number of samples')
-        parser.add_argument('--batch_size', type = int, default = 128, help = 'batch size')
+        parser.add_argument('--batch_size', type = int, default = 32, help = 'batch size')
         parser.add_argument('--load_size', type = int, default = 256, help = 'scale input image to this size')
         parser.add_argument('--fine_size', type = int, default = 224, help = 'crop input image to this size')
         parser.add_argument('--resize_or_crop', type = str, default = 'resize_and_crop', help = 'scaling and cropping of images at load time',
@@ -63,12 +59,8 @@ class BaseOptions(object):
             if g_id >= 0:
                 self.opt.gpu_ids.append(g_id)
 
-        if len(self.opt.gpu_ids) > 0:
-            torch.cuda.set_device(self.opt.gpu_ids[0])
 
-
-
-    def parse(self, ord_str = None, save_to_file = True, display = True):
+    def parse(self, ord_str = None, save_to_file = True, display = True, set_gpu = True):
 
         if not self.initialized:
             self.initialize()
@@ -81,8 +73,10 @@ class BaseOptions(object):
             
         self.auto_set()
 
-        args = vars(self.opt)
+        if len(self.opt.gpu_ids) > 0 and set_gpu:
+            torch.cuda.set_device(self.opt.gpu_ids[0])
 
+        args = vars(self.opt)
         # display options
         if display:
             print('------------ Options -------------')

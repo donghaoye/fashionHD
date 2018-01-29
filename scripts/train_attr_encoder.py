@@ -35,9 +35,7 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
     model.train()
     
     for i, data in enumerate(train_loader):
-        iter_start_time = time.time()
         total_steps += 1
-        
 
         model.set_input(data)
         model.optimize_parameters()
@@ -50,7 +48,7 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
                 epoch = epoch, 
                 num_batch = len(train_loader), 
                 lr = model.optimizers[0].param_groups[0]['lr'], 
-                error = train_error)
+                errors = train_error)
 
             if opt.pavi:
                 pavi_outputs = {
@@ -100,7 +98,7 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
             test_result['cat_acc3'] = crit_cat.compute_accuracy(k=3)
             test_result['cat_acc5'] = crit_cat.compute_accuracy(k=5)
 
-        visualizer.print_test_error(iter_num = total_steps, epoch = epoch, result = test_result)
+        visualizer.print_test_error(iter_num = total_steps, epoch = epoch, errors = test_result)
 
         if opt.pavi:
             pavi_outputs = {
@@ -109,7 +107,6 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
                 'mBP_upper': float(mean_bp),
             }
             visualizer.pavi_log(phase = 'test', iter_num = total_steps, outputs = pavi_outputs)
-
 
         # save model
         if epoch % opt.save_epoch_freq == 0:

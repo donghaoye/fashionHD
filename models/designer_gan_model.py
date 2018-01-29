@@ -1,6 +1,8 @@
 from __future__ import division, print_function
 
 import torch
+import torch.nn as nn
+import torchvision
 import networks
 from torch.autograd import Variable
 from misc.image_pool import ImagePool
@@ -42,21 +44,22 @@ def load_attribute_encoder_net(id, gpu_ids, is_train, which_epoch = 'latest'):
     opt_var = io.load_json(fn_opt)
 
     # update attribute encoder options
-    opt = TestAttributeOptions().parse(save_to_file = False, display = False)
+    opt = TestAttributeOptions().parse(ord_str = '', save_to_file = False, display = False, set_gpu = False)
     for k, v in opt_var.iteritems():
         if k in opt:
             opt.__dict__[k] = v
 
-    opt.is_train = is_train
+    opt.is_train = False
     opt.gpu_ids = gpu_ids
     opt.which_epoch = which_epoch
+    # opt.continue_train = False
 
     model = AttributeEncoder()
     model.initialize(opt)
 
-    # fix model parameters
+    # frozen model parameters
     model.eval()
-    for p in model.parameters():
+    for p in model.net.parameters():
         p.requires_grad = False
 
     return model.net, opt
@@ -69,12 +72,14 @@ class DesignerGAN(BaseModel):
     def initialize(self, opt):
         super(DesignerGAN, self).initialize(opt)
         ###################################
-        # define tensors
+        # define data tensors
         ###################################
-        self.input['img'] = self.Tensor(opt.batch_size, 3, opt.fine_size, opt.fine_size)
-        self.input['lm_map'] = self.Tensor(opt.batch_size, 18, opt.fine_size, opt.fine_size)
-        self.input['seg_map'] = self.Tensor(opt.batch_size, 1, opt.fine_size, opt.fine_size)
-        self.input['attr_label'] = self.Tensor(opt.batch_size, opt.n_attr)
+        # self.input['img'] = self.Tensor()
+        # self.input['img_attr'] = self.Tensor()
+        # self.input['lm_map'] = self.Tensor()
+        # self.input['seg_mask'] = self.Tensor()
+        # self.input['attr_label'] = self.Tensor()
+        # self.input['id'] = []
 
         ###################################
         # load/define networks
@@ -99,15 +104,16 @@ class DesignerGAN(BaseModel):
             self.fake_pool = ImagePool(opt.pool_size)
 
         ###################################
-        # define loss functions
+        # define loss functions and loss buffers
         ###################################
-        self.loss_functions = []
-
         self.crit_GAN = networks.GANLoss(use_lsgan = not opt.no_lsgan, tensor = self.Tensor)
-        self.crit_L1 = nn.L1Loss()
+        self.crit_L1 = networks.Smooth_Loss(nn.L1Loss())
+        self.crit_attr = networks.Smooth_Loss(nn.BCELoss(size_average = True))
 
+        self.loss_functions = []
         self.loss_functions.append(self.crit_GAN)
         self.loss_functions.append(self.crit_L1)
+        self.loss_functions.append(self.crit_attr)
 
         ###################################
         # create optimizers
@@ -115,9 +121,9 @@ class DesignerGAN(BaseModel):
         self.schedulers = []
         self.optimizers = []
 
-        self.optim_G = nn.optim.Adam(self.netG.parameters(),
+        self.optim_G = torch.optim.Adam(self.netG.parameters(),
             lr = opt.lr, betas = (opt.beta1, 0.999))
-        self.optim_D = nn.optim.Adam(self.netD.parameters(),
+        self.optim_D = torch.optim.Adam(self.netD.parameters(),
             lr = opt.lr, betas = (opt.beta1, 0.999))
         self.optimizers.append(self.optim_G)
         self.optimizers.append(self.optim_D)
@@ -125,51 +131,65 @@ class DesignerGAN(BaseModel):
         for optim in self.optimizers:
             self.schedulers.append(networks.get_scheduler(optim, opt))
 
+        # color transformation from std to imagenet
+        # img_imagenet = img_std * a + b
+        self.trans_std_to_imagenet = {
+            'a': Variable(self.Tensor([0.5/0.229, 0.5/0.224, 0.5/0.225])).view(3,1,1),
+            'b': Variable(self.Tensor([(0.5-0.485)/0.229, (0.5-0.456)/0.224, (0.5-0.406)/0.225])).view(3,1,1)
+        }
 
+    def _std_to_imagenet(self, img):
+        return img * self.trans_std_to_imagenet['a'] + self.trans_std_to_imagenet['b']
 
     def set_input(self, data):
-        self.input['img'].resize_(data['img'].size()).copy_(data['img'])
-        self.input['attr_label'].resize_(data['label'].size()).copy_(data['img'])
-        self.input['lm_map'].resize_(data['landmark_heatmap'].size()).copy_(data['landmark_heatmap'])
-        self.input['seg_map'].resize_(data['seg_map'].size()).copy_(data['seg_map'])
+        self.input['img'] = self.Tensor(data['img'].size()).copy_(data['img'])
+        self.input['attr_label'] = self.Tensor(data['attr_label'].size()).copy_(data['attr_label'])
+        self.input['lm_map'] = self.Tensor(data['lm_map'].size()).copy_(data['lm_map'])
+        self.input['seg_mask'] = self.Tensor(data['seg_mask'].size()).copy_(data['seg_mask'])
         self.input['id'] = data['id']
+
+
+        # create input variables
+        for k, v in self.input.iteritems():
+            if isinstance(v, torch.tensor._TensorBase):
+                self.input[k] = Variable(v)
 
     def forward(self):
         # Todo: consider adding "extra_code" generated by a CNN jointly trained with GAN
-        v_img = Variable(self.input['img'])
-        v_lm_map = Variable(self.input['lm_map'])
-        v_seg_map = Variable(self.input['seg_map'])
+        shape_code = self.encode_shape(self.input['lm_map'], self.input['seg_mask'])
+        attr_code = self.encode_attribute(self.input['img'], self.input['lm_map'])
 
-        v_shape_code = torch.cat((v_lm_map, v_seg_map), dim = 1)
-        v_attr_code = self.encode_attribute(v_img, v_lm_map)
+        self.output['img_fake_raw'] = self.netG(shape_code, attr_code)
+        self.output['img_real_raw'] = self.input['img']
 
-        self.output['img_fake'] = self.netG(v_shape_code, v_attr_code)
-        self.output['img_real'] = v_img
+        self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_mask'], self.output['img_real_raw'])
+        self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_mask'], self.output['img_real_raw'])
         
-
     def test(self):
-        v_img = Variable(self.input['img'], volatile = True)
-        v_lm_map = Variable(self.input['lm_map'], volatile = True)
-        v_seg_map = Variable(self.input['seg_map'], volatile = True)
+        self.input['img'].volatile = True
+        self.input['lm_map'].volatile = True
+        self.input['seg_mask'].volatile = True
 
-        v_shape_code = torch.cat((v_lm_map, v_seg_map), dim = 1)
-        v_attr_code = self.encode_attribute(v_img, v_lm_map)
-        self.output['img_fake'] = self.netG(v_shape_code, v_attr_code)
-        self.output['img_real'] = v_img
-        
+        shape_code = self.encode_shape(self.input['lm_map'], self.input['seg_mask'])
+        attr_code = self.encode_attribute(self.input['img'], self.input['lm_map'])
+
+        self.output['img_fake_raw'] = self.netG(shape_code, attr_code)
+        self.output['img_real_raw'] = self.input['img']
+
+        self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_mask'], self.output['img_real_raw'])
+        self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_mask'], self.output['img_real_raw'])
 
     def backward_D(self):
-        # Todo: self.fake_pool shoule save both fake images and their condition codes
-        # Todo: conditioned netD?
-
         # Fake
-        img_fake = self.fake_pool.query(self.output['img_fake'].data)
-        pred_fake = self.netD(img_fake.detach())
+        # Here we use masked images
+        repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'])
+        repr_fake = self.fake_pool.query(repr_fake.data)
+        pred_fake = self.netD(repr_fake.detach())
         self.output['loss_D_fake'] = self.crit_GAN(pred_fake, False)
         
         # Real
-        img_real = self.output['img_real']
-        pred_real = self.netD(img_real)
+        repr_real = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_real'])
+        pred_real = self.netD(repr_real)
         self.output['loss_D_real'] = self.crit_GAN(pred_real, True)
 
         # combined loss
@@ -178,28 +198,28 @@ class DesignerGAN(BaseModel):
 
 
     def backward_G(self):
-
         # GAN Loss
-        img_fake = self.output['img_fake']
-        pred_fake = self.netD(img_fake)
+        repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'])
+        pred_fake = self.netD(repr_fake)
         self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
-
+        self.output['loss_G'] = self.output['loss_G_GAN']
         # L1 Loss
-        img_real = self.output['img_real']
-        self.output['loss_G_L1'] = self.crit_L1(img_fake, img_real) * self.opt.loss_weight_L1
-
-        self.output['loss_G'] = self.output['loss_G_GAN'] + self.output['loss_G_L1']
+        # print('gpu_ids: %d vs %d' % (self.output['img_fake'].data.get_device(), self.output['img_real'].data.get_device()))
+        self.output['loss_G_L1'] = self.crit_L1(self.output['img_fake'], self.output['img_real'])
+        self.output['loss_G'] += self.output['loss_G_L1'] * self.opt.loss_weight_L1
+        # Attribute Loss
+        attr_prob = self.encode_attribute(self.output['img_fake'], self.input['lm_map'], output_type = 'prob')
+        self.output['loss_G_attr'] = self.crit_attr(attr_prob, self.input['attr_label'])
+        self.output['loss_G'] += self.output['loss_G_attr'] * self.opt.loss_weight_attr
+        # backward
         self.output['loss_G'].backward()
-        
 
-    def optimze_parameters(self):
+    def optimize_parameters(self):
         self.forward()
-
         # optimize D
         self.optim_D.zero_grad()
         self.backward_D()
         self.optim_D.step()
-
         # optimize G
         self.optim_G.zero_grad()
         self.backward_G()
@@ -210,30 +230,67 @@ class DesignerGAN(BaseModel):
         errors = OrderedDict([
             ('G_GAN', self.output['loss_G_GAN'].data[0]),
             ('G_L1', self.output['loss_G_L1'].data[0]),
+            ('G_attr', self.output['loss_G_attr'].data[0]),
             ('D_real', self.output['loss_D_real'].data[0]),
             ('D_fake', self.output['loss_D_fake'].data[0])
             ])
         return errors
 
     def get_current_visuals(self):
+        visuals = OrderedDict([
+            ('img_real', self.output['img_real'].data),
+            ('img_fake', self.output['img_fake'].data),
+            ('img_real_raw', self.output['img_real_raw'].data),
+            ('img_fake_raw', self.output['img_fake_raw'].data),
+            ('seg_mask', self.input['seg_mask'].data),
+            ('landmark_heatmap', self.input['lm_map'].data)
+            ])
+        return visuals
 
-
-    def encode_attribute(self, img, lm_map = None):
+    def encode_attribute(self, img, lm_map = None, output_type = None):
+        if output_type is None:
+            output_type = self.opt.attr_condition_type
         v_img = img if isinstance(img, Variable) else Variable(img)
+
+        if self.opt_AE.image_normalize == 'imagenet':
+            v_img = self._std_to_imagenet(v_img)
 
         if self.opt_AE.input_lm:
             v_lm_map = lm_map if isinstance(lm_map, Variable) else Variable(lm_map)
             # prob, prob_map = self.netAE(v_img, v_lm_map)
             input = (v_img, v_lm_map)
         else:
-            input = (v_img)
+            input = (v_img,)
 
-        if self.opt.attr_condition_type == 'feat':
+        if output_type == 'feat':
             feat, _ = self.netAE.extract_feat(*input)
             return feat
-        elif self.opt.attr_condition_type == 'prob':
+        elif output_type == 'prob':
             prob, _ = self.netAE(*input)
             return prob
+
+    def encode_shape(self, lm_map, seg_mask, img = None):
+        if self.opt.shape_encode == 'lm':
+            shape_code = lm_map
+        elif self.opt.shape_encode == 'seg':
+            shape_code = seg_mask
+        elif self.opt.shape_encode == 'lm+seg':
+            shape_code = torch.cat((lm_map, seg_mask), dim = 1)
+
+        if img is not None:
+            shape_code = torch.cat((img, shape_code), dim = 1)
+
+        return shape_code
+
+    def mask_image(self, img, mask, img_ref):
+        if self.opt.seg_mask_mode == 'fuse':
+            return img * mask + img_ref * (1 - mask)
+        elif self.opt.seg_mask_mode == 'mask':
+            return img * mask + (1 - mask)
+        elif self.opt.seg_mask_mode == 'none':
+            return img
+        else:
+            raise ValueError('invalid seg_mask_mode value: %s' % self.opt.seg_mask_mode)
 
     def save(self, label):
         # Todo: if self.netAE is jointly trained, also save its parameter

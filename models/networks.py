@@ -104,6 +104,36 @@ def init_weights(net, init_type='normal'):
 ###############################################################################
 # Loss Functions
 ###############################################################################
+class LossBuffer():
+    '''
+    '''
+    def __init__(self):
+        self.clear()
+    
+    def clear(self):
+        self.buffer = []
+
+    def add(self, loss):
+
+        if isinstance(loss, Variable):
+            self.buffer.append(loss.data[0])
+        elif isinstance(loss, torch.tensor._TensorBase):
+            self.buffer.append(loss[0])
+        else:
+            self.buffer.append(loss)
+
+    def smooth_loss(self, clear = False):
+        if len(self.buffer) == 0:
+            loss = 0
+        else:
+            loss = sum(self.buffer) / len(self.buffer)
+
+        if clear:
+            self.clear()
+            
+        return loss
+
+
 class Smooth_Loss():
     '''
     wrapper of pytorch loss layer.
@@ -306,6 +336,25 @@ class MeanAP():
 
         return mBP, BP
 
+    def compute_recall_sample_avg(self, k = 3):
+        '''
+        compute recall using method in DeepFashion Paper
+        '''
+        score, label = self.score, self.label
+        tag = np.where((-score).argsort().argsort() < k, 1, 0)
+        tag_rec = tag * label
+
+        count_rec = tag_rec.sum(axis = 1)
+        count_gt = label.sum(axis = 1)
+
+        # set recall=1 for sample with no positive attribute label
+        no_pos_attr = (count_gt == 0).astype(count_gt.dtype)
+        count_rec += no_pos_attr
+        count_gt += no_pos_attr
+
+        rec = (count_rec / count_gt).mean() * 100.
+
+        return rec
 
 class ClassificationAccuracy():
     '''
@@ -385,7 +434,8 @@ def define_G(opt):
     netG = None
     use_gpu = len(opt.gpu_ids) > 0
     norm_layer = get_norm_layer(norm_type=opt.norm)
-    acitvation  = nn.ReLU()
+    activation  = nn.ReLU
+    use_dropout = not opt.no_dropout
     if opt.attr_condition_type in {'feat'}:
         attr_nc = opt.n_attr_feat
     elif opt.attr_condition_type in {'prob'}:
@@ -396,13 +446,13 @@ def define_G(opt):
         assert(torch.cuda.is_available())
 
     if opt.which_model_netG == 'resnet_9blocks':
-        netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = opt.attr_nc,
-            condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, acitvation = activation,
-            use_dropout = opt.use_dropout, n_blocks = 9, gpu_ids = opt.gpu_ids)
+        netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = attr_nc,
+            condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
+            use_dropout = use_dropout, n_blocks = 9, gpu_ids = opt.gpu_ids)
     elif opt.which_model_netG == 'resnet_6blocks':
-        netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = opt.attr_nc,
-            condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, acitvation = activation,
-            use_dropout = opt.use_dropout, n_blocks = 6, gpu_ids = opt.gpu_ids)
+        netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = attr_nc,
+            condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
+            use_dropout = use_dropout, n_blocks = 6, gpu_ids = opt.gpu_ids)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % opt.which_model_netG)    
 
@@ -481,14 +531,16 @@ class GANLoss(nn.Module):
             create_label = ((self.real_label_var is None) or
                             (self.real_label_var.numel() != input.numel()))
             if create_label:
-                real_tensor = self.Tensor(input.size()).fill_(self.real_label)
+                # real_tensor = self.Tensor(input.size()).fill_(self.real_label)
+                real_tensor = input.data.new(input.size()).fill_(self.real_label)
                 self.real_label_var = Variable(real_tensor, requires_grad=False)
             target_tensor = self.real_label_var
         else:
             create_label = ((self.fake_label_var is None) or
                             (self.fake_label_var.numel() != input.numel()))
             if create_label:
-                fake_tensor = self.Tensor(input.size()).fill_(self.fake_label)
+                # fake_tensor = self.Tensor(input.size()).fill_(self.fake_label)
+                fake_tensor = input.data.new(input.size()).fill_(self.fake_label)
                 self.fake_label_var = Variable(fake_tensor, requires_grad=False)
             target_tensor = self.fake_label_var
         return target_tensor
@@ -499,9 +551,9 @@ class GANLoss(nn.Module):
 
 def get_norm_layer(norm_type = 'instance'):
     if norm_type == 'batch':
-        norm_layer == functools.partial(nn.BatchNorm2d, affine=True)
+        norm_layer = functools.partial(nn.BatchNorm2d, affine=True)
     elif norm_type == 'instance':
-        norm_layer == functools.partial(nn.InstanceNorm2d, affine =False)
+        norm_layer = functools.partial(nn.InstanceNorm2d, affine =False)
     elif norm_type == 'none':
         norm_layer = None
     else:
@@ -511,11 +563,12 @@ def get_norm_layer(norm_type = 'instance'):
 
 # Define a resnet block
 class ResnetBlock(nn.Module):
-    def __init__(self, dim, padding_type, norm_layer, activation=nn.ReLU(True), use_dropout=False):
+    def __init__(self, dim, padding_type, norm_layer, use_bias, activation=nn.ReLU(True), use_dropout=False):
         super(ResnetBlock, self).__init__()
-        self.conv_block = self.build_conv_block(dim, padding_type, norm_layer, activation, use_dropout)
+        self.dim = dim
+        self.conv_block = self.build_conv_block(dim, padding_type, norm_layer, activation, use_dropout, use_bias)
 
-    def build_conv_block(self, dim, padding_type, norm_layer, activation, use_dropout):
+    def build_conv_block(self, dim, padding_type, norm_layer, activation, use_dropout, use_bias):
         conv_block = []
         p = 0
         if padding_type == 'reflect':
@@ -527,7 +580,7 @@ class ResnetBlock(nn.Module):
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
 
-        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p),
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias),
                        norm_layer(dim),
                        activation]
         if use_dropout:
@@ -542,7 +595,7 @@ class ResnetBlock(nn.Module):
             p = 1
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
-        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p),
+        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias),
                        norm_layer(dim)]
 
         return nn.Sequential(*conv_block)
@@ -550,6 +603,9 @@ class ResnetBlock(nn.Module):
     def forward(self, x):
         out = x + self.conv_block(x)
         return out
+
+    def print(self):
+        print('ResnetBlock: x_dim=%d'%self.dim)
 
 class ResnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, activation = nn.ReLU, use_dropout=False, n_blocks=6, gpu_ids=[], padding_type='reflect'):
@@ -605,7 +661,7 @@ class ResnetGenerator(nn.Module):
             return self.model(input)
 
 class ConditionedResnetBlock(nn.Module):
-    def __init__(self, x_dim, c_dim, padding_type, norm_layer, activation=nn.ReLU(True), use_dropout=False, output_c=False):
+    def __init__(self, x_dim, c_dim, padding_type, norm_layer, use_bias, activation=nn.ReLU(True), use_dropout=False, output_c=False):
         '''
         Args:
             x_dim(int): input feature channel
@@ -616,13 +672,13 @@ class ConditionedResnetBlock(nn.Module):
         Output:
             y(Variable): size of (bsz, x_dim+c_dim, h, w) if output_c is true, else (bsz, x_dim, h, w)
         '''
-        super(ResnetBlock, self).__init__()
-        self.conv_block = self.build_conv_block(x_dim, c_dim, padding_type, norm_layer, activation, use_dropout)
+        super(ConditionedResnetBlock, self).__init__()
+        self.conv_block = self.build_conv_block(x_dim, c_dim, padding_type, norm_layer, activation, use_dropout, use_bias)
         self.output_c = output_c
         self.x_dim = x_dim
         self.c_dim = c_dim
 
-    def build_conv_block(self, x_dim, c_dim, padding_type, norm_layer, activation, use_dropout):
+    def build_conv_block(self, x_dim, c_dim, padding_type, norm_layer, activation, use_dropout, use_bias):
         conv_block = []
 
         p = 0
@@ -635,7 +691,7 @@ class ConditionedResnetBlock(nn.Module):
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
 
-        conv_block += [nn.Conv2d(x_dim + c_dim, x_dim, kernel_size=3, padding=p),
+        conv_block += [nn.Conv2d(x_dim + c_dim, x_dim, kernel_size=3, padding=p, bias=use_bias),
                        norm_layer(x_dim),
                        activation]
         if use_dropout:
@@ -650,7 +706,7 @@ class ConditionedResnetBlock(nn.Module):
             p = 1
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
-        conv_block += [nn.Conv2d(x_dim, x_dim, kernel_size=3, padding=p),
+        conv_block += [nn.Conv2d(x_dim, x_dim, kernel_size=3, padding=p, bias=use_bias),
                        norm_layer(x_dim)]
 
         return nn.Sequential(*conv_block)
@@ -661,9 +717,13 @@ class ConditionedResnetBlock(nn.Module):
         c = x_and_c[:,self.x_dim::]
         x_out = x + self.conv_block(x_and_c)
         if self.output_c:
-            return torch.cat((x_out, x), dim = 1)
+            return torch.cat((x_out, c), dim = 1)
         else:
             return x_out
+
+    def print(self):
+        out_dim = self.x_dim + self.c_dim if self.output_c else self.x_dim
+        print('ConditionResnetBlock: x_dim=%d, c_dim=%d, out_dim=%d'% (self.x_dim, self.c_dim, out_dim))
 
 class ConditionedResnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, condition_nc, condition_layer = 'first', ngf=64, norm_layer=nn.BatchNorm2d, activation = nn.ReLU, use_dropout=False, n_blocks=6, gpu_ids=[], padding_type='reflect'):
@@ -705,19 +765,19 @@ class ConditionedResnetGenerator(nn.Module):
                     c_dim = condition_nc, 
                     padding_type=padding_type,
                     activation = activation(),
-                    normal = norm_layer,
+                    norm_layer = norm_layer,
                     use_dropout = use_dropout,
-                    use_bias = use_bias,
-                    output_c = output_c
+                    output_c = output_c,
+                    use_bias = use_bias
                     ))
             else:
                 res_blocks.append(ResnetBlock(
                     dim = ngf*mult,
                     padding_type=padding_type,
                     activation = activation(),
-                    normal = norm_layer,
+                    norm_layer = norm_layer,
                     use_dropout = use_dropout,
-                    use_bias = use_bias,
+                    use_bias = use_bias
                     ))
 
         upsample_layers = []
@@ -746,8 +806,7 @@ class ConditionedResnetGenerator(nn.Module):
             input_x: size of (bsz, input_nc, h, w)
             input_c: size of (bsz, condition_nc) or (bsz, condition_nc, h_r, w_r)
         '''
-
-        if self.gpu_ids and isinstance(input_x.data, torch.cuda.FloatTensor) and (not single_device):
+        if self.gpu_ids and len(self.gpu_ids) > 1 and isinstance(input_x.data, torch.cuda.FloatTensor) and (not single_device):
             return nn.parallel.data_parallel(self, (input_x, input_c), self.gpu_ids, module_kwargs = {'single_device': True})
         else:
             x = self.down_sample(input_x)

@@ -57,7 +57,41 @@ def crop(im, bbox):
     x2 = int(max(min(x2, w-1), x1))
     y2 = int(max(min(y2, h-1), y1))
 
-    return im[y1:(y2+1), x1:(x2+1), :].copy()
+    return im[y1:(y2+1), x1:(x2+1)].copy()
+
+def pad_square(im, size, padding_value = 0, mode = 'center'):
+    '''
+    size (tuple or int):
+        - (w, h)
+        - sz
+    '''
+    assert mode in {'center', 'lefttop'}
+
+    h, w = im.shape[0:2]
+    if isinstance(size, tuple):
+        wt, ht = size
+    else:
+        wt = ht = size
+
+    assert w <= wt and h <= ht
+
+    if im.ndim == 3:
+        im_pad = np.ones((ht, wt, im.shape[2]), dtype = im.dtype) * padding_value
+    else:
+        im_pad = np.ones((ht, wt), dtype = im.dtype) * padding_value
+
+    if mode == 'center':
+        x1 = int((wt - w)/2)
+        y1 = int((ht - h)/2)
+        x2 = x1 + w
+        y2 = y1 + h
+        im_pad[y1:y2, x1:x2] = im
+    elif mode == 'lefttop':
+        im_pad[0:h, 0:w] = im
+
+    return im_pad
+
+
 
 def upsample(im, size, fill = True):
     '''
@@ -182,7 +216,7 @@ def combine_bbox(bbox_list):
     return bbox.tolist()
 
 
-def align_image(im, p_src, p_tar, sz_tar):
+def align_image(im, p_src, p_tar, sz_tar, flags = cv2.INTER_CUBIC):
     '''
     align image by affine transform
     

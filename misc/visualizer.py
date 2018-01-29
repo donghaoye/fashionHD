@@ -37,7 +37,7 @@ class BaseVisualizer(object):
         if self.f_log:
             self.f_log.close()
 
-    def print_train_error(self, iter_num, epoch, num_batch, lr, error):
+    def print_train_error(self, iter_num, epoch, num_batch, lr, errors):
         '''
         Display training log information on screen and output it to log file.
 
@@ -46,7 +46,7 @@ class BaseVisualizer(object):
             epoch:      current epoch
             num_batch: number of minibatch in each epoch
             lr:         current learning rate
-            error:      error information
+            errors:      error information
         '''
 
         if self.f_log is None:
@@ -58,7 +58,7 @@ class BaseVisualizer(object):
 
         log = '[%s] Train [Iter: %d, Epoch: %d, Prog: %d/%d (%.2f%%)] t_cost: %.2f, lr: %.3e]  ' % \
             (self.opt.id, iter_num, epoch, epoch_step, num_batch, 100.*epoch_step/num_batch, t_per_step, lr)
-        log += '  '.join(['%s: %.6f' % (k,v) for k,v in error.iteritems()])
+        log += '  '.join(['%s: %.6f' % (k,v) for k,v in errors.iteritems()])
 
         print(log)
         print(log, file = self.f_log)
@@ -66,12 +66,12 @@ class BaseVisualizer(object):
         self.clock = time.time()
         self.step_counter = iter_num
 
-    def print_test_error(self, iter_num, epoch, result):
+    def print_test_error(self, iter_num, epoch, errors):
         '''
         Display testing log information during training
             iter_num:   current iteration
             epoch:      current epoch
-            result:     test information
+            errors:     test information
         '''
 
         if self.f_log is None:
@@ -79,7 +79,7 @@ class BaseVisualizer(object):
 
             
         log = '[%s] Test [Iter: %d, Epoch %d]\n' % (self.opt.id, iter_num, epoch)
-        log += '\n'.join(['%s: %.6f' % (k,v) for k,v in result.iteritems()])
+        log += '\n'.join(['%s: %.6f' % (k,v) for k,v in errors.iteritems()])
 
         log = '\n'.join(['', '#'*50, log, '#'*50, '']) 
 
@@ -247,3 +247,31 @@ class AttributeVisualizer(BaseVisualizer):
 
 
 
+class GANVisualizer(BaseVisualizer):
+    def __init__(self, opt):
+        super(GANVisualizer, self).__init__(opt)
+
+    def visualize_image(self, epoch, subset, visuals):
+        opt = self.opt
+        vis_dir = os.path.join('checkpoints', opt.id, 'vis')
+        io.mkdir_if_missing(vis_dir)
+        print('[%s] visualizing %s images' % (opt.id, subset))
+
+        # post-process masks and landmark heatmaps
+        visuals['seg_mask'] = visuals['seg_mask'].expand_as(visuals['img_real'])
+        visuals['landmark_heatmap'] = visuals['landmark_heatmap'].max(dim=1, keepdim=True)[0].expand_as(visuals['img_real'])
+
+        num_vis = min(opt.max_n_vis, visuals['img_real'].size(0))
+        for i in range(num_vis):
+            imgs = [
+                visuals['img_real'][i],
+                visuals['img_fake'][i],
+                visuals['img_real_raw'][i],
+                visuals['img_fake_raw'][i],
+                visuals['seg_mask'][i],
+                visuals['landmark_heatmap'][i]
+            ]
+            imgs = torch.stack(imgs)
+            fn_img = os.path.join(vis_dir, '%s_epoch%d_%d.jpg' % (subset, epoch, i))
+            torchvision.utils.save_image(imgs, fn_img, normalize = True)
+        

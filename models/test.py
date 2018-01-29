@@ -35,13 +35,28 @@ def test_AttributeEncoder():
 
 def test_DesignerGAN():
     # from designer_gan_model import DesignerGAN
-    from designer_gan_model import load_attribute_encoder_net
-    net, opt = load_attribute_encoder_net(id = '1.5', gpu_ids = [0,1,2,3], is_train = False)
-    
-    for k, v in sorted(opt.__dict__.items()):
-        print('%s: %s' % (str(k), str(v)))
+    from designer_gan_model import DesignerGAN
+    from data.data_loader import CreateDataLoader
+    from options.gan_options import TrainGANOptions
 
-def test_patchGAN():
+    opt = TrainGANOptions().parse('--benchmark debug --batch_size 10')
+
+    loader = CreateDataLoader(opt)
+    loader_iter = iter(loader)
+    data = loader_iter.next()
+
+    model = DesignerGAN()
+    model.initialize(opt)
+
+    model.set_input(data)
+    model.forward()
+
+    visuals = model.get_current_visuals()
+    for k, v in visuals.iteritems():
+        print('%s: (%s) %s' % (k, type(v), v.size()))
+
+
+def test_patchGAN_output_size():
     from networks import NLayerDiscriminator
 
     input_size = 256
@@ -54,5 +69,5 @@ def test_patchGAN():
 
 if __name__ == '__main__':
     # test_AttributeEncoder()
-    # test_DesignerGAN()
-    test_patchGAN()
+    # test_patchGAN_output_size()
+    test_DesignerGAN()

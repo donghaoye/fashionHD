@@ -59,3 +59,15 @@ result = OrderedDict([
 
 visualizer.show_attr_pred_statistic(result)
 
+
+# follow deep fashion paper
+rec3_sample_avg = crit_ap.compute_recall_sample_avg(k = 3)
+rec5_sample_avg = crit_ap.compute_recall_sample_avg(k = 5)
+
+result1 = OrderedDict([
+    ('rec3_sample_avg', rec3_sample_avg),
+    ('rec5_sample_avg', rec5_sample_avg),
+    ])
+
+visualizer.print_error(result1)
+

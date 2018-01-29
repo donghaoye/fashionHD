@@ -6,31 +6,40 @@ class BaseGANOptions(BaseOptions):
         super(BaseGANOptions, self).initialize()
         parser = self.parser
 
-        # Todo: automatically set "G_input_nc", "G_output_nc", "D_input_nc" in self.auto_set
         parser.add_argument('--G_input_nc', type = int, default = 19, help = '# of netG input channels. default value is 19 = 18(landmark heatmap) + 1(segmentation map)')
         parser.add_argument('--G_output_nc', type = int, default = 3, help = '# of netG output channels')
-        parser.add_argument('--D_input_nc', type = int, default = 3, help = '# of netD input channels')
+        parser.add_argument('--D_input_nc', type = int, default = 22, help = '# of netD input channels')
         parser.add_argument('--ngf', type=int, default=64, help='# of gen filters in first conv layer')
         parser.add_argument('--ndf', type=int, default=64, help='# of discrim filters in first conv layer')
-        parser.add_argument('--which_model_G', type = str, default = 'resnet_9blocks', help = 'select model to use for netG')
-        parser.add_argument('--which_model_D', type = str, default = 'basic', help = 'select model to use for netD')
+        parser.add_argument('--which_model_netG', type = str, default = 'resnet_9blocks', help = 'select model to use for netG')
+        parser.add_argument('--which_model_netD', type = str, default = 'basic', help = 'select model to use for netD')
         parser.add_argument('--which_model_AE', type = str, default = 'AE_1.5', help = 'pretrained attribute encoder ID')
-        parser.add_argument('--norm', type=str, default='instance', help='instance normalization or batch normalization')
+        parser.add_argument('--norm', type=str, default='batch', help='instance normalization or batch normalization [batch|instance]')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
-        parser.add_argument('--G_condition_layer', type = str, default = 'first', help = 'which layer to add condition feature',
+        parser.add_argument('--G_condition_layer', type = str, default = 'all', help = 'which layer to add condition feature',
             choices = ['first', 'all'])
         parser.add_argument('--n_layers_D', type=int, default=3, help='only used if which_model_netD==n_layers')
         parser.add_argument('--no_lsgan', action='store_true', help='do *not* use least square GAN, if false, use vanilla GAN')
+        
         parser.add_argument('--n_attr', type = int, default = 1000, help = 'number of attribute entries')
         parser.add_argument('--n_attr_feat', type = int, default = 512, help = '# of attribute feature channels')
         parser.add_argument('--attr_condition_type', type = str, default = 'feat', help = 'attribute condition form [feat|prob]',
             choices = ['feat', 'prob'])
 
+        parser.add_argument('--shape_encode', type = str, default = 'lm+seg', help = 'cloth shape encoding method',
+            choices = ['lm', 'seg', 'lm+seg'])
+        parser.add_argument('--seg_mask_part', type = str, default = 'body', help = 'type of segmentation mask. see base_dataset.segmap_to_mask for details. [foreground|body|target]',
+            choices = ['foreground', 'body', 'cloth'])
+        parser.add_argument('--seg_mask_mode', type = str, default = 'fuse', help = 'how to mask generated images [fuse|mask|none]',
+            choices = ['fuse', 'mask', 'none'])
+        # fuse: replaced the mask part with original image
+        # mask: fill the mask part with zero
+        # none: do not mask image
 
 
         # data files
         # refer to "scripts/preproc_inshop.py" for more information
-        parser.add_argument('--benchmark', type = str, default = 'ca', help = 'set benchmark [ca|ca_org|inshop|user|debug]',
+        parser.add_argument('--benchmark', type = str, default = 'ca_upper', help = 'set benchmark [ca|ca_org|inshop|user|debug]',
             choices = ['ca', 'ca_upper', 'inshop', 'debug', 'user'])
         parser.add_argument('--fn_sample', type = str, default = 'default', help = 'path of sample index file')
         parser.add_argument('--fn_label', type = str, default = 'default', help = 'path of attribute label file')
@@ -48,9 +57,21 @@ class BaseGANOptions(BaseOptions):
         opt = self.opt
         ###########################################
         # Add id profix
-        if not opt.id.startswith('GAN_'):
-            opt.id = 'GAN_' + opt.id
-        
+        if not opt.id.startswith('GAN_AE_'):
+            opt.id = 'GAN_AE_' + opt.id
+        ###########################################
+        # check that input/output dimension setting
+        if opt.shape_encode == 'lm':
+            # assert opt.G_input_nc == 18
+            opt.G_input_nc = 18
+        elif opt.shape_encode == 'seg':
+            # assert opt.G_input_nc == 1
+            opt.G_input_nc = 1
+        elif opt.shape_encode == 'lm+seg':
+            # assert opt.G_input_nc == 19
+            opt.G_input_nc = 19
+        opt.D_input_nc = opt.G_input_nc + opt.G_output_nc
+
         ###########################################
         # Set default dataset file pathes
         if opt.benchmark.startswith('ca'):
@@ -72,19 +93,17 @@ class BaseGANOptions(BaseOptions):
                     opt.fn_split = 'Split/ca_gan_split_trainval_upper.json'
 
         elif opt.benchmark == 'debug':
-            opt.fn_sample = 'Label/debugca_samples.json'
-            opt.fn_label = 'Label/debugca_attr_label.pkl'
+            opt.fn_sample = 'Label/debugca_gan_samples.json'
+            opt.fn_label = 'Label/debugca_gan_attr_label.pkl'
             opt.fn_entry = 'Label/attr_entry.json'
-            opt.fn_split = 'Split/debugca_split.json'
-            opt.fn_landmark = 'Label/debugca_landmark_label.pkl'
-            opt.fn_seg_path = 'Label/ca_seg_paths.json'
+            opt.fn_split = 'Split/debugca_gan_split.json'
+            opt.fn_landmark = 'Label/debugca_gan_landmark_label.pkl'
+            opt.fn_seg_path = 'Label/debugca_seg_paths.json'
 
         ###########################################
 
         
             
-
-
 class TrainGANOptions(BaseGANOptions):
 
     def initialize(self):
@@ -99,27 +118,26 @@ class TrainGANOptions(BaseGANOptions):
         self.parser.add_argument('--pool_size', type=int, default=0, help='the size of image buffer that stores previously generated images')
         
         # optimizer (we use Adam)
-        parser.add_argument('--optim', type = str, default = 'adam', help = 'optimizer type [adam|sgd]', 
-            choices = ['adam', 'sgd'])
-        parser.add_argument('--lr', type = float, default = 1e-3, help = 'initial learning rate')
-        parser.add_argument('--beta1', type = float, default = 0.9, help = 'momentum term for Adam')
-        parser.add_argument('--weight_decay', type = float, default = 0, help = 'weight decay')
+        parser.add_argument('--lr', type = float, default = 2e-4, help = 'initial learning rate')
+        parser.add_argument('--beta1', type = float, default = 0.5, help = 'momentum term for Adam')
 
         # scheduler
-        self.parser.add_argument('--lr_policy', type=str, default='step', help='learning rate policy: lambda|step|plateau',
+        parser.add_argument('--lr_policy', type=str, default='lambda', help='learning rate policy: lambda|step|plateau',
             choices = ['step', 'plateau', 'lambda'])
-        self.parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
-        self.parser.add_argument('--niter', type = int, default = 30, help = '# of iter at starting learning rate')
-        self.parser.add_argument('--niter_decay', type=int, default=0, help='# of iter to linearly decay learning rate to zero')
-        self.parser.add_argument('--lr_decay', type=int, default=10, help='multiply by a gamma every lr_decay_interval epochs')
-        self.parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')
+        parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
+        parser.add_argument('--niter', type = int, default=20, help = '# of iter at starting learning rate')
+        parser.add_argument('--niter_decay', type=int, default=20, help='# of iter to linearly decay learning rate to zero')
+        parser.add_argument('--lr_decay', type=int, default=10, help='multiply by a gamma every lr_decay_interval epochs')
+        parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')
 
-        self.parser.add_argument('--display_freq', type = int, default = 10, help='frequency of showing training results on screen')
-        self.parser.add_argument('--test_epoch_freq', type = int, default = 1, help='frequency of testing model')
-        self.parser.add_argument('--save_epoch_freq', type = int, default = 1, help='frequency of saving model to disk' )
+        parser.add_argument('--display_freq', type = int, default = 10, help='frequency of showing training results on screen')
+        # parser.add_argument('--test_epoch_freq', type = int, default = 1, help='frequency of testing model')
+        parser.add_argument('--save_epoch_freq', type = int, default = 1, help='frequency of saving model to disk' )
+        parser.add_argument('--vis_epoch_freq', type = int, default = 1, help='frequency of visualizing generated images')
+        parser.add_argument('--max_n_vis', type = int, default = 20, help='max number of visualized images')
 
-
-        self.parser.add_argument('--loss_weight_L1', type = float, default = 10., help = 'loss weight of L1 loss')
+        parser.add_argument('--loss_weight_L1', type = float, default = 1., help = 'loss weight of L1 loss')
+        parser.add_argument('--loss_weight_attr', type = float, default = 0., help = 'loss weight of attribute BCE loss')
 
         # set train
         self.is_train = True
