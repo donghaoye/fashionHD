@@ -134,8 +134,8 @@ class DesignerGAN(BaseModel):
         # color transformation from std to imagenet
         # img_imagenet = img_std * a + b
         self.trans_std_to_imagenet = {
-            'a': Variable(self.Tensor([0.5/0.229, 0.5/0.224, 0.5/0.225])).view(3,1,1),
-            'b': Variable(self.Tensor([(0.5-0.485)/0.229, (0.5-0.456)/0.224, (0.5-0.406)/0.225])).view(3,1,1)
+            'a': Variable(self.Tensor([0.5/0.229, 0.5/0.224, 0.5/0.225]), requires_grad = False).view(3,1,1),
+            'b': Variable(self.Tensor([(0.5-0.485)/0.229, (0.5-0.456)/0.224, (0.5-0.406)/0.225]), requires_grad = False).view(3,1,1)
         }
 
     def _std_to_imagenet(self, img):
