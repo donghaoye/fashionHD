@@ -210,16 +210,18 @@ class DesignerGAN(BaseModel):
         repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'])
         pred_fake = self.netD(repr_fake)
         self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
-        self.output['loss_G'] = self.output['loss_G_GAN']
+        loss_G = self.output['loss_G_GAN']
         # L1 Loss
         # print('gpu_ids: %d vs %d' % (self.output['img_fake'].data.get_device(), self.output['img_real'].data.get_device()))
         self.output['loss_G_L1'] = self.crit_L1(self.output['img_fake'], self.output['img_real'])
-        self.output['loss_G'] += self.output['loss_G_L1'] * self.opt.loss_weight_L1
+        loss_G += self.output['loss_G_L1'] * self.opt.loss_weight_L1
         # Attribute Loss
         attr_prob = self.encode_attribute(self.output['img_fake'], self.input['lm_map'], output_type = 'prob')
         self.output['loss_G_attr'] = self.crit_attr(attr_prob, self.input['attr_label'])
-        self.output['loss_G'] += self.output['loss_G_attr'] * self.opt.loss_weight_attr
+        loss_G += self.output['loss_G_attr'] * self.opt.loss_weight_attr
+        
         # backward
+        self.output['loss_G'] = loss_G
         self.output['loss_G'].backward()
 
     def optimize_parameters(self):
