@@ -827,7 +827,6 @@ class ConditionedResnetGenerator(nn.Module):
                 c = input_c.view(bsz, self.condition_nc, 1, 1).expand(bsz, self.condition_nc, h_x, w_x)
             elif input_c.dim() == 4:
                 c = F.upsample(input_c, size = (h_x, w_x), mode = 'bilinear')
-                print('using attribute map as condition')
 
             x = self.res_blocks(torch.cat((x, c), dim = 1))
             x = self.up_sample(x)
