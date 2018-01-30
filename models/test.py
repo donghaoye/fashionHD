@@ -1,5 +1,6 @@
 from __future__ import division, print_function
 import torch
+import torch.nn as nn
 from torch.autograd import Variable
 from util.timer import Timer
 
@@ -67,7 +68,22 @@ def test_patchGAN_output_size():
         print('n_layers=%d, in_size: %d, out_size: %d' % (n, input_size, output.size(2)))
 
 
+def test_scheduler():
+    from options.gan_options import TrainGANOptions
+    from models.networks import get_scheduler
+
+    model = nn.Linear(10,10)
+    optim = torch.optim.Adam(model.parameters(), lr = 1e-4)
+    opt = TrainGANOptions().parse('--gpu_ids -1 --benchmark debug', False, False, False)
+    scheduler = get_scheduler(optim, opt)
+
+    for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
+        scheduler.step()
+        print('epoch: %d, lr: %f' % (epoch, optim.param_groups[0]['lr']))
+
+
 if __name__ == '__main__':
     # test_AttributeEncoder()
     # test_patchGAN_output_size()
-    test_DesignerGAN()
+    # test_DesignerGAN()
+    test_scheduler()

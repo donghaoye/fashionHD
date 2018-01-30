@@ -128,6 +128,7 @@ class DesignerGAN(BaseModel):
         self.optimizers.append(self.optim_G)
         self.optimizers.append(self.optim_D)
 
+        
         for optim in self.optimizers:
             self.schedulers.append(networks.get_scheduler(optim, opt))
 
