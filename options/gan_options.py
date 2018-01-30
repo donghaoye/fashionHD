@@ -11,7 +11,7 @@ class BaseGANOptions(BaseOptions):
         parser.add_argument('--D_input_nc', type = int, default = 22, help = '# of netD input channels')
         parser.add_argument('--ngf', type=int, default=64, help='# of gen filters in first conv layer')
         parser.add_argument('--ndf', type=int, default=64, help='# of discrim filters in first conv layer')
-        parser.add_argument('--which_model_netG', type = str, default = 'resnet_9blocks', help = 'select model to use for netG')
+        parser.add_argument('--which_model_netG', type = str, default = 'resnet_6blocks', help = 'select model to use for netG')
         parser.add_argument('--which_model_netD', type = str, default = 'basic', help = 'select model to use for netD')
         parser.add_argument('--which_model_AE', type = str, default = 'AE_1.5', help = 'pretrained attribute encoder ID')
         parser.add_argument('--norm', type=str, default='batch', help='instance normalization or batch normalization [batch|instance]')
@@ -23,19 +23,19 @@ class BaseGANOptions(BaseOptions):
         
         parser.add_argument('--n_attr', type = int, default = 1000, help = 'number of attribute entries')
         parser.add_argument('--n_attr_feat', type = int, default = 512, help = '# of attribute feature channels')
-        parser.add_argument('--attr_condition_type', type = str, default = 'feat', help = 'attribute condition form [feat|prob]',
-            choices = ['feat', 'prob'])
+        parser.add_argument('--attr_condition_type', type = str, default = 'feat', help = 'attribute condition form [feat|prob|none]',
+            choices = ['feat', 'prob', 'feat_map', 'prob_map'])
 
         parser.add_argument('--shape_encode', type = str, default = 'lm+seg', help = 'cloth shape encoding method',
             choices = ['lm', 'seg', 'lm+seg'])
-        parser.add_argument('--seg_mask_part', type = str, default = 'body', help = 'type of segmentation mask. see base_dataset.segmap_to_mask for details. [foreground|body|target]',
-            choices = ['foreground', 'body', 'cloth'])
-        parser.add_argument('--seg_mask_mode', type = str, default = 'fuse', help = 'how to mask generated images [fuse|mask|none]',
-            choices = ['fuse', 'mask', 'none'])
-        # fuse: replaced the mask part with original image
-        # mask: fill the mask part with zero
+        parser.add_argument('--input_mask_mode', type = str, default = 'map', help = 'type of segmentation mask. see base_dataset.segmap_to_mask for details. [foreground|body|target|map]',
+            choices = ['foreground', 'body', 'target', 'map'])
+        parser.add_argument('--post_mask_mode', type = str, default = 'fuse_face', help = 'how to mask generated images [none|fuse_face|fuse_face+bg]',
+            choices = ['none', 'fuse_face', 'fuse_face+bg'])
         # none: do not mask image
-
+        # fuse_face: replace the face&hair part with original image
+        # fuse_face_bg: replace the face&hair&background part with original image
+        parser.add_argument('--no_attr_condition', action = 'store_true', help='do not use attribute condition in generator')
 
         # data files
         # refer to "scripts/preproc_inshop.py" for more information
@@ -61,17 +61,19 @@ class BaseGANOptions(BaseOptions):
             opt.id = 'GAN_AE_' + opt.id
         ###########################################
         # check that input/output dimension setting
-        if opt.shape_encode == 'lm':
-            # assert opt.G_input_nc == 18
-            opt.G_input_nc = 18
-        elif opt.shape_encode == 'seg':
-            # assert opt.G_input_nc == 1
-            opt.G_input_nc = 1
-        elif opt.shape_encode == 'lm+seg':
-            # assert opt.G_input_nc == 19
-            opt.G_input_nc = 19
-        opt.D_input_nc = opt.G_input_nc + opt.G_output_nc
+        nc_img = 3
+        nc_lm = 18
+        nc_seg = 7 if self.opt.input_mask_mode == 'map' else 1
 
+        if opt.shape_encode == 'lm':
+            opt.G_input_nc = nc_lm
+        elif opt.shape_encode == 'seg':
+            opt.G_input_nc = nc_seg
+        elif opt.shape_encode == 'lm+seg':
+            opt.G_input_nc = nc_lm + nc_seg
+
+        opt.G_output_nc = nc_img
+        opt.D_input_nc = opt.G_input_nc + opt.G_output_nc
         ###########################################
         # Set default dataset file pathes
         if opt.benchmark.startswith('ca'):
@@ -126,7 +128,7 @@ class TrainGANOptions(BaseGANOptions):
             choices = ['step', 'plateau', 'lambda'])
         parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
         parser.add_argument('--niter', type = int, default=20, help = '# of iter at starting learning rate')
-        parser.add_argument('--niter_decay', type=int, default=20, help='# of iter to linearly decay learning rate to zero')
+        parser.add_argument('--niter_decay', type=int, default=5, help='# of iter to linearly decay learning rate to zero')
         parser.add_argument('--lr_decay', type=int, default=1, help='multiply by a gamma every lr_decay_interval epochs')
         parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')
 

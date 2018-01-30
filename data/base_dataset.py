@@ -70,17 +70,21 @@ def segmap_to_mask(seg_map, mask_type, cloth_type):
     '''
     Generate a mask from a segmentation map.
     Input:
-        seg_map(np.ndarray): segmentation map
+        seg_map(np.ndarray): segmentation map of size (HxWx1)
             0-background, 1-hair, 2-head, 3-upperbody, 4-lowerbody, 5-leg, 6-arm
         mask_type(str):
             - 'foreground': body+cloth
             - 'body': arm+leg+cloth (no head, hair, background)
             - 'target': target cloth
+            - 'map': output segmentation map in one-hot format
         cloth_type(int):
             - 1: upperdody
             - 2: lowerbody
             - 3: full body
     '''
+    if seg_map.ndim == 2:
+        seg_map = seg_map[:,:,np.newaxis]
+
     if mask_type == 'foreground':
         mask = (seg_map != 0).astype(np.float32)
     elif mask_type == 'body':
@@ -92,14 +96,18 @@ def segmap_to_mask(seg_map, mask_type, cloth_type):
             mask = (seg_map == 4).astype(np.float32)
         elif cloth_type == 3:
             mask = np.logical_or(seg_map == 3, seg_map == 4).astype(np.float32)
+    elif mask_type == 'map':
+        mask = [(seg_map==i) for i in range(7)]
+        mask = np.concatenate(mask, axis=2).astype(np.float32)
 
     return mask
 
 
-def trans_resize(img, size):
+def trans_resize(img, size, interp = cv2.INTER_LINEAR):
     '''
-    img (np.ndarray): image with arbitrary channels, with size HxWxC
+    img (np.ndarray or list): image with arbitrary channels, with size HxWxC
     size (tuple): target size (width, height)
+    interps (int or list)
     '''
     return cv2.resize(img, size, interpolation = cv2.INTER_LINEAR)
 

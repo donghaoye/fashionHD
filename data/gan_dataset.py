@@ -74,31 +74,37 @@ class GANDataset(BaseDataset):
 
         # load segmentation map
         seg_map = cv2.imread(self.seg_path_list[index], cv2.IMREAD_GRAYSCALE)
-        seg_mask = segmap_to_mask(seg_map, self.opt.seg_mask_part, self.sample_list[index]['cloth_type'])
-        seg_mask = seg_mask[:,:,np.newaxis]
-        mix = np.concatenate((img, lm_map, seg_mask), axis = 2)
+        nc_img, nc_lm = img.shape[-1], lm_map.shape[-1]
+        mix = np.concatenate((img, lm_map), axis = 2)
 
         # transform
         if self.opt.resize_or_crop == 'resize':
             # only resize
             mix = trans_resize(mix, size = (self.opt.fine_size, self.opt.fine_size))
+            seg_map = trans_resize(seg_map, size =(self.opt.fine_size, self.opt.fine_size), interp = cv2.INTER_NEAREST)
+            mix = np.concatenate((mix, seg_map[:,:,np.newaxis]), axis = 2)
         elif self.opt.resize_or_crop == 'resize_and_crop':
             mix = trans_resize(mix, size = (self.opt.load_size, self.opt.load_size))
+            seg_map = trans_resize(seg_map, size =(self.opt.load_size, self.opt.load_size), interp = cv2.INTER_NEAREST)
+            mix = np.concatenate((mix, seg_map[:,:,np.newaxis]), axis = 2)
             if self.split == 'train':
                 mix = trans_random_crop(mix, size = (self.opt.fine_size, self.opt.fine_size))
                 mix = trans_random_horizontal_flip(mix)
             else:
                 mix = trans_center_crop(mix, size = (self.opt.fine_size, self.opt.fine_size))
 
-        img = mix[:,:,0:3]
+        img = mix[:,:,0:nc_img]
         img_t = self.to_tensor(img)
         img = self.tensor_normalize_std(img_t)
 
-        lm_map = mix[:,:,3:-1]
+        lm_map = mix[:,:,nc_img:(nc_img+nc_lm)]
         lm_map = torch.Tensor(lm_map.transpose([2, 0, 1])) # convert to CxHxW
 
-        seg_mask = mix[:,:,-1::].round()
+        seg_map = mix[:,:,-1::]
+        seg_mask = segmap_to_mask(seg_map, self.opt.input_mask_mode, self.sample_list[index]['cloth_type'])
         seg_mask = torch.Tensor(seg_mask.transpose([2, 0, 1]))
+        seg_map = torch.Tensor(seg_map.transpose([2, 0, 1]))
+        
 
         # load label
         att = np.array(self.attr_label_list[index], dtype = np.float32)
@@ -107,6 +113,7 @@ class GANDataset(BaseDataset):
             'img': img,
             'lm_map': lm_map,
             'seg_mask': seg_mask,
+            'seg_map': seg_map,
             'attr_label':att,
             'id': s_id
         }

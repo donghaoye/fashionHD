@@ -436,26 +436,37 @@ def define_G(opt):
     norm_layer = get_norm_layer(norm_type=opt.norm)
     activation  = nn.ReLU
     use_dropout = not opt.no_dropout
-    if opt.attr_condition_type in {'feat'}:
+    if opt.attr_condition_type in {'feat', 'feat_map'}:
         attr_nc = opt.n_attr_feat
-    elif opt.attr_condition_type in {'prob'}:
+    elif opt.attr_condition_type in {'prob', 'prob_map'}:
         attr_nc = opt.n_attr
 
     # Todo: add choice of activation function
     if use_gpu:
         assert(torch.cuda.is_available())
 
-    if opt.which_model_netG == 'resnet_9blocks':
-        netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = attr_nc,
-            condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
-            use_dropout = use_dropout, n_blocks = 9, gpu_ids = opt.gpu_ids)
-    elif opt.which_model_netG == 'resnet_6blocks':
-        netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = attr_nc,
-            condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
-            use_dropout = use_dropout, n_blocks = 6, gpu_ids = opt.gpu_ids)
+    if not opt.no_attr_condition:
+        if opt.which_model_netG == 'resnet_9blocks':
+            netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = attr_nc,
+                condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
+                use_dropout = use_dropout, n_blocks = 9, gpu_ids = opt.gpu_ids)
+        elif opt.which_model_netG == 'resnet_6blocks':
+            netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = attr_nc,
+                condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
+                use_dropout = use_dropout, n_blocks = 6, gpu_ids = opt.gpu_ids)
+        else:
+            raise NotImplementedError('Generator model name [%s] is not recognized' % opt.which_model_netG)    
     else:
-        raise NotImplementedError('Generator model name [%s] is not recognized' % opt.which_model_netG)    
-
+        if opt.which_model_netG == 'resnet_9blocks':
+            netG = ResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc,
+                condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer,
+                use_dropout = use_dropout, n_blocks = 9, gpu_ids = opt.gpu_ids)
+        elif opt.which_model_netG == 'resnet_6blocks':
+            netG = ResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc,
+                condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer,
+                use_dropout = use_dropout, n_blocks = 6, gpu_ids = opt.gpu_ids)
+        else:
+            raise NotImplementedError('Generator model name [%s] is not recognized' % opt.which_model_netG)    
 
     # if which_model_netG == 'resnet_9blocks':
     #     netG = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9, gpu_ids=gpu_ids)
@@ -816,6 +827,7 @@ class ConditionedResnetGenerator(nn.Module):
                 c = input_c.view(bsz, self.condition_nc, 1, 1).expand(bsz, self.condition_nc, h_x, w_x)
             elif input_c.dim() == 4:
                 c = F.upsample(input_c, size = (h_x, w_x), mode = 'bilinear')
+                print('using attribute map as condition')
 
             x = self.res_blocks(torch.cat((x, c), dim = 1))
             x = self.up_sample(x)

@@ -40,7 +40,7 @@ def test_DesignerGAN():
     from data.data_loader import CreateDataLoader
     from options.gan_options import TrainGANOptions
 
-    opt = TrainGANOptions().parse('--benchmark debug --batch_size 10')
+    opt = TrainGANOptions().parse('--benchmark debug --batch_size 10 --gpu_ids -1')
 
     loader = CreateDataLoader(opt)
     loader_iter = iter(loader)
@@ -55,6 +55,7 @@ def test_DesignerGAN():
     visuals = model.get_current_visuals()
     for k, v in visuals.iteritems():
         print('%s: (%s) %s' % (k, type(v), v.size()))
+    
 
 
 def test_patchGAN_output_size():
@@ -85,5 +86,5 @@ def test_scheduler():
 if __name__ == '__main__':
     # test_AttributeEncoder()
     # test_patchGAN_output_size()
-    # test_DesignerGAN()
-    test_scheduler()
+    test_DesignerGAN()
+    # test_scheduler()

@@ -251,6 +251,16 @@ class GANVisualizer(BaseVisualizer):
     def __init__(self, opt):
         super(GANVisualizer, self).__init__(opt)
 
+    def _seg_map_to_img(self, seg_map):
+        # normalize to [-1, 1]
+        seg_map = (seg_map - seg_map.min())/(seg_map.max() - seg_map.min())*2 - 1
+        if seg_map.size(1) == 1:
+            sz = list(seg_map.size())
+            sz[1] = 3
+            seg_map = seg_map.expand(sz)
+        return seg_map
+
+
     def visualize_image(self, epoch, subset, visuals):
         opt = self.opt
         vis_dir = os.path.join('checkpoints', opt.id, 'vis')
@@ -258,20 +268,33 @@ class GANVisualizer(BaseVisualizer):
         print('[%s] visualizing %s images' % (opt.id, subset))
 
         # post-process masks and landmark heatmaps
-        visuals['seg_mask'] = visuals['seg_mask'].expand_as(visuals['img_real'])
+        visuals['seg_map'] = self._seg_map_to_img(visuals['seg_map'])
         visuals['landmark_heatmap'] = visuals['landmark_heatmap'].max(dim=1, keepdim=True)[0].expand_as(visuals['img_real'])
 
         num_vis = min(opt.max_n_vis, visuals['img_real'].size(0))
+        imgs = []
         for i in range(num_vis):
-            imgs = [
+            imgs += [
                 visuals['img_real'][i],
                 visuals['img_fake'][i],
                 visuals['img_real_raw'][i],
                 visuals['img_fake_raw'][i],
-                visuals['seg_mask'][i],
+                visuals['seg_map'][i],
                 visuals['landmark_heatmap'][i]
             ]
-            imgs = torch.stack(imgs)
-            fn_img = os.path.join(vis_dir, '%s_epoch%d_%d.jpg' % (subset, epoch, i))
-            torchvision.utils.save_image(imgs, fn_img, normalize = True)
-        
+
+        imgs = torch.stack(imgs)
+        fn_img = os.path.join(vis_dir, '%s_epoch%d.jpg' % (subset, epoch))
+        torchvision.utils.save_image(imgs, fn_img, nrow = 6, normalize = True)
+
+    def pavi_log(self, phase, iter_num, outputs):
+        upper_list = ['D_real', 'D_fake']
+        new_outputs = {}
+        for k,v in outputs.iteritems():
+            if k in upper_list:
+                new_outputs[k+'_upper'] = v
+            else:
+                new_outputs[k] = v
+
+        super(GANVisualizer, self).pavi_log(phase, iter_num, new_outputs)
+

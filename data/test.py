@@ -69,20 +69,22 @@ def test_GANDataset():
     from data_loader import CreateDataLoader
     from options.gan_options import TrainGANOptions
 
-    opt = TrainGANOptions().parse('--benchmark ca_upper --batch_size 10')
+    opt = TrainGANOptions().parse('--benchmark debug --batch_size 1')
     loader = CreateDataLoader(opt)
     loader_iter = iter(loader)
     data = loader_iter.next()
 
     for k, v in data.iteritems():
         if isinstance(v, torch.tensor._TensorBase):
-            print('[%s]: %s' % (k, v.size()))
+            print('[%s]: (%s), %s' % (k,type(v), v.size()))
         else:
             print('[%s]: %s' % (k, type(v)))
 
     img = torchvision.utils.make_grid(data['img'], nrow=5, normalize = True).cpu().numpy()
     img = img.transpose([1,2,0])
     img = img[:,:,[2,1,0]] # from RGB to BGR
+    if data['seg_mask'].size(1) > 1:
+        data['seg_mask'] = data['seg_mask'].max(dim=1, keepdim=True)
     image.imshow(img)
     for idx in range(opt.batch_size):
         
@@ -93,11 +95,10 @@ def test_GANDataset():
         img_maps = []
         
         img_maps.append(img)
-        img_maps.append(img * data['seg_map'][idx,0])
+        img_maps.append(img * data['seg_mask'][idx,0])
         for i in range(lm_maps.size(0)):
             img_map = img * lm_maps[i]
             img_maps.append(img_map)
-
 
         img_maps = torch.stack(img_maps)
         img_maps = torchvision.utils.make_grid(img_maps, nrow=10, normalize = True).cpu().numpy()
