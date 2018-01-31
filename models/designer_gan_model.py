@@ -196,6 +196,7 @@ class DesignerGAN(BaseModel):
         # Here we use masked images
         repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'].detach())
         repr_fake = self.fake_pool.query(repr_fake.data)
+        pred_fake = self.netD(repr_fake)
         self.output['loss_D_fake'] = self.crit_GAN(pred_fake, False)
         
         # Real
@@ -234,23 +235,22 @@ class DesignerGAN(BaseModel):
         repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'])
         pred_fake = self.netD(repr_fake)
         self.output['loss_G'] = 0
-        grad = self.output['img_fake'].grad.clone()
         # GAN Loss
         self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
-        (self.output['loss_G_GAN'] * self.opt.loss_weight_GAN).backward()
+        (self.output['loss_G_GAN'] * self.opt.loss_weight_GAN).backward(retain_graph=True)
         self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
-        self.output['grad_G_GAN'] = (self.output['img_fake'].grad - grad).norm()
+        self.output['grad_G_GAN'] = (self.output['img_fake'].grad).norm()
         grad = self.output['img_fake'].grad.clone()
         # L1 Loss
         self.output['loss_G_L1'] = self.crit_L1(self.output['img_fake'], self.output['img_real'])
-        (self.output['loss_G_L1'] * self.opt.loss_weight_L1).backward()
+        (self.output['loss_G_L1'] * self.opt.loss_weight_L1).backward(retain_graph=True)
         self.output['loss_G'] += self.output['loss_G_L1'] * self.opt.loss_weight_L1
         self.output['grad_G_L1'] = (self.output['img_fake'].grad - grad).norm()
         grad = self.output['img_fake'].grad.clone()
         # Attribute Loss
         attr_prob = self.encode_attribute(self.output['img_fake'], self.input['lm_map'], output_type = 'prob')
         self.output['loss_G_attr'] = self.crit_attr(attr_prob, self.input['attr_label'])
-        (self.output['loss_G_attr'] * self.opt.loss_weight_attr).backward()
+        (self.output['loss_G_attr'] * self.opt.loss_weight_attr).backward(retain_graph=True)
         self.output['loss_G'] += self.output['loss_G_attr'] * self.opt.loss_weight_attr
         self.output['grad_G_attr'] = (self.output['img_fake'].grad - grad).norm()
         grad = self.output['img_fake'].grad.clone()
