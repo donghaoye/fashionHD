@@ -101,3 +101,23 @@ class ResNetConv(nn.Module):
         x = self.layer4(x)
         return x
 
+    def extract_feat(self, x):
+        output = {'f_0': x}
+        
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        output['f_1'] = x;
+
+        x = self.layer1(x)
+        output['f_2'] = x
+        x = self.layer2(x)
+        output['f_3'] = x
+        x = self.layer3(x)
+        output['f_4'] = x
+        x = self.layer4(x)
+        output['f_5'] = x
+        return output
+
+

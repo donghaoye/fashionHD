@@ -289,6 +289,7 @@ def visualize_seg_map():
     samples = io.load_json(design_root + 'Label/ca_samples.json')
     split = io.load_json(design_root + 'Split/ca_gan_split_trainval.json')
     id_list = split['train'] + split['test']
+    id_list = [s_id for s_id in id_list if samples[s_id]['cloth_type'] == 3]
 
     seg_dir_list = [
         design_root + 'Img/seg_ca_256/',

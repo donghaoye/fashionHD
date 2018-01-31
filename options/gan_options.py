@@ -13,7 +13,7 @@ class BaseGANOptions(BaseOptions):
         parser.add_argument('--ndf', type=int, default=64, help='# of discrim filters in first conv layer')
         parser.add_argument('--which_model_netG', type = str, default = 'resnet_6blocks', help = 'select model to use for netG')
         parser.add_argument('--which_model_netD', type = str, default = 'basic', help = 'select model to use for netD')
-        parser.add_argument('--which_model_AE', type = str, default = 'AE_2.6, help = 'pretrained attribute encoder ID')
+        parser.add_argument('--which_model_AE', type = str, default = 'AE_2.6', help = 'pretrained attribute encoder ID')
         parser.add_argument('--norm', type=str, default='batch', help='instance normalization or batch normalization [batch|instance]')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
         parser.add_argument('--G_condition_layer', type = str, default = 'all', help = 'which layer to add condition feature',
@@ -118,6 +118,7 @@ class TrainGANOptions(BaseGANOptions):
 
         # train setting
         self.parser.add_argument('--pool_size', type=int, default=0, help='the size of image buffer that stores previously generated images')
+        self.parser.add_argument('--check_grad', action = 'store_true', help = 'check gradient norm backforward to netG by each loss')
         
         # optimizer (we use Adam)
         parser.add_argument('--lr', type = float, default = 2e-4, help = 'initial learning rate')
@@ -138,9 +139,10 @@ class TrainGANOptions(BaseGANOptions):
         parser.add_argument('--vis_epoch_freq', type = int, default = 1, help='frequency of visualizing generated images')
         parser.add_argument('--max_n_vis', type = int, default = 20, help='max number of visualized images')
 
-        parser.add_argument('--loss_weight_GAN', type = float, default = 1. help = 'loss wweight of GAN loss (for netG)')
+        parser.add_argument('--loss_weight_GAN', type = float, default = 1., help = 'loss wweight of GAN loss (for netG)')
         parser.add_argument('--loss_weight_L1', type = float, default = 1., help = 'loss weight of L1 loss')
         parser.add_argument('--loss_weight_attr', type = float, default = 0., help = 'loss weight of attribute BCE loss')
+        parser.add_argument('--loss_weight_vgg', type = float, default = 0., help = 'loss weight of vgg loss (perceptual feature loss)')
 
         # set train
         self.is_train = True

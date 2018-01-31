@@ -217,7 +217,114 @@ class WeightedBCELoss(nn.Module):
             return loss.mean()
         else:
             return loss.sum()
-    
+
+
+# Defines the GAN loss which uses either LSGAN or the regular GAN.
+# When LSGAN is used, it is basically same as MSELoss,
+# but it abstracts away the need to create the target label tensor
+# that has the same size as the input
+class GANLoss(nn.Module):
+    def __init__(self, use_lsgan=True, target_real_label=1.0, target_fake_label=0.0,
+                 tensor=torch.FloatTensor):
+        super(GANLoss, self).__init__()
+        self.real_label = target_real_label
+        self.fake_label = target_fake_label
+        self.real_label_var = None
+        self.fake_label_var = None
+        self.Tensor = tensor
+        if use_lsgan:
+            self.loss = nn.MSELoss()
+        else:
+            self.loss = nn.BCELoss()
+
+    def get_target_tensor(self, input, target_is_real):
+        target_tensor = None
+        if target_is_real:
+            create_label = ((self.real_label_var is None) or
+                            (self.real_label_var.numel() != input.numel()))
+            if create_label:
+                # real_tensor = self.Tensor(input.size()).fill_(self.real_label)
+                real_tensor = input.data.new(input.size()).fill_(self.real_label)
+                self.real_label_var = Variable(real_tensor, requires_grad=False)
+            target_tensor = self.real_label_var
+        else:
+            create_label = ((self.fake_label_var is None) or
+                            (self.fake_label_var.numel() != input.numel()))
+            if create_label:
+                # fake_tensor = self.Tensor(input.size()).fill_(self.fake_label)
+                fake_tensor = input.data.new(input.size()).fill_(self.fake_label)
+                self.fake_label_var = Variable(fake_tensor, requires_grad=False)
+            target_tensor = self.fake_label_var
+        return target_tensor
+
+    def __call__(self, input, target_is_real):
+        target_tensor = self.get_target_tensor(input, target_is_real)
+        return self.loss(input, target_tensor)
+
+
+# Vgg19 and VGGLoss is borrowed from pix2pixHD
+class Vgg19(torch.nn.Module):
+    def __init__(self, requires_grad=False):
+        super(Vgg19, self).__init__()
+        vgg_pretrained_features = torchvision.models.vgg19(pretrained=True).features
+        self.slice1 = torch.nn.Sequential()
+        self.slice2 = torch.nn.Sequential()
+        self.slice3 = torch.nn.Sequential()
+        self.slice4 = torch.nn.Sequential()
+        self.slice5 = torch.nn.Sequential()
+        for x in range(2):
+            self.slice1.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(2, 7):
+            self.slice2.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(7, 12):
+            self.slice3.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(12, 21):
+            self.slice4.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(21, 30):
+            self.slice5.add_module(str(x), vgg_pretrained_features[x])
+        if not requires_grad:
+            for param in self.parameters():
+                param.requires_grad = False
+
+    def forward(self, X):
+        h_relu1 = self.slice1(X)
+        h_relu2 = self.slice2(h_relu1)
+        h_relu3 = self.slice3(h_relu2)
+        h_relu4 = self.slice4(h_relu3)
+        h_relu5 = self.slice5(h_relu4)
+        out = [h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]
+        return out
+
+# Perceptual Feature Loss using VGG19 network
+class VGGLoss(nn.Module):
+    def __init__(self, gpu_ids):
+        super(VGGLoss, self).__init__()        
+        self.gpu_ids = gpu_ids
+        self.vgg = Vgg19()
+        self.criterion = nn.L1Loss()
+        self.weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
+        if len(gpu_ids) > 0:
+            self.vgg.cuda(gpu_ids[0])
+
+    def forward(self, x, y):
+        if len(self.gpu_ids) < 1:
+            x_vgg, y_vgg = self.vgg(x), self.vgg(y)
+        else:
+            x_vgg = nn.parallel.data_parallel(self.vgg, x, self.gpu_ids)
+            y_vgg = nn.parallel.data_parallel(self.vgg, y, self.gpu_ids)
+        
+        loss = 0
+        for i in range(len(x_vgg)):
+            loss += self.weights[i] * self.criterion(x_vgg[i], y_vgg[i].detach())        
+        return loss
+
+class TotalVariationLoss(nn.Module):
+    def forward(self, x):
+        x_grad = x[:,:,:,0:-1] - x[:,:,:,1::]
+        y_grad = x[:,:,0:-1,:] - x[:,:,1::,:]
+        loss = (x_grad.norm(p=2).pow(2) + y_grad.norm(p=2).pow(2)).pow(0.5) / x.size(0)
+        return loss
+
 ###############################################################################
 # Metrics
 ###############################################################################
@@ -518,48 +625,6 @@ def print_network(net):
     print('Total number of parameters: %d' % num_params)
 
 
-# Defines the GAN loss which uses either LSGAN or the regular GAN.
-# When LSGAN is used, it is basically same as MSELoss,
-# but it abstracts away the need to create the target label tensor
-# that has the same size as the input
-class GANLoss(nn.Module):
-    def __init__(self, use_lsgan=True, target_real_label=1.0, target_fake_label=0.0,
-                 tensor=torch.FloatTensor):
-        super(GANLoss, self).__init__()
-        self.real_label = target_real_label
-        self.fake_label = target_fake_label
-        self.real_label_var = None
-        self.fake_label_var = None
-        self.Tensor = tensor
-        if use_lsgan:
-            self.loss = nn.MSELoss()
-        else:
-            self.loss = nn.BCELoss()
-
-    def get_target_tensor(self, input, target_is_real):
-        target_tensor = None
-        if target_is_real:
-            create_label = ((self.real_label_var is None) or
-                            (self.real_label_var.numel() != input.numel()))
-            if create_label:
-                # real_tensor = self.Tensor(input.size()).fill_(self.real_label)
-                real_tensor = input.data.new(input.size()).fill_(self.real_label)
-                self.real_label_var = Variable(real_tensor, requires_grad=False)
-            target_tensor = self.real_label_var
-        else:
-            create_label = ((self.fake_label_var is None) or
-                            (self.fake_label_var.numel() != input.numel()))
-            if create_label:
-                # fake_tensor = self.Tensor(input.size()).fill_(self.fake_label)
-                fake_tensor = input.data.new(input.size()).fill_(self.fake_label)
-                self.fake_label_var = Variable(fake_tensor, requires_grad=False)
-            target_tensor = self.fake_label_var
-        return target_tensor
-
-    def __call__(self, input, target_is_real):
-        target_tensor = self.get_target_tensor(input, target_is_real)
-        return self.loss(input, target_tensor)
-
 def get_norm_layer(norm_type = 'instance'):
     if norm_type == 'batch':
         norm_layer = functools.partial(nn.BatchNorm2d, affine=True)
@@ -570,6 +635,7 @@ def get_norm_layer(norm_type = 'instance'):
     else:
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
+
 
 
 # Define a resnet block

@@ -120,4 +120,3 @@ class GANDataset(BaseDataset):
 
         return data
 
-

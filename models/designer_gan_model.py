@@ -115,6 +115,10 @@ class DesignerGAN(BaseModel):
         self.loss_functions.append(self.crit_L1)
         self.loss_functions.append(self.crit_attr)
 
+        if self.opt.loss_weight_vgg > 0:
+            self.crit_vgg = networks.VGGLoss(self.gpu_ids)
+            self.loss_functions.append(self.crit_vgg)
+
         ###################################
         # create optimizers
         ###################################
@@ -190,9 +194,8 @@ class DesignerGAN(BaseModel):
     def backward_D(self):
         # Fake
         # Here we use masked images
-        repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'])
+        repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'].detach())
         repr_fake = self.fake_pool.query(repr_fake.data)
-        pred_fake = self.netD(repr_fake.detach())
         self.output['loss_D_fake'] = self.crit_GAN(pred_fake, False)
         
         # Real
@@ -206,25 +209,58 @@ class DesignerGAN(BaseModel):
 
 
     def backward_G(self):
-        # GAN Loss
         repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'])
         pred_fake = self.netD(repr_fake)
-        loss_G = 0
-
+        self.output['loss_G'] = 0
+        # GAN Loss
         self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
-        loss_G += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
+        self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
         # L1 Loss
-        # print('gpu_ids: %d vs %d' % (self.output['img_fake'].data.get_device(), self.output['img_real'].data.get_device()))
         self.output['loss_G_L1'] = self.crit_L1(self.output['img_fake'], self.output['img_real'])
-        loss_G += self.output['loss_G_L1'] * self.opt.loss_weight_L1
+        self.output['loss_G'] += self.output['loss_G_L1'] * self.opt.loss_weight_L1
         # Attribute Loss
         attr_prob = self.encode_attribute(self.output['img_fake'], self.input['lm_map'], output_type = 'prob')
         self.output['loss_G_attr'] = self.crit_attr(attr_prob, self.input['attr_label'])
-        loss_G += self.output['loss_G_attr'] * self.opt.loss_weight_attr
-        
+        self.output['loss_G'] += self.output['loss_G_attr'] * self.opt.loss_weight_attr
+        # VGG Loss
+        if self.opt.loss_weight_vgg > 0:
+            self.output['loss_G_VGG'] = self.crit_vgg(self.output['img_fake'], self.output['img_real'])
+            self.output['loss_G'] += self.output['loss_G_VGG'] * self.loss_weight_vgg
         # backward
-        self.output['loss_G'] = loss_G
         self.output['loss_G'].backward()
+
+    def backward_G_grad_check(self):
+        self.output['img_fake'].retain_grad()
+        repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'])
+        pred_fake = self.netD(repr_fake)
+        self.output['loss_G'] = 0
+        grad = self.output['img_fake'].grad.clone()
+        # GAN Loss
+        self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
+        (self.output['loss_G_GAN'] * self.opt.loss_weight_GAN).backward()
+        self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
+        self.output['grad_G_GAN'] = (self.output['img_fake'].grad - grad).norm()
+        grad = self.output['img_fake'].grad.clone()
+        # L1 Loss
+        self.output['loss_G_L1'] = self.crit_L1(self.output['img_fake'], self.output['img_real'])
+        (self.output['loss_G_L1'] * self.opt.loss_weight_L1).backward()
+        self.output['loss_G'] += self.output['loss_G_L1'] * self.opt.loss_weight_L1
+        self.output['grad_G_L1'] = (self.output['img_fake'].grad - grad).norm()
+        grad = self.output['img_fake'].grad.clone()
+        # Attribute Loss
+        attr_prob = self.encode_attribute(self.output['img_fake'], self.input['lm_map'], output_type = 'prob')
+        self.output['loss_G_attr'] = self.crit_attr(attr_prob, self.input['attr_label'])
+        (self.output['loss_G_attr'] * self.opt.loss_weight_attr).backward()
+        self.output['loss_G'] += self.output['loss_G_attr'] * self.opt.loss_weight_attr
+        self.output['grad_G_attr'] = (self.output['img_fake'].grad - grad).norm()
+        grad = self.output['img_fake'].grad.clone()
+        # VGG Loss
+        if self.opt.loss_weight_vgg > 0:
+            self.output['loss_G_VGG'] = self.crit_vgg(self.output['img_fake'], self.output['img_real'])
+            (self.output['loss_G_VGG'] * self.opt.loss_weight_vgg).backward()
+            self.output['loss_G'] += self.output['loss_G_VGG'] * self.opt.loss_weight_vgg
+            self.output['grad_G_VGG'] = (self.output['img_fake'].grad - grad).norm()
+
 
     def optimize_parameters(self):
         self.forward()
@@ -234,18 +270,31 @@ class DesignerGAN(BaseModel):
         self.optim_D.step()
         # optimize G
         self.optim_G.zero_grad()
-        self.backward_G()
+        if self.opt.check_grad:
+            self.backward_G_grad_check()
+        else:
+            self.backward_G()
         self.optim_G.step()
-
 
     def get_current_errors(self):
         errors = OrderedDict([
+            ('D_real', self.output['loss_D_real'].data[0]),
+            ('D_fake', self.output['loss_D_fake'].data[0]),
             ('G_GAN', self.output['loss_G_GAN'].data[0]),
             ('G_L1', self.output['loss_G_L1'].data[0]),
-            ('G_attr', self.output['loss_G_attr'].data[0]),
-            ('D_real', self.output['loss_D_real'].data[0]),
-            ('D_fake', self.output['loss_D_fake'].data[0])
+            ('G_attr', self.output['loss_G_attr'].data[0])
             ])
+
+        if 'loss_G_VGG' in self.output:
+            errors['G_VGG'] = self.output['loss_G_VGG'].data[0]
+
+        if self.opt.check_grad:
+            errors['grad_G_GAN'] = self.output['grad_G_GAN']
+            errors['grad_G_L1'] = self.output['grad_G_L1']
+            errors['grad_G_attr'] = self.output['grad_G_attr']
+            if 'grad_G_VGG' in self.output['grad_G_VGG']:
+                errors['grad_G_VGG'] = self.output['grad_G_VGG']
+
         return errors
 
     def get_current_visuals(self):

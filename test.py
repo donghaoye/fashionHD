@@ -1,6 +1,13 @@
-import argparse
+from __future__ import division
+import torch
+import torch.nn as nn
+from torch.autograd import Variable
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--a', action = 'store_true')
+class Model(nn.Module):
+    def forward(self, x):
+        return [x, x+1]
 
-print(parser.parse_args())
+model = Model()
+x = Variable(torch.ones(2,2))
+y = nn.parallel.data_parallel(model, x, device_ids = [0,1])
+print(y)
