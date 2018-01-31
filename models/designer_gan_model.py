@@ -226,7 +226,7 @@ class DesignerGAN(BaseModel):
         # VGG Loss
         if self.opt.loss_weight_vgg > 0:
             self.output['loss_G_VGG'] = self.crit_vgg(self.output['img_fake'], self.output['img_real'])
-            self.output['loss_G'] += self.output['loss_G_VGG'] * self.loss_weight_vgg
+            self.output['loss_G'] += self.output['loss_G_VGG'] * self.opt.loss_weight_vgg
         # backward
         self.output['loss_G'].backward()
 
@@ -289,11 +289,11 @@ class DesignerGAN(BaseModel):
             errors['G_VGG'] = self.output['loss_G_VGG'].data[0]
 
         if self.opt.check_grad:
-            errors['grad_G_GAN'] = self.output['grad_G_GAN']
-            errors['grad_G_L1'] = self.output['grad_G_L1']
-            errors['grad_G_attr'] = self.output['grad_G_attr']
-            if 'grad_G_VGG' in self.output['grad_G_VGG']:
-                errors['grad_G_VGG'] = self.output['grad_G_VGG']
+            errors['grad_G_GAN'] = self.output['grad_G_GAN'].data[0]
+            errors['grad_G_L1'] = self.output['grad_G_L1'].data[0]
+            errors['grad_G_attr'] = self.output['grad_G_attr'].data[0]
+            if 'grad_G_VGG' in self.output:
+                errors['grad_G_VGG'] = self.output['grad_G_VGG'].data[0]
 
         return errors
 

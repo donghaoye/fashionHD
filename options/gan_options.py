@@ -23,7 +23,7 @@ class BaseGANOptions(BaseOptions):
         
         parser.add_argument('--n_attr', type = int, default = 1000, help = 'number of attribute entries')
         parser.add_argument('--n_attr_feat', type = int, default = 512, help = '# of attribute feature channels')
-        parser.add_argument('--attr_condition_type', type = str, default = 'feat', help = 'attribute condition form [feat|prob|none]',
+        parser.add_argument('--attr_condition_type', type = str, default = 'feat_map', help = 'attribute condition form [feat|prob|none]',
             choices = ['feat', 'prob', 'feat_map', 'prob_map'])
 
         parser.add_argument('--shape_encode', type = str, default = 'lm+seg', help = 'cloth shape encoding method',
@@ -140,7 +140,7 @@ class TrainGANOptions(BaseGANOptions):
         parser.add_argument('--max_n_vis', type = int, default = 20, help='max number of visualized images')
 
         parser.add_argument('--loss_weight_GAN', type = float, default = 1., help = 'loss wweight of GAN loss (for netG)')
-        parser.add_argument('--loss_weight_L1', type = float, default = 1., help = 'loss weight of L1 loss')
+        parser.add_argument('--loss_weight_L1', type = float, default = 100., help = 'loss weight of L1 loss')
         parser.add_argument('--loss_weight_attr', type = float, default = 0., help = 'loss weight of attribute BCE loss')
         parser.add_argument('--loss_weight_vgg', type = float, default = 0., help = 'loss weight of vgg loss (perceptual feature loss)')
 
