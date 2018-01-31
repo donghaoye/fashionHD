@@ -212,7 +212,7 @@ class DesignerGAN(BaseModel):
         loss_G = 0
 
         self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
-        loss_G += self.output['loss_G_GAN']
+        loss_G += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
         # L1 Loss
         # print('gpu_ids: %d vs %d' % (self.output['img_fake'].data.get_device(), self.output['img_real'].data.get_device()))
         self.output['loss_G_L1'] = self.crit_L1(self.output['img_fake'], self.output['img_real'])
