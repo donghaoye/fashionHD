@@ -94,6 +94,8 @@ class DesignerGAN(BaseModel):
 
         if self.is_train:
             self.netD = networks.define_D(opt)
+            if opt.which_model_init_netG is not 'none' and not opt.continue_train:
+                self.load_network(self.netG, 'G', 'latest', opt.which_model_init_netG)
 
         if not self.is_train or opt.continue_train:
             self.load_network(self.netG, 'G', opt.which_epoch)
@@ -262,7 +264,10 @@ class DesignerGAN(BaseModel):
             self.output['grad_G_VGG'] = (self.output['img_fake'].grad - grad).norm()
 
 
-    def optimize_parameters(self, train_D = True, train_G = True):
+    def optimize_parameters(self, train_D = True, train_G = True, check_grad = False):
+        # clear previous output
+        self.output = {}
+
         self.forward()
         # optimize D
         self.optim_D.zero_grad()
@@ -271,7 +276,7 @@ class DesignerGAN(BaseModel):
             self.optim_D.step()
         # optimize G
         self.optim_G.zero_grad()
-        if self.opt.check_grad:
+        if check_grad:
             self.backward_G_grad_check()
         else:
             self.backward_G()
@@ -280,8 +285,7 @@ class DesignerGAN(BaseModel):
 
     def get_current_errors(self):
         errors = OrderedDict([
-            ('D_real', self.output['loss_D_real'].data[0]),
-            ('D_fake', self.output['loss_D_fake'].data[0]),
+            ('D_GAN', self.output['loss_D'].data[0]),
             ('G_GAN', self.output['loss_G_GAN'].data[0]),
             ('G_L1', self.output['loss_G_L1'].data[0]),
             ('G_attr', self.output['loss_G_attr'].data[0])
@@ -290,12 +294,11 @@ class DesignerGAN(BaseModel):
         if 'loss_G_VGG' in self.output:
             errors['G_VGG'] = self.output['loss_G_VGG'].data[0]
 
-        if self.opt.check_grad:
-            errors['grad_G_GAN'] = self.output['grad_G_GAN'].data[0]
-            errors['grad_G_L1'] = self.output['grad_G_L1'].data[0]
-            errors['grad_G_attr'] = self.output['grad_G_attr'].data[0]
-            if 'grad_G_VGG' in self.output:
-                errors['grad_G_VGG'] = self.output['grad_G_VGG'].data[0]
+        # gradients
+        grad_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG', 'grad_G_attr']
+        for grad_name in grad_list:
+            if grad_name in self.output:
+                errors[grad_name] = self.output[grad_name].data[0]
 
         return errors
 

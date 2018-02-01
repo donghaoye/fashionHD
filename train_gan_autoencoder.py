@@ -39,14 +39,16 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
         total_steps += 1
         model.set_input(data)
 
-        if total_steps <= 50:
+        if total_steps <= opt.D_pretrain:
             train_D = True
             train_G = False
         else:
             train_D = (total_steps % opt.D_train_freq == 0)
             train_G = (total_steps % opt.G_train_freq == 0)
 
-        model.optimize_parameters(train_D = train_D, train_G = train_G)
+        check_grad = (total_steps % opt.check_grad_freq == 0) and total_steps > opt.D_pretrain
+
+        model.optimize_parameters(train_D = train_D, train_G = train_G, check_grad = check_grad)
 
         if total_steps % opt.display_freq == 0:
             train_error = model.get_current_errors()

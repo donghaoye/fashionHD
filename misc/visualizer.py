@@ -286,10 +286,10 @@ class GANVisualizer(BaseVisualizer):
 
         imgs = torch.stack(imgs)
         fn_img = os.path.join(vis_dir, '%s_epoch%d.jpg' % (subset, epoch))
-        torchvision.utils.save_image(imgs, fn_img, nrow = 6, normalize = True)
+        torchvision.utils.save_image(imgs, fn_img, nrow = 5, normalize = True)
 
     def pavi_log(self, phase, iter_num, outputs):
-        upper_list = ['D_real', 'D_fake',]
+        upper_list = ['D_real', 'D_fake', '']
         new_outputs = {}
         for k,v in outputs.iteritems():
             # do not display grad in pavi

@@ -14,6 +14,7 @@ class BaseGANOptions(BaseOptions):
         parser.add_argument('--which_model_netG', type = str, default = 'resnet_6blocks', help = 'select model to use for netG')
         parser.add_argument('--which_model_netD', type = str, default = 'basic', help = 'select model to use for netD')
         parser.add_argument('--which_model_AE', type = str, default = 'AE_2.6', help = 'pretrained attribute encoder ID')
+        parser.add_argument('--which_model_init_netG', type = str, default = 'GAN_AE_2.6', help = 'load pretrained model to init netG parameters')
         parser.add_argument('--norm', type=str, default='batch', help='instance normalization or batch normalization [batch|instance]')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
         parser.add_argument('--G_condition_layer', type = str, default = 'all', help = 'which layer to add condition feature',
@@ -118,7 +119,6 @@ class TrainGANOptions(BaseGANOptions):
 
         # train setting
         self.parser.add_argument('--pool_size', type=int, default=0, help='the size of image buffer that stores previously generated images')
-        self.parser.add_argument('--check_grad', action = 'store_true', help = 'check gradient norm backforward to netG by each loss')
         
         # optimizer (we use Adam)
         parser.add_argument('--lr', type = float, default = 2e-4, help = 'initial learning rate')
@@ -132,8 +132,6 @@ class TrainGANOptions(BaseGANOptions):
         parser.add_argument('--niter_decay', type=int, default=5, help='# of iter to linearly decay learning rate to zero')
         parser.add_argument('--lr_decay', type=int, default=1, help='multiply by a gamma every lr_decay_interval epochs')
         parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')
-        parser.add_argument('--D_train_freq', type = int, default = 1, help='frequency of training netD')
-        parser.add_argument('--G_train_freq', type = int, default = 1, help='frequency of training netG')
         parser.add_argument('--display_freq', type = int, default = 10, help='frequency of showing training results on screen')
         # parser.add_argument('--test_epoch_freq', type = int, default = 1, help='frequency of testing model')
         parser.add_argument('--save_epoch_freq', type = int, default = 1, help='frequency of saving model to disk' )
@@ -141,10 +139,14 @@ class TrainGANOptions(BaseGANOptions):
         parser.add_argument('--max_n_vis', type = int, default = 20, help='max number of visualized images')
 
         parser.add_argument('--loss_weight_GAN', type = float, default = 1., help = 'loss wweight of GAN loss (for netG)')
-        parser.add_argument('--loss_weight_L1', type = float, default = 100., help = 'loss weight of L1 loss')
+        parser.add_argument('--loss_weight_L1', type = float, default = 0., help = 'loss weight of L1 loss')
         parser.add_argument('--loss_weight_attr', type = float, default = 0., help = 'loss weight of attribute BCE loss')
         parser.add_argument('--loss_weight_vgg', type = float, default = 0., help = 'loss weight of vgg loss (perceptual feature loss)')
 
+        parser.add_argument('--D_pretrain', type = int, default = 50, help = 'iter num of pretraining net D')
+        parser.add_argument('--D_train_freq', type = int, default = 1, help='frequency of training netD')
+        parser.add_argument('--G_train_freq', type = int, default = 1, help='frequency of training netG')
+        parser.add_argument('--check_grad_freq', type = int, default = 100, help = 'frequency of checking gradient of each loss')
         # set train
         self.is_train = True
 
