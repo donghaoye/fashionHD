@@ -38,7 +38,9 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
     for i, data in enumerate(train_loader):
         total_steps += 1
         model.set_input(data)
-        model.optimize_parameters()
+
+        train_D = (total_steps % opt.D_train_freq == 1)
+        model.optimize_parameters(train_D = train_D)
 
         if total_steps % opt.display_freq == 0:
             train_error = model.get_current_errors()

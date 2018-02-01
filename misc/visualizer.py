@@ -278,7 +278,7 @@ class GANVisualizer(BaseVisualizer):
             imgs += [
                 visuals['img_real'][i],
                 visuals['img_fake'][i],
-                visuals['img_real_raw'][i],
+                # visuals['img_real_raw'][i],
                 visuals['img_fake_raw'][i],
                 visuals['seg_map'][i],
                 visuals['landmark_heatmap'][i]
