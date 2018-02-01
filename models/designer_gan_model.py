@@ -262,12 +262,12 @@ class DesignerGAN(BaseModel):
             self.output['grad_G_VGG'] = (self.output['img_fake'].grad - grad).norm()
 
 
-    def optimize_parameters(self, train_D = True):
+    def optimize_parameters(self, train_D = True, train_G = True):
         self.forward()
         # optimize D
+        self.optim_D.zero_grad()
+        self.backward_D()
         if train_D:
-            self.optim_D.zero_grad()
-            self.backward_D()
             self.optim_D.step()
         # optimize G
         self.optim_G.zero_grad()
@@ -275,7 +275,8 @@ class DesignerGAN(BaseModel):
             self.backward_G_grad_check()
         else:
             self.backward_G()
-        self.optim_G.step()
+        if train_G:
+            self.optim_G.step()
 
     def get_current_errors(self):
         errors = OrderedDict([
