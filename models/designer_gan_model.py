@@ -94,7 +94,7 @@ class DesignerGAN(BaseModel):
 
         if self.is_train:
             self.netD = networks.define_D(opt)
-            if opt.which_model_init_netG is not 'none' and not opt.continue_train:
+            if opt.which_model_init_netG != 'none' and not opt.continue_train:
                 self.load_network(self.netG, 'G', 'latest', opt.which_model_init_netG)
 
         if not self.is_train or opt.continue_train:

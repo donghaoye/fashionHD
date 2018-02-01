@@ -289,16 +289,15 @@ class GANVisualizer(BaseVisualizer):
         torchvision.utils.save_image(imgs, fn_img, nrow = 5, normalize = True)
 
     def pavi_log(self, phase, iter_num, outputs):
-        upper_list = ['D_real', 'D_fake', '']
+        # upper_list = ['D_real', 'D_fake', '']
+        upper_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG', 'grad_G_attr']
+        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'G_attr']
+
         new_outputs = {}
         for k,v in outputs.iteritems():
-            # do not display grad in pavi
-            if k.startswith('grad'):
-                continue
-
             if k in upper_list:
                 new_outputs[k+'_upper'] = v
-            else:
+            elif k in lower_list:
                 new_outputs[k] = v
 
         super(GANVisualizer, self).pavi_log(phase, iter_num, new_outputs)
