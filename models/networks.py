@@ -566,11 +566,11 @@ def define_G(opt):
     else:
         if opt.which_model_netG == 'resnet_9blocks':
             netG = ResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc,
-                condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer,
+                ngf = opt.ngf, norm_layer = norm_layer,
                 use_dropout = use_dropout, n_blocks = 9, gpu_ids = opt.gpu_ids)
         elif opt.which_model_netG == 'resnet_6blocks':
             netG = ResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc,
-                condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer,
+                ngf = opt.ngf, norm_layer = norm_layer,
                 use_dropout = use_dropout, n_blocks = 6, gpu_ids = opt.gpu_ids)
         else:
             raise NotImplementedError('Generator model name [%s] is not recognized' % opt.which_model_netG)    

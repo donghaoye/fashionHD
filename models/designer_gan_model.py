@@ -191,9 +191,7 @@ class DesignerGAN(BaseModel):
         else:
             self.output['img_fake_raw'] = self.netG(shape_code)
 
-        self.output['img_fake_raw'] = self.netG(shape_code, attr_code)
         self.output['img_real_raw'] = self.input['img']
-
         self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.output['img_real_raw'])
         self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
 
@@ -243,7 +241,7 @@ class DesignerGAN(BaseModel):
         self.output['loss_gp'] = grad_penalty
         self.output['loss_D'] = self.output['loss_D_fake'] - self.output['loss_D_real'] + self.output['loss_gp']*self.opt.loss_weight_gp
         self.output['loss_D'].backward()
-        print('D_fake: %f, D_real: %f, gp: %f' %(self.output['loss_D_fake'].data[0], self.output['loss_D_real'].data[0], self.output['loss_gp'].data[0]))
+        # print('D_fake: %f, D_real: %f, gp: %f' %(self.output['loss_D_fake'].data[0], self.output['loss_D_real'].data[0], self.output['loss_gp'].data[0]))
 
 
     def backward_G(self):
