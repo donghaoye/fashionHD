@@ -20,8 +20,8 @@ class BaseGANOptions(BaseOptions):
         parser.add_argument('--G_condition_layer', type = str, default = 'all', help = 'which layer to add condition feature',
             choices = ['first', 'all'])
         parser.add_argument('--n_layers_D', type=int, default=3, help='only used if which_model_netD==n_layers')
-        parser.add_argument('--no_lsgan', action='store_true', help='do *not* use least square GAN, if false, use vanilla GAN')
-        
+        parser.add_argument('--which_gan', type=str, default='dcgan', help='type of gan loss [dcgan|lsgan|wgan]',
+            choices = ['dcgan', 'lsgan', 'wgan'])
         parser.add_argument('--n_attr', type = int, default = 1000, help = 'number of attribute entries')
         parser.add_argument('--n_attr_feat', type = int, default = 512, help = '# of attribute feature channels')
         parser.add_argument('--attr_condition_type', type = str, default = 'feat_map', help = 'attribute condition form [feat|prob|none]',
@@ -142,6 +142,7 @@ class TrainGANOptions(BaseGANOptions):
         parser.add_argument('--loss_weight_L1', type = float, default = 0., help = 'loss weight of L1 loss')
         parser.add_argument('--loss_weight_attr', type = float, default = 0., help = 'loss weight of attribute BCE loss')
         parser.add_argument('--loss_weight_vgg', type = float, default = 0., help = 'loss weight of vgg loss (perceptual feature loss)')
+        parser.add_argument('--loss_weight_gp', type = float, default = 10., help = 'gradient penalty weight in WGAN')
 
         parser.add_argument('--D_pretrain', type = int, default = 50, help = 'iter num of pretraining net D')
         parser.add_argument('--D_train_freq', type = int, default = 1, help='frequency of training netD')

@@ -108,7 +108,11 @@ class DesignerGAN(BaseModel):
         ###################################
         # define loss functions and loss buffers
         ###################################
-        self.crit_GAN = networks.GANLoss(use_lsgan = not opt.no_lsgan, tensor = self.Tensor)
+        if opt.which_gan in {'dcgan', 'lsgan'}:
+            self.crit_GAN = networks.GANLoss(use_lsgan = opt.which_gan == 'lsgan', tensor = self.Tensor)
+        else:
+            # WGAN loss will be calculated in self.backward_D_wgangp and self.backward_G
+            self.crit_GAN = None
         self.crit_L1 = networks.Smooth_Loss(nn.L1Loss())
         self.crit_attr = networks.Smooth_Loss(nn.BCELoss(size_average = True))
 
@@ -194,14 +198,14 @@ class DesignerGAN(BaseModel):
         self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
 
     def backward_D(self):
-        # Fake
-        # Here we use masked images
+        # fake
+        # here we use masked images
         repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'].detach())
         repr_fake = self.fake_pool.query(repr_fake.data)
         pred_fake = self.netD(repr_fake)
         self.output['loss_D_fake'] = self.crit_GAN(pred_fake, False)
         
-        # Real
+        # real
         repr_real = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_real'])
         pred_real = self.netD(repr_real)
         self.output['loss_D_real'] = self.crit_GAN(pred_real, True)
@@ -210,14 +214,49 @@ class DesignerGAN(BaseModel):
         self.output['loss_D'] = (self.output['loss_D_real'] + self.output['loss_D_fake']) * 0.5
         self.output['loss_D'].backward()
 
+    def backward_D_wgangp(self):
+        # optimize netD using wasserstein gan loss with gradient penalty. 
+        # when using wgan, loss_D_fake(real) means critic output for fake(real) data, instead of loss
+        bsz = self.output['img_fake'].size(0)
+        # fake
+        repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'].detach())
+        disc_fake = self.netD(repr_fake)
+        self.output['loss_D_fake'] = disc_fake.mean()
+        # real
+        repr_real = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_real'])
+        disc_real = self.netD(repr_real)
+        self.output['loss_D_real'] = disc_real.mean()
+        # gradient penalty
+        alpha_sz = [bsz] + [1]*(repr_fake.ndimension()-1)
+        alpha = repr_fake.data.new(torch.rand(alpha_sz).expand(repr_fake.size()))
+
+        repr_interp = alpha * repr_real.data + (1 - alpha) * repr_fake.data
+        repr_interp = Variable(repr_interp, requires_grad = True)
+        
+        disc_interp = self.netD(repr_interp).view(bsz,-1).mean(1)
+        # grad = torch.autograd.grad(outputs = disc_interp, inputs = repr_interp,
+        #     grad_outputs = disc_interp.data.new(disc_interp.size()).fill_(1),
+        #     create_graph=True, retain_graph=True, only_inputs=True)[0]
+        grad = torch.autograd.grad(outputs = disc_interp.sum(), inputs = repr_interp,
+            create_graph=True, retain_graph=True, only_inputs=True)[0]
+        grad_penalty = ((grad.view(bsz,-1).norm(2,dim=1)-1)**2).mean()
+        self.output['loss_gp'] = grad_penalty
+        self.output['loss_D'] = self.output['loss_D_fake'] - self.output['loss_D_real'] + self.output['loss_gp']*self.opt.loss_weight_gp
+        self.output['loss_D'].backward()
+        print('D_fake: %f, D_real: %f, gp: %f' %(self.output['loss_D_fake'].data[0], self.output['loss_D_real'].data[0], self.output['loss_gp'].data[0]))
+
 
     def backward_G(self):
         repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'])
-        pred_fake = self.netD(repr_fake)
         self.output['loss_G'] = 0
         # GAN Loss
-        self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
-        self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
+        if self.opt.which_gan == 'wgan':
+            disc_fake = self.netD(repr_fake)
+            self.output['loss_G_GAN'] = -disc_fake.mean()
+        else:
+            pred_fake = self.netD(repr_fake)
+            self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
+            self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
         # L1 Loss
         self.output['loss_G_L1'] = self.crit_L1(self.output['img_fake'], self.output['img_real'])
         self.output['loss_G'] += self.output['loss_G_L1'] * self.opt.loss_weight_L1
@@ -235,10 +274,15 @@ class DesignerGAN(BaseModel):
     def backward_G_grad_check(self):
         self.output['img_fake'].retain_grad()
         repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'])
-        pred_fake = self.netD(repr_fake)
         self.output['loss_G'] = 0
         # GAN Loss
-        self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
+        if self.opt.which_gan == 'wgan':
+            disc_fake = self.netD(repr_fake)
+            self.output['loss_G_GAN'] = -disc_fake.mean()
+        else:
+            pred_fake = self.netD(repr_fake)
+            self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
+
         (self.output['loss_G_GAN'] * self.opt.loss_weight_GAN).backward(retain_graph=True)
         self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
         self.output['grad_G_GAN'] = (self.output['img_fake'].grad).norm()
@@ -271,7 +315,11 @@ class DesignerGAN(BaseModel):
         self.forward()
         # optimize D
         self.optim_D.zero_grad()
-        self.backward_D()
+        if self.opt.which_gan == 'wgan':
+            self.backward_D_wgangp()
+        else:
+            self.backward_D()
+
         if train_D:
             self.optim_D.step()
         # optimize G
@@ -280,6 +328,7 @@ class DesignerGAN(BaseModel):
             self.backward_G_grad_check()
         else:
             self.backward_G()
+
         if train_G:
             self.optim_G.step()
 
@@ -293,6 +342,8 @@ class DesignerGAN(BaseModel):
 
         if 'loss_G_VGG' in self.output:
             errors['G_VGG'] = self.output['loss_G_VGG'].data[0]
+        if 'loss_gp' in self.output:
+            errors['D_GP'] = self.output['loss_gp'].data[0]
 
         # gradients
         grad_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG', 'grad_G_attr']

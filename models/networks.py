@@ -597,7 +597,8 @@ def define_G(opt):
 def define_D(opt):
     netD = None
     use_gpu = len(opt.gpu_ids) > 0
-    use_sigmoid = opt.no_lsgan
+    # use_sigmoid = opt.no_lsgan
+    use_sigmoid = (opt.which_gan == 'dcgan')
     norm_layer = get_norm_layer(norm_type=opt.norm)
 
     if use_gpu:
