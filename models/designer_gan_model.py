@@ -179,7 +179,7 @@ class DesignerGAN(BaseModel):
         self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.output['img_real_raw'])
         self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
         
-        
+
     def test(self):
         if float(torch.__version__[0:3]) >= 0.4:
             with torch.no_grad():
@@ -265,7 +265,7 @@ class DesignerGAN(BaseModel):
         else:
             pred_fake = self.netD(repr_fake)
             self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
-            self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
+        self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
         # L1 Loss
         self.output['loss_G_L1'] = self.crit_L1(self.output['img_fake'], self.output['img_real'])
         self.output['loss_G'] += self.output['loss_G_L1'] * self.opt.loss_weight_L1
