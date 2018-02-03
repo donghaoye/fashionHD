@@ -132,9 +132,9 @@ class DesignerGAN(BaseModel):
         self.optimizers = []
 
         self.optim_G = torch.optim.Adam(self.netG.parameters(),
-            lr = opt.lr, betas = (opt.beta1, 0.999))
+            lr = opt.lr, betas = (opt.beta1, opt.beta2))
         self.optim_D = torch.optim.Adam(self.netD.parameters(),
-            lr = opt.lr, betas = (opt.beta1, 0.999))
+            lr = opt.lr, betas = (opt.beta1, opt.beta2))
         self.optimizers.append(self.optim_G)
         self.optimizers.append(self.optim_D)
 

@@ -124,8 +124,8 @@ class TrainGANOptions(BaseGANOptions):
         
         # optimizer (we use Adam)
         parser.add_argument('--lr', type = float, default = 2e-4, help = 'initial learning rate')
-        parser.add_argument('--beta1', type = float, default = 0.5, help = 'momentum term for Adam')
-
+        parser.add_argument('--beta1', type = float, default = 0.5, help = 'momentum1 term for Adam')
+        parser.add_argument('--beta2', type = float, default = 0.999, help = 'momentum2 term for Adam')
         # scheduler
         parser.add_argument('--lr_policy', type=str, default='lambda', help='learning rate policy: lambda|step|plateau',
             choices = ['step', 'plateau', 'lambda'])
