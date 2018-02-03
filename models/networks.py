@@ -267,7 +267,7 @@ class Vgg19(torch.nn.Module):
     def __init__(self, requires_grad=False):
         super(Vgg19, self).__init__()
         vgg_pretrained_features = torchvision.models.vgg19(pretrained=True).features
-        self.crit = nn.L1Loss()
+        self.crit = nn.L1Loss(reduce=False)
         self.weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
         self.slice1 = torch.nn.Sequential()
         self.slice2 = torch.nn.Sequential()
@@ -289,7 +289,7 @@ class Vgg19(torch.nn.Module):
                 param.requires_grad = False
 
     def forward(self, x, y):
-        bsz = x.size()
+        bsz = x.size(0)
         input = torch.cat((x,y), dim = 0)
         h_relu1 = self.slice1(input)
         h_relu2 = self.slice2(h_relu1)
@@ -309,12 +309,12 @@ class VGGLoss(nn.Module):
         self.vgg = Vgg19()        
         if len(gpu_ids) > 0:
             self.vgg.cuda()
-            
+
     def forward(self, x, y):
         if self.gpu_ids:
             return nn.parallel.data_parallel(self.vgg, (x,y)).mean()
         else:
-            return self.vgg(x,y)
+            return self.vgg(x,y).mean()
 
 class TotalVariationLoss(nn.Module):
     def forward(self, x):
