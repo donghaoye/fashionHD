@@ -298,15 +298,15 @@ class Vgg19(torch.nn.Module):
         h_relu5 = self.slice5(h_relu4)
         out = 0
         for i, h in enumerate([h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]):
-            out += self.weights[i] * self.crit(h[0:bsz], h[bsz::].detach())
+            out += self.weights[i] * self.crit(h[0:bsz], h[bsz::].detach()).view(bsz,-1).mean()
         return out
 
 # Perceptual Feature Loss using VGG19 network
 class VGGLoss(nn.Module):
     def __init__(self, gpu_ids):
-        super(VGGLoss, self).__init__()        
+        super(VGGLoss, self).__init__()
         self.gpu_ids = gpu_ids
-        self.vgg = Vgg19()        
+        self.vgg = Vgg19()
         if len(gpu_ids) > 0:
             self.vgg.cuda()
 
