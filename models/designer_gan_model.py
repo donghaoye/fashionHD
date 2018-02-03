@@ -179,21 +179,26 @@ class DesignerGAN(BaseModel):
         self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.output['img_real_raw'])
         self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
         
+        
     def test(self):
-        self.input['img'].volatile = True
-        self.input['lm_map'].volatile = True
-        self.input['seg_mask'].volatile = True
-
-        shape_code = self.encode_shape(self.input['lm_map'], self.input['seg_mask'])
-        if not self.opt.no_attr_condition:
-            attr_code = self.encode_attribute(self.input['img'], self.input['lm_map'])
-            self.output['img_fake_raw'] = self.netG(shape_code, attr_code)
+        if float(torch.__version__[0:3]) >= 0.4:
+            with torch.no_grad():
+                self.forward()
         else:
-            self.output['img_fake_raw'] = self.netG(shape_code)
+            self.input['img'].volatile = True
+            self.input['lm_map'].volatile = True
+            self.input['seg_mask'].volatile = True
 
-        self.output['img_real_raw'] = self.input['img']
-        self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.output['img_real_raw'])
-        self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
+            shape_code = self.encode_shape(self.input['lm_map'], self.input['seg_mask'])
+            if not self.opt.no_attr_condition:
+                attr_code = self.encode_attribute(self.input['img'], self.input['lm_map'])
+                self.output['img_fake_raw'] = self.netG(shape_code, attr_code)
+            else:
+                self.output['img_fake_raw'] = self.netG(shape_code)
+
+            self.output['img_real_raw'] = self.input['img']
+            self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.output['img_real_raw'])
+            self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
 
     def backward_D(self):
         # fake
@@ -224,6 +229,11 @@ class DesignerGAN(BaseModel):
         repr_real = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_real'])
         disc_real = self.netD(repr_real)
         self.output['loss_D_real'] = disc_real.mean()
+
+        self.output['loss_D'] = self.output['loss_D_fake'] - self.output['loss_D_real']
+        self.output['loss_D'].backward()
+        
+
         # gradient penalty
         alpha_sz = [bsz] + [1]*(repr_fake.ndimension()-1)
         alpha = torch.rand(alpha_sz).expand(repr_fake.size())
@@ -239,9 +249,9 @@ class DesignerGAN(BaseModel):
         grad = torch.autograd.grad(outputs = disc_interp.sum(), inputs = repr_interp,
             create_graph=True, retain_graph=True, only_inputs=True)[0]
         grad_penalty = ((grad.view(bsz,-1).norm(2,dim=1)-1)**2).mean()
-        self.output['loss_gp'] = grad_penalty
-        self.output['loss_D'] = self.output['loss_D_fake'] - self.output['loss_D_real'] + self.output['loss_gp']*self.opt.loss_weight_gp
-        self.output['loss_D'].backward()
+        self.output['loss_gp'] = grad_penalty * self.opt.loss_weight_gp
+
+        self.output['loss_gp'].backward()
         # print('D_fake: %f, D_real: %f, gp: %f' %(self.output['loss_D_fake'].data[0], self.output['loss_D_real'].data[0], self.output['loss_gp'].data[0]))
 
 

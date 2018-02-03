@@ -68,6 +68,13 @@ def test_patchGAN_output_size():
         output = netD(input)
         print('n_layers=%d, in_size: %d, out_size: %d' % (n, input_size, output.size(2)))
 
+def test_Unet_size():
+    from networks import UnetGenerator
+    model = UnetGenerator(input_nc = 3, output_nc = 3, num_downs = 7, ngf=64)
+    x = Variable(torch.rand(1,3,224,224))
+    y = model(x)
+
+
 
 def test_scheduler():
     from options.gan_options import TrainGANOptions
@@ -86,5 +93,6 @@ def test_scheduler():
 if __name__ == '__main__':
     # test_AttributeEncoder()
     # test_patchGAN_output_size()
-    test_DesignerGAN()
+    # test_DesignerGAN()
     # test_scheduler()
+    test_Unet_size()

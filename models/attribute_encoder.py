@@ -108,24 +108,27 @@ class AttributeEncoder(BaseModel):
 
     def test(self):
         # assert not self.net.training
-
-        v_img = Variable(self.input['img'], volatile = True)
-        v_label = Variable(self.input['label'])
-
-        if self.opt.joint_cat:
-            v_cat_label = Variable(self.input['cat_label'].long())
-            output_prob, output_map, output_cat_pred = self.net(v_img)
-            self.output['cat_pred'] = output_cat_pred
-            self.output['loss_cat'] = self.crit_cat(output_cat_pred, v_cat_label)
-        elif self.opt.input_lm:
-            v_lm_heatmap = Variable(self.input['lm_heatmap'], volatile = True)
-            output_prob, output_map = self.net(v_img, v_lm_heatmap)
+        if float(torch.__version__[0:3]) >= 0.4:
+            with torch.no_grad():
+                self.forward()
         else:
-            output_prob, output_map = self.net(v_img)
+            v_img = Variable(self.input['img'], volatile = True)
+            v_label = Variable(self.input['label'])
 
-        self.output['prob'] = output_prob
-        self.output['map'] = output_map
-        self.output['loss_attr'] = self.crit_attr(output_prob, v_label)
+            if self.opt.joint_cat:
+                v_cat_label = Variable(self.input['cat_label'].long())
+                output_prob, output_map, output_cat_pred = self.net(v_img)
+                self.output['cat_pred'] = output_cat_pred
+                self.output['loss_cat'] = self.crit_cat(output_cat_pred, v_cat_label)
+            elif self.opt.input_lm:
+                v_lm_heatmap = Variable(self.input['lm_heatmap'], volatile = True)
+                output_prob, output_map = self.net(v_img, v_lm_heatmap)
+            else:
+                output_prob, output_map = self.net(v_img)
+
+            self.output['prob'] = output_prob
+            self.output['map'] = output_map
+            self.output['loss_attr'] = self.crit_attr(output_prob, v_label)
 
     def extract_feat(self):
         v_img = Variable(self.input['img'], volatile = True)

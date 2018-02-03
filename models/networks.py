@@ -304,14 +304,21 @@ class VGGLoss(nn.Module):
         self.criterion = nn.L1Loss()
         self.weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
         if len(gpu_ids) > 0:
-            self.vgg.cuda(gpu_ids[0])
+            self.vgg.cuda()
 
     def forward(self, x, y):
         if len(self.gpu_ids) < 1:
             x_vgg, y_vgg = self.vgg(x), self.vgg(y)
         else:
-            x_vgg = nn.parallel.data_parallel(self.vgg, x, self.gpu_ids)
-            y_vgg = nn.parallel.data_parallel(self.vgg, y, self.gpu_ids)
+            # x_vgg = nn.parallel.data_parallel(self.vgg, x)
+            # y_vgg = nn.parallel.data_parallel(self.vgg, y)
+
+            # modify the code to solve "arguments are located on different GPUs" bug
+            bsz = x.size(0)
+            vgg_input = torch.cat((x,y), dim = 0).contiguous()
+            vgg_output = nn.parallel.data_parallel(self.vgg, vgg_input)
+            x_vgg = [h[0:bsz] for h in vgg_output]
+            y_vgg = [h[bsz::] for h in vgg_output]
         
         loss = 0
         for i in range(len(x_vgg)):
@@ -554,12 +561,12 @@ def define_G(opt):
 
     if not opt.no_attr_condition:
         if opt.which_model_netG == 'resnet_9blocks':
-            netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = attr_nc,
-                condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
+            netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, cond_nc = attr_nc,
+                cond_layer = opt.G_cond_layer, cond_interp = opt.G_cond_interp, ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
                 use_dropout = use_dropout, n_blocks = 9, gpu_ids = opt.gpu_ids)
         elif opt.which_model_netG == 'resnet_6blocks':
-            netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, condition_nc = attr_nc,
-                condition_layer = opt.G_condition_layer, ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
+            netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, cond_nc = attr_nc,
+                cond_layer = opt.G_cond_layer, cond_interp = opt.G_cond_interp,  ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
                 use_dropout = use_dropout, n_blocks = 6, gpu_ids = opt.gpu_ids)
         else:
             raise NotImplementedError('Generator model name [%s] is not recognized' % opt.which_model_netG)    
@@ -587,7 +594,7 @@ def define_G(opt):
     #     raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
 
     if len(opt.gpu_ids) > 0:
-        netG.cuda(opt.gpu_ids[0])
+        netG.cuda()
     init_weights(netG, init_type=opt.init_type)
     return netG
 
@@ -614,7 +621,7 @@ def define_D(opt):
         raise NotImplementedError('Discriminator model name [%s] is not recognized' %
                                   opt.which_model_netD)
     if use_gpu:
-        netD.cuda(opt.gpu_ids[0])
+        netD.cuda()
     init_weights(netD, init_type=opt.init_type)
     return netD
 
@@ -734,7 +741,7 @@ class ResnetGenerator(nn.Module):
 
     def forward(self, input):
         if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
+            return nn.parallel.data_parallel(self.model, input)
         else:
             return self.model(input)
 
@@ -804,14 +811,15 @@ class ConditionedResnetBlock(nn.Module):
         print('ConditionResnetBlock: x_dim=%d, c_dim=%d, out_dim=%d'% (self.x_dim, self.c_dim, out_dim))
 
 class ConditionedResnetGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, condition_nc, condition_layer = 'first', ngf=64, norm_layer=nn.BatchNorm2d, activation = nn.ReLU, use_dropout=False, n_blocks=6, gpu_ids=[], padding_type='reflect'):
+    def __init__(self, input_nc, output_nc, cond_nc, cond_layer = 'first', ngf=64, norm_layer=nn.BatchNorm2d, activation = nn.ReLU, use_dropout=False, n_blocks=6, gpu_ids=[], padding_type='reflect', cond_interp='bilinear'):
         assert(n_blocks >= 0)
         super(ConditionedResnetGenerator, self).__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.ngf = ngf
-        self.condition_nc = condition_nc
-        self.condition_layer = condition_layer
+        self.cond_nc = cond_nc
+        self.cond_layer = cond_layer
+        self.cond_interp = cond_interp
         self.gpu_ids = gpu_ids
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
@@ -836,11 +844,11 @@ class ConditionedResnetGenerator(nn.Module):
         res_blocks = []
         mult = 2**n_downsampling
         for i in range(n_blocks):
-            if (condition_layer == 'first' and i == 0) or condition_layer == 'all':
-                output_c = (condition_layer == 'all' and i < n_blocks - 1)
+            if (cond_layer == 'first' and i == 0) or cond_layer == 'all':
+                output_c = (cond_layer == 'all' and i < n_blocks - 1)
                 res_blocks.append(ConditionedResnetBlock(
                     x_dim = ngf*mult,
-                    c_dim = condition_nc, 
+                    c_dim = cond_nc, 
                     padding_type=padding_type,
                     activation = activation(),
                     norm_layer = norm_layer,
@@ -882,18 +890,18 @@ class ConditionedResnetGenerator(nn.Module):
         '''
         Input:
             input_x: size of (bsz, input_nc, h, w)
-            input_c: size of (bsz, condition_nc) or (bsz, condition_nc, h_r, w_r)
+            input_c: size of (bsz, cond_nc) or (bsz, cond_nc, h_r, w_r)
         '''
         if self.gpu_ids and len(self.gpu_ids) > 1 and isinstance(input_x.data, torch.cuda.FloatTensor) and (not single_device):
-            return nn.parallel.data_parallel(self, (input_x, input_c), self.gpu_ids, module_kwargs = {'single_device': True})
+            return nn.parallel.data_parallel(self, (input_x, input_c), module_kwargs = {'single_device': True})
         else:
             x = self.down_sample(input_x)
             bsz, _, h_x, w_x = x.size()
 
             if input_c.dim() == 2:
-                c = input_c.view(bsz, self.condition_nc, 1, 1).expand(bsz, self.condition_nc, h_x, w_x)
+                c = input_c.view(bsz, self.cond_nc, 1, 1).expand(bsz, self.cond_nc, h_x, w_x)
             elif input_c.dim() == 4:
-                c = F.upsample(input_c, size = (h_x, w_x), mode = 'bilinear')
+                c = F.upsample(input_c, size = (h_x, w_x), mode = self.cond_interp)
 
             x = self.res_blocks(torch.cat((x, c), dim = 1))
             x = self.up_sample(x)
@@ -949,6 +957,7 @@ class UnetSkipConnectionBlock(nn.Module):
         self.model = nn.Sequential(*model)
 
     def forward(self, x):
+        print(x.size())
         if self.outermost:
             return self.model(x)
         else:
@@ -977,10 +986,9 @@ class UnetGenerator(nn.Module):
 
     def forward(self, input):
         if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
+            return nn.parallel.data_parallel(self.model, input)
         else:
             return self.model(input)
-
 
 
 # Defines the PatchGAN discriminator with the specified arguments.
@@ -1030,7 +1038,7 @@ class NLayerDiscriminator(nn.Module):
 
     def forward(self, input):
         if len(self.gpu_ids) and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
+            return nn.parallel.data_parallel(self.model, input)
         else:
             return self.model(input)
 
@@ -1060,7 +1068,7 @@ class PixelDiscriminator(nn.Module):
 
     def forward(self, input):
         if len(self.gpu_ids) and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(self.net, input, self.gpu_ids)
+            return nn.parallel.data_parallel(self.net, input)
         else:
             return self.net(input)
 
@@ -1117,7 +1125,7 @@ def define_attr_encoder_net(opt):
                     init_type = opt.init_type)
 
     if len(opt.gpu_ids) > 0:
-        net.cuda(opt.gpu_ids[0])
+        net.cuda()
 
     return net
 
@@ -1200,7 +1208,7 @@ class NoneSpatialAttributeEncoderNet(nn.Module):
         bsz = input_img.size(0)
 
         if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+            feat_map = nn.parallel.data_parallel(self.conv, input_img)
         else:
             feat_map = self.conv(input_img)
 
@@ -1216,7 +1224,7 @@ class NoneSpatialAttributeEncoderNet(nn.Module):
         bsz = input_img.size(0)
 
         if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+            feat_map = nn.parallel.data_parallel(self.conv, input_img)
         else:
             feat_map = self.conv(input_img)
 
@@ -1264,7 +1272,7 @@ class SpatialAttributeEncoderNet(nn.Module):
     def forward(self, input_img):
         bsz = input_img.size(0)
         if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+            feat_map = nn.parallel.data_parallel(self.conv, input_img)
         else:
             feat_map = self.conv(input_img)
 
@@ -1279,7 +1287,7 @@ class SpatialAttributeEncoderNet(nn.Module):
     def extract_feat(self, input_img):
         bsz = input_img.size(0)
         if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+            feat_map = nn.parallel.data_parallel(self.conv, input_img)
         else:
             feat_map = self.conv(input_img)
 
@@ -1365,8 +1373,8 @@ class DualSpatialAttributeEncoderNet(nn.Module):
     def forward(self, input_img, input_lm_heatmap):
         bsz = input_img.size(0)
         if self.gpu_ids:
-            img_feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
-            lm_feat_map = nn.parallel.data_parallel(self.conv_lm, input_lm_heatmap, self.gpu_ids)
+            img_feat_map = nn.parallel.data_parallel(self.conv, input_img)
+            lm_feat_map = nn.parallel.data_parallel(self.conv_lm, input_lm_heatmap)
         else:
             img_feat_map = self.conv(input_img)
             lm_feat_map = self.conv_lm(input_lm_heatmap)
@@ -1391,8 +1399,8 @@ class DualSpatialAttributeEncoderNet(nn.Module):
     def extract_feat(self, input_img, input_lm_heatmap):
         bsz = input_img.size(0)
         if self.gpu_ids:
-            img_feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
-            lm_feat_map = nn.parallel.data_parallel(self.conv_lm, input_lm_heatmap, self.gpu_ids)
+            img_feat_map = nn.parallel.data_parallel(self.conv, input_img)
+            lm_feat_map = nn.parallel.data_parallel(self.conv_lm, input_lm_heatmap)
         else:
             img_feat_map = self.conv(input_img)
             lm_feat_map = self.conv_lm(input_lm_heatmap)
@@ -1447,7 +1455,7 @@ class JointNoneSpatialAttributeEncoderNet(nn.Module):
     def forward(self, input_img):
         bsz = input_img.size(0)
         if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+            feat_map = nn.parallel.data_parallel(self.conv, input_img)
         else:
             feat_map = self.conv(input_img)
 
@@ -1463,7 +1471,7 @@ class JointNoneSpatialAttributeEncoderNet(nn.Module):
     def extract_feat(self, input_img):
         bsz = input_img.size(0)
         if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img, self.gpu_ids)
+            feat_map = nn.parallel.data_parallel(self.conv, input_img)
         else:
             feat_map = self.conv(input_img)
 

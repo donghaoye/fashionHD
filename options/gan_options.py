@@ -19,6 +19,8 @@ class BaseGANOptions(BaseOptions):
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
         parser.add_argument('--G_condition_layer', type = str, default = 'all', help = 'which layer to add condition feature',
             choices = ['first', 'all'])
+        parser.add_argument('--G_cond_interp', type = str, default = 'bilinear', help = 'interpolation when upsample condition feature map to desired size',
+            choices = ['bilinear', 'nearest'])
         parser.add_argument('--n_layers_D', type=int, default=3, help='only used if which_model_netD==n_layers')
         parser.add_argument('--which_gan', type=str, default='dcgan', help='type of gan loss [dcgan|lsgan|wgan]',
             choices = ['dcgan', 'lsgan', 'wgan'])

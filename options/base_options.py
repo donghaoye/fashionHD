@@ -74,14 +74,9 @@ class BaseOptions(object):
         self.auto_set()
 
         if len(self.opt.gpu_ids) > 0 and set_gpu:
-            if torch.__version__.startswith('0.2.'):
-                # for pytorch v0.2 
-                os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in self.opt.gpu_ids])
-                self.opt.gpu_ids = range(len(self.opt.gpu_ids))
-                torch.cuda.set_device(0)
-            else:
-                # for pytorch v0.3 and above
-                torch.cuda.set_device(self.opt.gpu_ids[0])
+            os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in self.opt.gpu_ids])
+            self.opt.gpu_ids = range(len(self.opt.gpu_ids))
+            torch.cuda.set_device(0)
         args = vars(self.opt)
         # display options
         if display:
