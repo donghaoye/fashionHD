@@ -226,7 +226,8 @@ class DesignerGAN(BaseModel):
         self.output['loss_D_real'] = disc_real.mean()
         # gradient penalty
         alpha_sz = [bsz] + [1]*(repr_fake.ndimension()-1)
-        alpha = repr_fake.data.new(torch.rand(alpha_sz).expand(repr_fake.size()))
+        alpha = torch.rand(alpha_sz).expand(repr_fake.size())
+        alpha = repr_fake.data.new(alpha.size()).copy_(alpha)
 
         repr_interp = alpha * repr_real.data + (1 - alpha) * repr_fake.data
         repr_interp = Variable(repr_interp, requires_grad = True)
