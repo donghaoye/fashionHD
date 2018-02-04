@@ -13,8 +13,6 @@ class BaseAttributeOptions(BaseOptions):
             choices = ['max', 'noisyor', 'none'])
         parser.add_argument('--convnet', type = str, default = 'resnet18', help = 'CNN architecture [resnetX]')
         parser.add_argument('--feat_norm', default = False, action = 'store_true', help = 'Normalize feature using L2 norm')
-        
-        parser.add_argument('--which_epoch', type = str, default = 'latest', help = 'which epoch to load? set to latest to use the latest cached model')
         parser.add_argument('--balanced', default = False, action = 'store_true', help = 'balanced loss weight for positive and negative samples')
         # parser.add_argument('--loss_weight', type = float, default = 1.0, help = 'loss multiplier coefficient')
         parser.add_argument('--loss_type', type = str, default = 'bce', help = '[bce|wbce] bce: use torch.nn.BCELoss(); wbce: use models.network.WeightBCELoss()', 

@@ -288,6 +288,37 @@ class GANVisualizer(BaseVisualizer):
         fn_img = os.path.join(vis_dir, '%s_epoch%d.jpg' % (subset, epoch))
         torchvision.utils.save_image(imgs, fn_img, nrow = 5, normalize = True)
 
+    def visualize_image_matrix(self, imgs, imgs_title = None, label = 'default', vis_dir = 'vis'):
+        '''
+        Input:
+            imgs (list): of N*C*H*W tensors
+            label (str): output filename
+
+        '''
+        vis_dir = os.path.join('checkpoints', opt.id, vis_dir)
+        io.mkdir_if_missing(vis_dir)
+
+        num_col = imgs[0].size(0)
+        num_row = len(imgs)
+        if imgs_title is not None:
+            assert imgs_title.size(0) == num_col == num_row
+            # insert title images at the head of each row
+            for i in range(num_row):
+                imgs[i] = torch.cat((imgs_title[i:(i+1)], imgs[i]), dim = 0)
+
+            # add a title row
+            img_blank = torch.zeros([1]+list(imgs_title.size()[1::]))
+            imgs_title = torch.cat((img_blank, imgs_title), dim = 0)
+
+            num_col += 1
+            num_row += 1
+
+        imgs = torch.cat(imgs, dim = 0)
+        fn_img = os.path.join(vis_dir, label+'.jpg')
+        torchvision.utils.save_images(imgs, fn_img, nrow = num_col, normalize = True)
+
+
+
     def pavi_log(self, phase, iter_num, outputs):
         # upper_list = ['D_real', 'D_fake', '']
         upper_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG', 'grad_G_attr']

@@ -22,7 +22,7 @@ class BaseOptions(object):
         # basic options
         parser.add_argument('--id', type = str, default = 'default', help = 'model ID. the experiment dir will be set as "./checkpoint/id/"')
         parser.add_argument('--gpu_ids', type = str, default = '0', help = 'gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
-
+        parser.add_argument('--which_epoch', type = str, default = 'latest', help = 'which epoch to load? set to latest to use the latest cached model')
         # model options
         parser.add_argument('--init_type', type = str, default = 'normal', help = 'network initialization method [normal|xavier|kaiming|orthogonal]')
 
@@ -31,7 +31,7 @@ class BaseOptions(object):
         parser.add_argument('--dataset_mode', type = str, default = 'gan_self', help = 'type of dataset',
             choices = ['attribute', 'attribute_exp', 'gan_self'])
         parser.add_argument('--data_root', type = str, default = './datasets/DeepFashion/Fashion_design/', help = 'data root path')
-        parser.add_argument('--nThreads', type = int, default = 8, help = 'number of workers to load data')
+        parser.add_argument('--nThreads', type = int, default = 12, help = 'number of workers to load data')
         parser.add_argument('--max_dataset_size', type = int, default = float('inf'), help = 'maximum number of samples')
         parser.add_argument('--batch_size', type = int, default = 32, help = 'batch size')
         parser.add_argument('--load_size', type = int, default = 256, help = 'scale input image to this size')

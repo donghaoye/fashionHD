@@ -105,42 +105,42 @@ class DesignerGAN(BaseModel):
         if self.is_train:
             self.fake_pool = ImagePool(opt.pool_size)
 
-        ###################################
-        # define loss functions and loss buffers
-        ###################################
-        if opt.which_gan in {'dcgan', 'lsgan'}:
-            self.crit_GAN = networks.GANLoss(use_lsgan = opt.which_gan == 'lsgan', tensor = self.Tensor)
-        else:
-            # WGAN loss will be calculated in self.backward_D_wgangp and self.backward_G
-            self.crit_GAN = None
-        self.crit_L1 = networks.Smooth_Loss(nn.L1Loss())
-        self.crit_attr = networks.Smooth_Loss(nn.BCELoss(size_average = True))
+            ###################################
+            # define loss functions and loss buffers
+            ###################################
+            if opt.which_gan in {'dcgan', 'lsgan'}:
+                self.crit_GAN = networks.GANLoss(use_lsgan = opt.which_gan == 'lsgan', tensor = self.Tensor)
+            else:
+                # WGAN loss will be calculated in self.backward_D_wgangp and self.backward_G
+                self.crit_GAN = None
+            self.crit_L1 = networks.Smooth_Loss(nn.L1Loss())
+            self.crit_attr = networks.Smooth_Loss(nn.BCELoss(size_average = True))
 
-        self.loss_functions = []
-        self.loss_functions.append(self.crit_GAN)
-        self.loss_functions.append(self.crit_L1)
-        self.loss_functions.append(self.crit_attr)
+            self.loss_functions = []
+            self.loss_functions.append(self.crit_GAN)
+            self.loss_functions.append(self.crit_L1)
+            self.loss_functions.append(self.crit_attr)
 
-        if self.opt.loss_weight_vgg > 0:
-            self.crit_vgg = networks.VGGLoss(self.gpu_ids)
-            self.loss_functions.append(self.crit_vgg)
+            if self.opt.loss_weight_vgg > 0:
+                self.crit_vgg = networks.VGGLoss(self.gpu_ids)
+                self.loss_functions.append(self.crit_vgg)
 
-        ###################################
-        # create optimizers
-        ###################################
-        self.schedulers = []
-        self.optimizers = []
+            ###################################
+            # create optimizers
+            ###################################
+            self.schedulers = []
+            self.optimizers = []
 
-        self.optim_G = torch.optim.Adam(self.netG.parameters(),
-            lr = opt.lr, betas = (opt.beta1, opt.beta2))
-        self.optim_D = torch.optim.Adam(self.netD.parameters(),
-            lr = opt.lr, betas = (opt.beta1, opt.beta2))
-        self.optimizers.append(self.optim_G)
-        self.optimizers.append(self.optim_D)
+            self.optim_G = torch.optim.Adam(self.netG.parameters(),
+                lr = opt.lr, betas = (opt.beta1, opt.beta2))
+            self.optim_D = torch.optim.Adam(self.netD.parameters(),
+                lr = opt.lr, betas = (opt.beta1, opt.beta2))
+            self.optimizers.append(self.optim_G)
+            self.optimizers.append(self.optim_D)
 
-        
-        for optim in self.optimizers:
-            self.schedulers.append(networks.get_scheduler(optim, opt))
+            
+            for optim in self.optimizers:
+                self.schedulers.append(networks.get_scheduler(optim, opt))
 
         # color transformation from std to imagenet
         # img_imagenet = img_std * a + b
@@ -249,7 +249,7 @@ class DesignerGAN(BaseModel):
         grad = torch.autograd.grad(outputs = disc_interp.sum(), inputs = repr_interp,
             create_graph=True, retain_graph=True, only_inputs=True)[0]
         grad_penalty = ((grad.view(bsz,-1).norm(2,dim=1)-1)**2).mean()
-        self.output['loss_gp'] = grad_penalty * self.opt.loss_weight_gp
+        self.output['loss_gp'] = grad_penalty * self.opt.loss_weight_gp * self.opt.loss_weight_GAN
 
         self.output['loss_gp'].backward()
         # print('D_fake: %f, D_real: %f, gp: %f' %(self.output['loss_D_fake'].data[0], self.output['loss_D_real'].data[0], self.output['loss_gp'].data[0]))
