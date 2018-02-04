@@ -291,31 +291,30 @@ class GANVisualizer(BaseVisualizer):
     def visualize_image_matrix(self, imgs, imgs_title = None, label = 'default', vis_dir = 'vis'):
         '''
         Input:
-            imgs (list): of N*C*H*W tensors
+            imgs (tensor): image matrix, tensor of size n_row*n_col*C*H*W
+            imgs_title (tensor): title images, tensor of size n*C*H*W (must have n==n_row==n_col)
             label (str): output filename
 
         '''
-        vis_dir = os.path.join('checkpoints', opt.id, vis_dir)
+        vis_dir = os.path.join('checkpoints', self.opt.id, vis_dir)
         io.mkdir_if_missing(vis_dir)
 
-        num_col = imgs[0].size(0)
-        num_row = len(imgs)
+        n_row, n_col, c, h, w = imgs.size()
         if imgs_title is not None:
-            assert imgs_title.size(0) == num_col == num_row
+            assert imgs_title.size(0) == n_row == n_col
             # insert title images at the head of each row
-            for i in range(num_row):
-                imgs[i] = torch.cat((imgs_title[i:(i+1)], imgs[i]), dim = 0)
-
+            imgs = torch.cat((imgs_title.view(n_row, 1, c, h, w), imgs), 1)
             # add a title row
             img_blank = torch.zeros([1]+list(imgs_title.size()[1::]))
-            imgs_title = torch.cat((img_blank, imgs_title), dim = 0)
+            imgs_title = torch.cat((img_blank, imgs_title), 0)
+            imgs = torch.cat((imgs_title.view(1, n_col+1, c, h, w), imgs), 0)
 
             num_col += 1
             num_row += 1
 
-        imgs = torch.cat(imgs, dim = 0)
+        imgs = imgs.view(n_row*n_col, c, h, w)
         fn_img = os.path.join(vis_dir, label+'.jpg')
-        torchvision.utils.save_images(imgs, fn_img, nrow = num_col, normalize = True)
+        torchvision.utils.save_image(imgs, fn_img, nrow = num_col, normalize = True)
 
 
 
