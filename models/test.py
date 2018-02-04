@@ -61,7 +61,7 @@ def test_DesignerGAN():
 def test_patchGAN_output_size():
     from networks import NLayerDiscriminator
 
-    input_size = 256
+    input_size = 224
     input = Variable(torch.zeros(1,3,input_size,input_size))
     for n in range(1, 7):
         netD = NLayerDiscriminator(input_nc = 3, ndf = 64, n_layers = n)
@@ -92,7 +92,7 @@ def test_scheduler():
 
 if __name__ == '__main__':
     # test_AttributeEncoder()
-    # test_patchGAN_output_size()
+    test_patchGAN_output_size()
     # test_DesignerGAN()
     # test_scheduler()
-    test_Unet_size()
+    # test_Unet_size()

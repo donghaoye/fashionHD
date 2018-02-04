@@ -230,9 +230,9 @@ class DesignerGAN(BaseModel):
         disc_real = self.netD(repr_real)
         self.output['loss_D_real'] = disc_real.mean()
 
-        self.output['loss_D'] = self.output['loss_D_fake'] - self.output['loss_D_real']
-        self.output['loss_D'].backward()
-        
+        loss_D = self.output['loss_D_fake'] - self.output['loss_D_real']
+        loss_D.backward()
+        self.output['loss_D'] = -loss_D # wasserstein distance, not real loss
 
         # gradient penalty
         alpha_sz = [bsz] + [1]*(repr_fake.ndimension()-1)
