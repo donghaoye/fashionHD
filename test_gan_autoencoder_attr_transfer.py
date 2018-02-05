@@ -1,6 +1,5 @@
 from __future__ import division, print_function
 
-import util.io as io
 import torch
 # from models.attribute_encoder import AttributeEncoder
 from models.designer_gan_model import DesignerGAN
@@ -9,6 +8,7 @@ from options.gan_options import TestGANOptions
 from models.networks import MeanAP
 from misc.visualizer import GANVisualizer
 
+import util.io as io
 import os
 import sys
 import time

@@ -26,7 +26,7 @@ class BaseGANOptions(BaseOptions):
             choices = ['dcgan', 'lsgan', 'wgan'])
         parser.add_argument('--n_attr', type = int, default = 1000, help = 'number of attribute entries')
         parser.add_argument('--n_attr_feat', type = int, default = 512, help = '# of attribute feature channels')
-        parser.add_argument('--attr_condition_type', type = str, default = 'feat_map', help = 'attribute condition form [feat|prob|none]',
+        parser.add_argument('--attr_cond_type', type = str, default = 'feat_map', help = 'attribute condition form [feat|prob|none]',
             choices = ['feat', 'prob', 'feat_map', 'prob_map'])
 
         parser.add_argument('--shape_encode', type = str, default = 'lm+seg', help = 'cloth shape encoding method',
@@ -38,7 +38,7 @@ class BaseGANOptions(BaseOptions):
         # none: do not mask image
         # fuse_face: replace the face&hair part with original image
         # fuse_face_bg: replace the face&hair&background part with original image
-        parser.add_argument('--no_attr_condition', action = 'store_true', help='do not use attribute condition in generator')
+        parser.add_argument('--no_attr_cond', action = 'store_true', help='do not use attribute condition in generator')
 
         # data files
         # refer to "scripts/preproc_inshop.py" for more information

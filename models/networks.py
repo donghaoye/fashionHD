@@ -541,16 +541,16 @@ def define_G(opt):
     norm_layer = get_norm_layer(norm_type=opt.norm)
     activation  = nn.ReLU
     use_dropout = not opt.no_dropout
-    if opt.attr_condition_type in {'feat', 'feat_map'}:
+    if opt.attr_cond_type in {'feat', 'feat_map'}:
         attr_nc = opt.n_attr_feat
-    elif opt.attr_condition_type in {'prob', 'prob_map'}:
+    elif opt.attr_cond_type in {'prob', 'prob_map'}:
         attr_nc = opt.n_attr
 
     # Todo: add choice of activation function
     if use_gpu:
         assert(torch.cuda.is_available())
 
-    if not opt.no_attr_condition:
+    if not opt.no_attr_cond:
         if opt.which_model_netG == 'resnet_9blocks':
             netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, cond_nc = attr_nc,
                 cond_layer = opt.G_cond_layer, cond_interp = opt.G_cond_interp, ngf = opt.ngf, norm_layer = norm_layer, activation = activation,

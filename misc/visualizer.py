@@ -309,12 +309,12 @@ class GANVisualizer(BaseVisualizer):
             imgs_title = torch.cat((img_blank, imgs_title), 0)
             imgs = torch.cat((imgs_title.view(1, n_col+1, c, h, w), imgs), 0)
 
-            num_col += 1
-            num_row += 1
+            n_col += 1
+            n_row += 1
 
         imgs = imgs.view(n_row*n_col, c, h, w)
         fn_img = os.path.join(vis_dir, label+'.jpg')
-        torchvision.utils.save_image(imgs, fn_img, nrow = num_col, normalize = True)
+        torchvision.utils.save_image(imgs, fn_img, nrow = n_col, normalize = True)
 
 
 
