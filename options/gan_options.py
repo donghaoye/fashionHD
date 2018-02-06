@@ -139,17 +139,22 @@ class TrainGANOptions(BaseGANOptions):
         parser.add_argument('--save_epoch_freq', type = int, default = 1, help='frequency of saving model to disk' )
         parser.add_argument('--vis_epoch_freq', type = int, default = 1, help='frequency of visualizing generated images')
         parser.add_argument('--max_n_vis', type = int, default = 20, help='max number of visualized images')
+        parser.add_argument('--D_pretrain', type = int, default = 50, help = 'iter num of pretraining net D')
+        parser.add_argument('--D_train_freq', type = int, default = 1, help='frequency of training netD')
+        parser.add_argument('--G_train_freq', type = int, default = 1, help='frequency of training netG')
+        parser.add_argument('--check_grad_freq', type = int, default = 100, help = 'frequency of checking gradient of each loss')
 
+        # loss weights
         parser.add_argument('--loss_weight_GAN', type = float, default = 1., help = 'loss wweight of GAN loss (for netG)')
         parser.add_argument('--loss_weight_L1', type = float, default = 0., help = 'loss weight of L1 loss')
         parser.add_argument('--loss_weight_attr', type = float, default = 0., help = 'loss weight of attribute BCE loss')
         parser.add_argument('--loss_weight_vgg', type = float, default = 0., help = 'loss weight of vgg loss (perceptual feature loss)')
         parser.add_argument('--loss_weight_gp', type = float, default = 10., help = 'gradient penalty weight in WGAN')
 
-        parser.add_argument('--D_pretrain', type = int, default = 50, help = 'iter num of pretraining net D')
-        parser.add_argument('--D_train_freq', type = int, default = 1, help='frequency of training netD')
-        parser.add_argument('--G_train_freq', type = int, default = 1, help='frequency of training netG')
-        parser.add_argument('--check_grad_freq', type = int, default = 100, help = 'frequency of checking gradient of each loss')
+        # training method
+        parser.add_argument('--shape_adaptive', action='store_true', help='add training samples with unmatched shape/attribute representation, \
+            and optimize only GAN loss for these samples to force netG to generate realistic images from unmatched conditions')
+        
         # set train
         self.is_train = True
 

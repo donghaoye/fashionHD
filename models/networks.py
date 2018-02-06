@@ -638,7 +638,6 @@ def get_norm_layer(norm_type = 'instance'):
     return norm_layer
 
 
-
 # Define a resnet block
 class ResnetBlock(nn.Module):
     def __init__(self, dim, padding_type, norm_layer, use_bias, activation=nn.ReLU(True), use_dropout=False):
@@ -993,7 +992,7 @@ class NLayerDiscriminator(nn.Module):
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
-            
+
         kw = 4
         padw = 1
         sequence = [

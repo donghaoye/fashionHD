@@ -173,12 +173,14 @@ class DesignerGAN(BaseModel):
             attr_code = self.encode_attribute(self.input['img'], self.input['lm_map'])
             self.output['img_fake_raw'] = self.netG(shape_code, attr_code)
         else:
+            attr_code = None
             self.output['img_fake_raw'] = self.netG(shape_code)
 
         self.output['img_real_raw'] = self.input['img']
         self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.output['img_real_raw'])
         self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
-        
+        self.output['shape_code'] = shape_code
+        self.output['attr_code'] = attr_code
 
     def test(self):
         if float(torch.__version__[0:3]) >= 0.4:
@@ -197,8 +199,10 @@ class DesignerGAN(BaseModel):
                 self.output['img_fake_raw'] = self.netG(shape_code)
 
             self.output['img_real_raw'] = self.input['img']
+            self.output['img_real'] = self.output['img_real_raw']
             self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.output['img_real_raw'])
-            self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
+            # self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
+
 
     def backward_D(self):
         # fake
@@ -254,7 +258,6 @@ class DesignerGAN(BaseModel):
         self.output['loss_gp'].backward()
         # print('D_fake: %f, D_real: %f, gp: %f' %(self.output['loss_D_fake'].data[0], self.output['loss_D_real'].data[0], self.output['loss_gp'].data[0]))
 
-
     def backward_G(self):
         repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_fake'])
         self.output['loss_G'] = 0
@@ -279,6 +282,31 @@ class DesignerGAN(BaseModel):
             self.output['loss_G'] += self.output['loss_G_VGG'] * self.opt.loss_weight_vgg
         # backward
         self.output['loss_G'].backward()
+
+
+    def backward_G_shape_adaptive(self):
+        # create unmatched shape and attribute code
+        shape_code, attr_code = self.output['shape_code'], self.output['attr_code']
+        shuffle_idx = Variable(torch.randperm(attr_code.size(0)))
+        if attr_code.is_cuda:
+            shuffle_idx = shuffle_idx.cuda(attr_code.get_device())
+        attr_code_shuffle = attr_code.index_select(dim=0, index=shuffle_idx)
+
+        # generate images
+        self.output['img_sa_raw'] = self.netG(shape_code, attr_code_shuffle)
+        self.output['img_sa'] = self.mask_image(self.output['img_sa_raw'], self.input['seg_map'], self.output['img_real_raw'])
+        
+        # compute GAN loss
+        repr_sa = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.output['img_sa'])
+        if self.opt.which_gan == 'wgan':
+            disc_sa = self.netD(repr_sa)
+            self.output['loss_G_sa'] = -disc_sa.mean()
+        else:
+            pred_sa = self.netD(repr_sa)
+            self.output['loss_G_sa'] = self.crit_GAN(pred_sa, True)
+
+        (self.output['loss_G_sa'] * self.opt.loss_weight_GAN).backward()
+
 
     def backward_G_grad_check(self):
         self.output['img_fake'].retain_grad()
@@ -338,6 +366,8 @@ class DesignerGAN(BaseModel):
         else:
             self.backward_G()
 
+        if self.opt.shape_adaptive:
+            self.backward_G_shape_adaptive()
         if train_G:
             self.optim_G.step()
 
@@ -353,6 +383,8 @@ class DesignerGAN(BaseModel):
             errors['G_VGG'] = self.output['loss_G_VGG'].data[0]
         if 'loss_gp' in self.output:
             errors['D_GP'] = self.output['loss_gp'].data[0]
+        if 'loss_G_sa' in self.output:
+            errors['G_sa'] = self.output['loss_G_sa'].data[0]
 
         # gradients
         grad_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG', 'grad_G_attr']
