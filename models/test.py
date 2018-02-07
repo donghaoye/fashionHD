@@ -74,8 +74,6 @@ def test_Unet_size():
     x = Variable(torch.rand(1,3,224,224))
     y = model(x)
 
-
-
 def test_scheduler():
     from options.gan_options import TrainGANOptions
     from models.networks import get_scheduler
@@ -89,10 +87,32 @@ def test_scheduler():
         scheduler.step()
         print('epoch: %d, lr: %f' % (epoch, optim.param_groups[0]['lr']))
 
+def test_feature_spatial_transformer():
+    from options.feature_spatial_transformer_options import TrainFeatureSpatialTransformerOptions
+    from data.data_loader import CreateDataLoader
+    from feature_transform_model import FeatureSpatialTransformer
+
+    opt = TrainFeatureSpatialTransformerOptions().parse('--benchmark debug --batch_size 10 --gpu_ids 0')
+    loader = CreateDataLoader(opt)
+    data = iter(loader).next()
+
+    model = FeatureSpatialTransformer()
+    model.initialize(opt)
+
+    model.set_input(data)
+    model.forward()
+
+    errors = model.get_current_errors()
+    for k, v in errors.iteritems():
+        print('%s: (%s) %s' % (k, type(v), v.size()))
+
+
 
 if __name__ == '__main__':
     # test_AttributeEncoder()
-    test_patchGAN_output_size()
+    # test_patchGAN_output_size()
     # test_DesignerGAN()
     # test_scheduler()
     # test_Unet_size()
+
+    test_feature_spatial_transformer()

@@ -134,13 +134,14 @@ class LossBuffer():
         return loss
 
 
-class Smooth_Loss():
+class SmoothLoss():
     '''
     wrapper of pytorch loss layer.
     '''
 
     def __init__(self, crit):
         self.crit = crit
+        self.max_size = 100000
         self.clear()
 
     def __call__(self, input_1, input_2, *extra_input):
@@ -153,6 +154,10 @@ class Smooth_Loss():
             self.buffer.append(loss[0])
         else:
             self.buffer.append(loss)
+
+        if len(self.buffer) > self.max_size:
+            self.buffer = self.buffer[-self.max_size::]
+            self.weight_buffer = self.weight_buffer[-self.max_size::]
 
         return loss
 
@@ -1197,20 +1202,9 @@ class NoneSpatialAttributeEncoderNet(nn.Module):
 
 
     def forward(self, input_img):
-        bsz = input_img.size(0)
-
-        if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img)
-        else:
-            feat_map = self.conv(input_img)
-
-        if self.feat_norm:
-            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
-
-        feat = self.avgpool(feat_map).view(bsz, -1)
-        prob = F.sigmoid(self.fc(feat))
-
-        return prob, None
+        
+        feat, _ = self.extract_feat(input_img)
+        return self.predict(feat)
 
     def extract_feat(self, input_img):
         bsz = input_img.size(0)
@@ -1226,6 +1220,24 @@ class NoneSpatialAttributeEncoderNet(nn.Module):
         feat = self.avgpool(feat_map).view(bsz, -1)
 
         return feat, feat_map
+
+    def predict(self, feat_map):
+        '''
+        Input:
+            feat_map: feature map (bsz, c, H, W) or feat(bsz, c)
+        Output:
+            prob
+            prob_map
+        '''
+        bsz = feat_map.size(0)
+        if feat_map.ndimension() == 4:
+            feat = self.avgpool(feat_map).view(bsz, -1)
+        else:
+            assert feat_map.ndimension() == 2
+            feat = feat_map
+
+        prob = F.sigmoid(self.fc(feat))
+        return prob, None
 
 
 class SpatialAttributeEncoderNet(nn.Module):
@@ -1262,19 +1274,8 @@ class SpatialAttributeEncoderNet(nn.Module):
 
 
     def forward(self, input_img):
-        bsz = input_img.size(0)
-        if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img)
-        else:
-            feat_map = self.conv(input_img)
-
-        if self.feat_norm:
-            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
-
-        prob_map = F.sigmoid(self.cls(feat_map))
-        prob = self.pool(prob_map).view(bsz, -1)
-
-        return prob, prob_map
+        _, feat_map = self.extract_feat(input_img)
+        return self.predict(feat_map)
 
     def extract_feat(self, input_img):
         bsz = input_img.size(0)
@@ -1288,6 +1289,20 @@ class SpatialAttributeEncoderNet(nn.Module):
         feat = F.avg_pool2d(feat_map, kernel_size = 7, stride = 1).view(bsz, -1)
 
         return feat, feat_map
+
+    def predict(self, feat_map):
+        '''
+        Input:
+            feat_map
+        Output:
+            prob
+            prob_map
+        '''
+        bsz = feat_map.size(0)
+        prob_map = F.sigmoid(self.cls(feat_map))
+        prob = self.pool(prob_map).view(bsz, -1)
+
+        return prob, prob_map
 
 
 
@@ -1475,5 +1490,89 @@ class JointNoneSpatialAttributeEncoderNet(nn.Module):
         return feat, feat_map
 
 
+def define_feat_spatial_transformer(opt):
+    net = EncoderDecoderFeatureSpatialTransformNet(
+            shape_nc = opt.shape_nc,
+            feat_nc = opt.feat_nc,
+            shape_nf = opt.shape_nf,
+            n_shape_downsample = opt.n_shape_downsample,
+            reduce_type = opt.reduce_type,
+            gpu_ids = opt.gpu_ids
+        )
+
+    if len(opt.gpu_ids)> 0:
+        assert(torch.cuda.is_available())
+        net.cuda()
+
+    init_weights(net, init_type = opt.init_type)
+    return net
 
 
+
+class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
+    def __init__(self, shape_nc, feat_nc, shape_nf, n_shape_downsample, reduce_type, gpu_ids):
+        super(EncoderDecoderFeatureSpatialTransformNet,self).__init__()
+
+        self.gpu_ids = gpu_ids
+        self.reduce_type = reduce_type
+
+        shape_encode_layers = []
+        c_in = shape_nc
+        c_out = shape_nf
+
+        for n in range(n_shape_downsample):
+            shape_encode_layers += [
+                nn.Conv2d(c_in, c_out, 4, 2, 1, bias = False),
+                nn.BatchNorm2d(c_out),
+                nn.ReLU()
+            ]
+            c_in = c_out
+            c_out *= 2
+
+        self.shape_encode = nn.Sequential(*shape_encode_layers)
+
+        c_shape_code = c_in
+        if self.reduce_type == 'conv':
+            encode_layers = [
+                    nn.Conv2d(c_shape_code+feat_nc, feat_nc*2, kernel_size=3, stride=2, bias=False),
+                    nn.BatchNorm2d(feat_nc*2),
+                    nn.ReLU(),
+                    nn.Conv2d(feat_nc*2, feat_nc*4, kernel_size=3, sride=2, bias=False),
+                    nn.BatchNorm2d(feat_nc*4),
+                    nn.ReLU(),
+                ]
+        elif self.reduce_type == 'pool':
+            encode_layers = [
+                nn.Conv2d(c_shape_code+feat_nc, feat_nc*2, kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm2d(feat_nc*2),
+                nn.ReLU(),
+                nn.Conv2d(feat_nc*2, feat_nc*4, kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm2d(feat_nc*4),
+                nn.AvgPool2d(kernel_size=7),
+                nn.ReLU(),
+                ]
+        self.encode = nn.Sequential(*encode_layers)
+
+        decode_layers = [
+            nn.Conv2d(c_shape_code+feat_nc*4, feat_nc*2, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(feat_nc*2),
+            nn.ReLU(),
+            nn.Conv2d(feat_nc*2, feat_nc, kernel_size=3, stride=1, padding=1),
+            nn.ReLU()
+        ]
+
+        self.decode =nn.Sequential(*decode_layers)
+
+    def forward(self, feat_input, shape_src, shape_tar, single_device = False):
+        if len(self.gpu_ids) > 1 and (not single_device):
+            return nn.parallel.data_parallel(self, (feat_input, shape_src, shape_tar), module_kwargs = {'single_device': True})
+        else:
+            shape_code_src = self.shape_encode(shape_src)
+            shape_code_tar = self.shape_encode(shape_tar)
+            feat_nonspatial = self.encode(torch.cat((feat_input, shape_code_src), dim=1))
+
+            b, c = feat_nonspatial.size()[0:2]
+            h, w = feat_input.size()[2:4]
+            feat_tile = feat_nonspatial.expand(b,c,h,w)
+            feat_output = self.decode(torch.cat((feat_tile, shape_code_tar), dim=1))
+            return feat_output

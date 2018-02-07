@@ -108,7 +108,7 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
             }
             visualizer.pavi_log(phase = 'test', iter_num = total_steps, outputs = pavi_outputs)
 
-        # save model
-        if epoch % opt.save_epoch_freq == 0:
-            model.save(epoch)
-            model.save('latest')
+    # save model
+    if epoch % opt.save_epoch_freq == 0:
+        model.save(epoch)
+        model.save('latest')

@@ -37,6 +37,12 @@ class BaseVisualizer(object):
         if self.f_log:
             self.f_log.close()
 
+
+    def _open_log_file(self):
+        self.f_log = open(os.path.join(self.expr_dir, 'train_log.txt'), 'w')
+        log = 'pytorch version: %s\n' % torch.__version__
+        print(log, file = self.f_log)
+
     def print_train_error(self, iter_num, epoch, num_batch, lr, errors):
         '''
         Display training log information on screen and output it to log file.
@@ -50,7 +56,8 @@ class BaseVisualizer(object):
         '''
 
         if self.f_log is None:
-            self.f_log = open(os.path.join(self.expr_dir, 'train_log.txt'), 'w')
+            self._open_log_file()
+
 
         epoch_step = (iter_num-1) % num_batch + 1
         t_per_step = (time.time() - self.clock) / (iter_num - self.step_counter)
@@ -76,7 +83,7 @@ class BaseVisualizer(object):
         '''
 
         if self.f_log is None:
-            self.f_log = open(os.path.join(self.expr_dir, 'train_log.txt'), 'w')
+            self._open_log_file()
 
             
         log = '[%s] Test [Iter: %d, Epoch %d]\n' % (self.opt.id, iter_num, epoch)
@@ -321,7 +328,7 @@ class GANVisualizer(BaseVisualizer):
     def pavi_log(self, phase, iter_num, outputs):
         # upper_list = ['D_real', 'D_fake', '']
         upper_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG', 'grad_G_attr']
-        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'G_attr']
+        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'G_attr', 'G_sa']
 
         new_outputs = {}
         for k,v in outputs.iteritems():

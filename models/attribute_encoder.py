@@ -38,19 +38,19 @@ class AttributeEncoder(BaseModel):
         # define loss functions
         # attribute
         if opt.loss_type == 'bce':
-            self.crit_attr = networks.Smooth_Loss(torch.nn.BCELoss(size_average = not opt.no_size_avg))
+            self.crit_attr = networks.SmoothLoss(torch.nn.BCELoss(size_average = not opt.no_size_avg))
         elif opt.loss_type == 'wbce':
             attr_entry = io.load_json(os.path.join(opt.data_root, opt.fn_entry))
             pos_rate = self.Tensor([att['pos_rate'] for att in attr_entry])
             pos_rate.clamp_(min = 0.01, max = 0.99)
-            self.crit_attr = networks.Smooth_Loss(networks.WeightedBCELoss(pos_rate = pos_rate, class_norm = opt.wbce_class_norm, size_average = not opt.no_size_avg))
+            self.crit_attr = networks.SmoothLoss(networks.WeightedBCELoss(pos_rate = pos_rate, class_norm = opt.wbce_class_norm, size_average = not opt.no_size_avg))
         else:
             raise ValueError('attribute loss type "%s" is not defined' % opt.loss_type)
         self.loss_functions.append(self.crit_attr)
         
         # joint task
         if opt.joint_cat:
-            self.crit_cat = networks.Smooth_Loss(torch.nn.CrossEntropyLoss())
+            self.crit_cat = networks.SmoothLoss(torch.nn.CrossEntropyLoss())
             self.loss_functions.append(self.crit_cat)
 
 
@@ -158,10 +158,10 @@ class AttributeEncoder(BaseModel):
 
     def get_current_errors(self, clear = True):
         errors = OrderedDict([
-            ('loss_attr', self.crit_attr.smooth_loss(clear)),
+            ('loss_attr', self.crit_attr.SmoothLoss(clear)),
             ])
         if self.opt.joint_cat:
-            errors['loss_cat'] = self.crit_cat.smooth_loss(clear)
+            errors['loss_cat'] = self.crit_cat.SmoothLoss(clear)
         return errors
 
     def train(self):

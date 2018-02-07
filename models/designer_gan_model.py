@@ -7,8 +7,7 @@ import networks
 from torch.autograd import Variable
 from misc.image_pool import ImagePool
 from base_model import BaseModel
-from attribute_encoder import AttributeEncoder
-from options.attribute_options import TestAttributeOptions
+from network_loader import load_attribute_encoder_net
 
 import os
 import sys
@@ -16,53 +15,6 @@ import numpy as np
 import time
 from collections import OrderedDict
 import util.io as io
-
-def load_attribute_encoder_net(id, gpu_ids, is_train, which_epoch = 'latest'):
-    '''
-    Load pretrained attribute encoder as a module of GAN model.
-    All options for attribute encoder will be loaded from its train_opt.json, except:
-        - gpu_ids
-        - is_train
-        - which_epoch
-
-    Input:
-        id (str): ID of attribute encoder model
-        gpu_ids: set gpu_ids for attribute model
-        is_train: set train/test status for attribute model
-    Output:
-        net (nn.Module): network of attribute encoder
-        opt (namespace): updated attribute encoder options
-    '''
-
-    if not id.startswith('AE_'):
-        id = 'AE_' + id
-
-    # load attribute encoder options
-    fn_opt = os.path.join('checkpoints', id, 'train_opt.json')
-    if not os.path.isfile(fn_opt):
-        raise ValueError('invalid attribute encoder id: %s' % id)
-    opt_var = io.load_json(fn_opt)
-
-    # update attribute encoder options
-    opt = TestAttributeOptions().parse(ord_str = '', save_to_file = False, display = False, set_gpu = False)
-    for k, v in opt_var.iteritems():
-        if k in opt:
-            opt.__dict__[k] = v
-
-    opt.is_train = False
-    opt.gpu_ids = gpu_ids
-    opt.which_epoch = which_epoch
-    # opt.continue_train = False
-
-    model = AttributeEncoder()
-    model.initialize(opt)
-
-    # frozen model parameters
-    model.eval()
-    for p in model.net.parameters():
-        p.requires_grad = False
-
-    return model.net, opt
 
 
 class DesignerGAN(BaseModel):
@@ -86,12 +38,11 @@ class DesignerGAN(BaseModel):
         ###################################
 
         # Todo modify networks.define_G
-        # 1. input opt, instead of bunch of parameters
-        # 2. add specified generator networks
+        # 1. add specified generator networks
 
         self.netG = networks.define_G(opt)
-        self.netAE, self.opt_AE = load_attribute_encoder_net(id = opt.which_model_AE, gpu_ids = opt.gpu_ids, is_train = self.is_train)
-
+        self.netAE, self.opt_AE = load_attribute_encoder_net(id = opt.which_model_AE, gpu_ids = opt.gpu_ids)
+        
         if self.is_train:
             self.netD = networks.define_D(opt)
             if opt.which_model_init_netG != 'none' and not opt.continue_train:
@@ -113,8 +64,8 @@ class DesignerGAN(BaseModel):
             else:
                 # WGAN loss will be calculated in self.backward_D_wgangp and self.backward_G
                 self.crit_GAN = None
-            self.crit_L1 = networks.Smooth_Loss(nn.L1Loss())
-            self.crit_attr = networks.Smooth_Loss(nn.BCELoss(size_average = True))
+            self.crit_L1 = nn.L1Loss()
+            self.crit_attr = nn.BCELoss()
 
             self.loss_functions = []
             self.loss_functions.append(self.crit_GAN)
@@ -190,18 +141,7 @@ class DesignerGAN(BaseModel):
             self.input['img'].volatile = True
             self.input['lm_map'].volatile = True
             self.input['seg_mask'].volatile = True
-
-            shape_code = self.encode_shape(self.input['lm_map'], self.input['seg_mask'])
-            if not self.opt.no_attr_cond:
-                attr_code = self.encode_attribute(self.input['img'], self.input['lm_map'])
-                self.output['img_fake_raw'] = self.netG(shape_code, attr_code)
-            else:
-                self.output['img_fake_raw'] = self.netG(shape_code)
-
-            self.output['img_real_raw'] = self.input['img']
-            self.output['img_real'] = self.output['img_real_raw']
-            self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.output['img_real_raw'])
-            # self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
+            self.forward()
 
 
     def backward_D(self):
@@ -254,7 +194,6 @@ class DesignerGAN(BaseModel):
             create_graph=True, retain_graph=True, only_inputs=True)[0]
         grad_penalty = ((grad.view(bsz,-1).norm(2,dim=1)-1)**2).mean()
         self.output['loss_gp'] = grad_penalty * self.opt.loss_weight_gp * self.opt.loss_weight_GAN
-
         self.output['loss_gp'].backward()
         # print('D_fake: %f, D_real: %f, gp: %f' %(self.output['loss_D_fake'].data[0], self.output['loss_D_real'].data[0], self.output['loss_gp'].data[0]))
 

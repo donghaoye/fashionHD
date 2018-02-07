@@ -40,7 +40,7 @@ class GANDataset(BaseDataset):
         self.seg_path_list = [seg_paths[s_id] for s_id in self.id_list]
 
         # check data
-        assert len(self.attr_entry) == len(self.attr_label_list[0]) == opt.n_attr, 'Attribute number not match!'
+        # assert len(self.attr_entry) == len(self.attr_label_list[0]) == opt.n_attr, 'Attribute number not match!'
         print('dataset created (%d samples)' % len(self))
 
         # get transform
