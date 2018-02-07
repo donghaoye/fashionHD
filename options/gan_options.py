@@ -51,6 +51,7 @@ class BaseGANOptions(BaseOptions):
         parser.add_argument('--fn_landmark', type = str, default = 'default', help = 'path of landmark label file')
         parser.add_argument('--fn_seg_path', type = str, default = 'default', help = 'path of seg map list')
         # misc
+        parser.add_argument('--batch_size', type = int, default = 32, help = 'batch size')
         self.parser.add_argument('--pavi', default = False, action = 'store_true', help = 'activate pavi log')
         
 

@@ -54,7 +54,7 @@ class FeatureSpatialTransformer(BaseModel):
             self.optimizers = []
 
             self.optim = torch.optim.Adam(self.net.parameters(), 
-                lr = opt.lr, betas = (opt.beta1, opt.beta2))
+                lr = opt.lr, betas = (opt.beta1, opt.beta2), weight_decay = opt.weight_decay)
 
             self.optimizers.append(self.optim)
 
@@ -124,9 +124,9 @@ class FeatureSpatialTransformer(BaseModel):
 
     def get_current_errors(self):
         errors = OrderedDict([
-            ('loss_L1', self.output['loss_L1']),
-            ('loss_attr', self.output['loss_attr']),
-            ('loss', self.output['loss'])
+            ('loss_L1', self.output['loss_L1'].data[0]),
+            ('loss_attr', self.output['loss_attr'].data[0]),
+            ('loss', self.output['loss'].data[0])
             ])
         return errors
 

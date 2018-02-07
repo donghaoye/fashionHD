@@ -1537,7 +1537,7 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
                     nn.Conv2d(c_shape_code+feat_nc, feat_nc*2, kernel_size=3, stride=2, bias=False),
                     nn.BatchNorm2d(feat_nc*2),
                     nn.ReLU(),
-                    nn.Conv2d(feat_nc*2, feat_nc*4, kernel_size=3, sride=2, bias=False),
+                    nn.Conv2d(feat_nc*2, feat_nc*4, kernel_size=3, stride=2, bias=False),
                     nn.BatchNorm2d(feat_nc*4),
                     nn.ReLU(),
                 ]

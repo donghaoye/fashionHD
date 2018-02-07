@@ -42,6 +42,7 @@ class BaseAttributeOptions(BaseOptions):
         parser.add_argument('--fn_cat', type = str, default = 'default', help = 'path of category label file')
         parser.add_argument('--unmatch', default = False, action = 'store_true', help = 'use unmatched training sample and label for debug')
         # misc
+        parser.add_argument('--batch_size', type = int, default = 128, help = 'batch size')
         self.parser.add_argument('--pavi', default = False, action = 'store_true', help = 'activate pavi log')
 
     def auto_set(self):
