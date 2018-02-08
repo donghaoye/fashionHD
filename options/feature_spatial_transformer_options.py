@@ -10,6 +10,7 @@ class BaseFeatureSpatialTransformerOptions(BaseOptions):
         parser.add_argument('--shape_nc', type = int, default = 19, help = 'shape representation channel number')
         parser.add_argument('--feat_nc', type = int, default = 512, help = 'feature dimenssion')
         parser.add_argument('--shape_nf', type = int, default = 3, help = 'shape feat dimenssion of first conv layer')
+        parser.add_argument('--max_nf', type = int, default = 2048, help = 'maximum intermediate feature dimension')
         parser.add_argument('--n_shape_downsample', type = int, default = 5, help='downsample 5 times to reduce shape map from 22r*224 to 7*7')
         parser.add_argument('--reduce_type', type = str, default = 'pool', help = 'how to reduce a feature map to a non-spatial feature',
             choices = ['conv', 'pool'])
@@ -35,8 +36,8 @@ class BaseFeatureSpatialTransformerOptions(BaseOptions):
         opt = self.opt
         ###########################################
         # Add id profix
-        if not opt.id.startswith('GAN_AE_'):
-            opt.id = 'GAN_AE_' + opt.id
+        if not opt.id.startswith('FeatST'):
+            opt.id = 'FeatST_' + opt.id
 
         nc_lm = 18
         nc_seg = 7 if opt.input_mask_mode == 'map' else 1
@@ -93,9 +94,9 @@ class TrainFeatureSpatialTransformerOptions(BaseFeatureSpatialTransformerOptions
             choices = ['step', 'plateau', 'lambda'])
 
         parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
-        parser.add_argument('--niter', type = int, default=15, help = '# of iter at starting learning rate')
-        parser.add_argument('--niter_decay', type=int, default=5, help='# of iter to linearly decay learning rate to zero')
-        parser.add_argument('--lr_decay', type=int, default=5, help='multiply by a gamma every lr_decay epochs')
+        parser.add_argument('--niter', type = int, default=30, help = '# of iter at starting learning rate')
+        parser.add_argument('--niter_decay', type=int, default=0, help='# of iter to linearly decay learning rate to zero')
+        parser.add_argument('--lr_decay', type=int, default=10, help='multiply by a gamma every lr_decay epochs')
         parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')
         parser.add_argument('--display_freq', type = int, default = 10, help='frequency of showing training results on screen')
         parser.add_argument('--test_epoch_freq', type = int, default = 1, help='frequency of testing model')
@@ -111,4 +112,5 @@ class TrainFeatureSpatialTransformerOptions(BaseFeatureSpatialTransformerOptions
 
 class TestFeatureSpatialTransformerOptions(BaseFeatureSpatialTransformerOptions):
     def initialize(self):
+        super(TestFeatureSpatialTransformerOptions, self).initialize()
         self.is_train = False

@@ -164,8 +164,10 @@ class TestGANOptions(BaseGANOptions):
     def initialize(self):
 
         super(TestGANOptions, self).initialize()
-
+        parser = self.parser
+        
         # test
+        parser.add_argument('--which_model_FeatST', type=str, default='none', help='set feature spatial transformer in test')
 
         # set test
         self.is_train = False

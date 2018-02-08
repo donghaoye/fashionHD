@@ -1495,6 +1495,7 @@ def define_feat_spatial_transformer(opt):
             shape_nc = opt.shape_nc,
             feat_nc = opt.feat_nc,
             shape_nf = opt.shape_nf,
+            max_nf = opt.max_nf,
             n_shape_downsample = opt.n_shape_downsample,
             reduce_type = opt.reduce_type,
             gpu_ids = opt.gpu_ids
@@ -1510,7 +1511,7 @@ def define_feat_spatial_transformer(opt):
 
 
 class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
-    def __init__(self, shape_nc, feat_nc, shape_nf, n_shape_downsample, reduce_type, gpu_ids):
+    def __init__(self, shape_nc, feat_nc, shape_nf, max_nf, n_shape_downsample, reduce_type, gpu_ids):
         super(EncoderDecoderFeatureSpatialTransformNet,self).__init__()
 
         self.gpu_ids = gpu_ids
@@ -1532,32 +1533,34 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
         self.shape_encode = nn.Sequential(*shape_encode_layers)
 
         c_shape_code = c_in
+        d1 = min(max_nf, feat_nc*2)
+        d2 = min(max_nf, feat_nc*4)
         if self.reduce_type == 'conv':
             encode_layers = [
-                    nn.Conv2d(c_shape_code+feat_nc, feat_nc*2, kernel_size=3, stride=2, bias=False),
-                    nn.BatchNorm2d(feat_nc*2),
+                    nn.Conv2d(c_shape_code+feat_nc, d1, kernel_size=3, stride=2, bias=False),
+                    nn.BatchNorm2d(d1),
                     nn.ReLU(),
-                    nn.Conv2d(feat_nc*2, feat_nc*4, kernel_size=3, stride=2, bias=False),
-                    nn.BatchNorm2d(feat_nc*4),
+                    nn.Conv2d(d1, d2, kernel_size=3, stride=2, bias=False),
+                    nn.BatchNorm2d(d2),
                     nn.ReLU(),
                 ]
         elif self.reduce_type == 'pool':
             encode_layers = [
-                nn.Conv2d(c_shape_code+feat_nc, feat_nc*2, kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm2d(feat_nc*2),
+                nn.Conv2d(c_shape_code+feat_nc, d1, kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm2d(d1),
                 nn.ReLU(),
-                nn.Conv2d(feat_nc*2, feat_nc*4, kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm2d(feat_nc*4),
+                nn.Conv2d(d1, d2, kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm2d(d2),
                 nn.AvgPool2d(kernel_size=7),
                 nn.ReLU(),
                 ]
         self.encode = nn.Sequential(*encode_layers)
 
         decode_layers = [
-            nn.Conv2d(c_shape_code+feat_nc*4, feat_nc*2, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(feat_nc*2),
+            nn.Conv2d(c_shape_code+d2, d1, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(d1),
             nn.ReLU(),
-            nn.Conv2d(feat_nc*2, feat_nc, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(d1, feat_nc, kernel_size=3, stride=1, padding=1),
             nn.ReLU()
         ]
 
