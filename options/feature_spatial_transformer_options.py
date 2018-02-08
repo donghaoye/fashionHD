@@ -87,7 +87,7 @@ class TrainFeatureSpatialTransformerOptions(BaseFeatureSpatialTransformerOptions
         parser.add_argument('--continue_train', action = 'store_true', default = False, help = 'coninue training from saved model')
         # optimizer (we use Adam)
         parser.add_argument('--lr', type = float, default = 1e-4, help = 'initial learning rate')
-        parser.add_argument('--weight_decay', type = float, default=5e-4, help='weight decay')
+        parser.add_argument('--weight_decay', type = float, default=0, help='weight decay')
         parser.add_argument('--beta1', type = float, default = 0.9, help = 'momentum1 term for Adam')
         parser.add_argument('--beta2', type = float, default = 0.999, help = 'momentum2 term for Adam')
         parser.add_argument('--lr_policy', type=str, default='step', help='learning rate policy: lambda|step|plateau',

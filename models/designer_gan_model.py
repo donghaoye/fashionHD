@@ -7,7 +7,7 @@ import networks
 from torch.autograd import Variable
 from misc.image_pool import ImagePool
 from base_model import BaseModel
-from network_loader import load_attribute_encoder_net
+import network_loader
 
 import os
 import sys
@@ -41,8 +41,15 @@ class DesignerGAN(BaseModel):
         # 1. add specified generator networks
 
         self.netG = networks.define_G(opt)
-        self.netAE, self.opt_AE = load_attribute_encoder_net(id = opt.which_model_AE, gpu_ids = opt.gpu_ids)
-        
+        self.netAE, self.opt_AE = network_loader.load_attribute_encoder_net(id = opt.which_model_AE, gpu_ids = opt.gpu_ids)
+        if opt.which_model_FeatST != 'none':
+            self.netFeatST, self.opt_FeatST = network_loader.load_feature_spatial_transformer_net(id=opt.which_model_FeatST, gpu_ids = opt.gpu_ids)
+            self.use_FeatST = True
+            assert self.opt_FeatST.shape_encode == self.opt.shape_encode, 'GAN model and FeatST model has different shape encode mode'
+            assert self.opt_FeatST.input_mask_model == self.opt.input_mask_model, 'GAN model and FeatST model has different segmentation input mode'
+        else:
+            self.use_FeatST = False
+
         if self.is_train:
             self.netD = networks.define_D(opt)
             if opt.which_model_init_netG != 'none' and not opt.continue_train:
@@ -122,6 +129,8 @@ class DesignerGAN(BaseModel):
         shape_code = self.encode_shape(self.input['lm_map'], self.input['seg_mask'])
         if not self.opt.no_attr_cond:
             attr_code = self.encode_attribute(self.input['img'], self.input['lm_map'])
+            if self.use_FeatST:
+                attr_code = self.feat_spatial_transform(attr_code, self.input['seg_mask'], self.input['seg_mask'])
             self.output['img_fake_raw'] = self.netG(shape_code, attr_code)
         else:
             attr_code = None
@@ -371,6 +380,9 @@ class DesignerGAN(BaseModel):
         elif output_type == 'feat_map':
             _, prob_map = self.netAE(*input)
             return prob_map
+
+    def feat_spatial_transform(self, feat_input, shape_src, shape_tar):
+        return self.netFeatST(feat_input, shape_src, shape_tar)
 
     def encode_shape(self, lm_map, seg_mask, img = None):
         if self.opt.shape_encode == 'lm':

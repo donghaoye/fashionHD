@@ -15,6 +15,7 @@ class BaseGANOptions(BaseOptions):
         parser.add_argument('--which_model_netD', type = str, default = 'basic', help = 'select model to use for netD')
         parser.add_argument('--which_model_AE', type = str, default = 'AE_2.6', help = 'pretrained attribute encoder ID')
         parser.add_argument('--which_model_init_netG', type = str, default = 'none', help = 'load pretrained model to init netG parameters')
+        parser.add_argument('--which_model_FeatST', type = str, default='none', help='use feature spatial transformer')
         parser.add_argument('--norm', type=str, default='batch', help='instance normalization or batch normalization [batch|instance]')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
         parser.add_argument('--G_cond_layer', type = str, default = 'all', help = 'which layer to add condition feature',
@@ -167,7 +168,6 @@ class TestGANOptions(BaseGANOptions):
         parser = self.parser
         
         # test
-        parser.add_argument('--which_model_FeatST', type=str, default='none', help='set feature spatial transformer in test')
 
         # set test
         self.is_train = False
