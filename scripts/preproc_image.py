@@ -48,7 +48,7 @@ def align_and_resize_image(benchmark):
         interp_method = cv2.INTER_CUBIC
         update_label = True
 
-    if benchmark == 'ca_seg_pad':
+    elif benchmark == 'ca_seg_pad':
         # this setting is to align segmentation map from org+pad size to standard size
         # this will not update landmark and bbox label
         input_dir = design_root + 'Img/seg_ca_pad_%d' % img_size
@@ -68,7 +68,7 @@ def align_and_resize_image(benchmark):
             samples[s_id]['img_path_org'] = os.path.join(input_dir, s_id + '.bmp')
             samples[s_id]['img_path'] = os.path.join(output_dir, s_id + '.bmp')
 
-    if benchmark == 'ca_seg_syn':
+    elif benchmark == 'ca_seg_syn':
         # this setting is to align segmentation map from org size to standard size
         # this will not update landmark and bbox label
         input_dir = design_root + 'Img/seg_ca_org_syn'
@@ -90,6 +90,7 @@ def align_and_resize_image(benchmark):
             samples[s_id]['img_path'] = os.path.join(output_dir, s_id + '.bmp')
             assert os.path.isfile(samples[s_id]['img_path_org']), 'cannot find image: %s' % samples[s_id]['img_path_org']
 
+    
     io.mkdir_if_missing(design_root + 'Img')
     io.mkdir_if_missing(output_dir)
 
@@ -385,6 +386,20 @@ def create_synthesis_to_CA_index():
     scipy.io.savemat(fn_out, data_out)
 
 
+def create_edge_path():
+    
+    edge_root = design_root+'Img/edge_ca_256'
+    samples = io.load_json(design_root+'Label/ca_samples.json')
+
+    split = io.load_json(design_root+'Split/ca_gan_split_trainval.json')
+    edge_path = {s_id:os.path.join(edge_root, s_id+'.jpg') for s_id in split['train']+split['test']}
+    io.save_json(edge_path, design_root+'Label/ca_edge_paths.json')
+
+    split = io.load_json(design_root+'Split/debugca_gan_split.json')
+    edge_path = {s_id:os.path.join(edge_root, s_id+'.jpg') for s_id in split['train']+split['test']}
+    io.save_json(edge_path, design_root+'Label/debugca_edge_paths.json')    
+
+
 if __name__ == '__main__':
     #################################################
     # align_and_resize_image('ca')
@@ -404,8 +419,13 @@ if __name__ == '__main__':
     # get segmentation from Fashon-synthesis data
     #
     # create_synthesis_to_CA_index()
-    align_and_resize_image('ca_seg_syn')
+    # align_and_resize_image('ca_seg_syn')
 
+
+    #################################################
+    # edge
+    create_edge_path()
+    
 
     #################################################
     # visualization and test

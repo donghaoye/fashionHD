@@ -13,9 +13,7 @@ class BaseGANOptions(BaseOptions):
         parser.add_argument('--ndf', type=int, default=64, help='# of discrim filters in first conv layer')
         parser.add_argument('--which_model_netG', type = str, default = 'resnet_6blocks', help = 'select model to use for netG')
         parser.add_argument('--which_model_netD', type = str, default = 'basic', help = 'select model to use for netD')
-        parser.add_argument('--which_model_AE', type = str, default = 'AE_2.6', help = 'pretrained attribute encoder ID')
         parser.add_argument('--which_model_init_netG', type = str, default = 'none', help = 'load pretrained model to init netG parameters')
-        parser.add_argument('--which_model_FeatST', type = str, default='none', help='use feature spatial transformer')
         parser.add_argument('--norm', type=str, default='batch', help='instance normalization or batch normalization [batch|instance]')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
         parser.add_argument('--G_cond_layer', type = str, default = 'all', help = 'which layer to add condition feature',
@@ -25,13 +23,8 @@ class BaseGANOptions(BaseOptions):
         parser.add_argument('--n_layers_D', type=int, default=3, help='only used if which_model_netD==n_layers')
         parser.add_argument('--which_gan', type=str, default='dcgan', help='type of gan loss [dcgan|lsgan|wgan]',
             choices = ['dcgan', 'lsgan', 'wgan'])
-        parser.add_argument('--n_attr', type = int, default = 1000, help = 'number of attribute entries')
-        parser.add_argument('--n_attr_feat', type = int, default = 512, help = '# of attribute feature channels')
-        parser.add_argument('--attr_cond_type', type = str, default = 'feat_map', help = 'attribute condition form [feat|prob|none]',
-            choices = ['feat', 'prob', 'feat_map', 'prob_map'])
-
         parser.add_argument('--shape_encode', type = str, default = 'lm+seg', help = 'cloth shape encoding method',
-            choices = ['lm', 'seg', 'lm+seg'])
+            choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e'])
         parser.add_argument('--input_mask_mode', type = str, default = 'map', help = 'type of segmentation mask. see base_dataset.segmap_to_mask for details. [foreground|body|target|map]',
             choices = ['foreground', 'body', 'target', 'map'])
         parser.add_argument('--post_mask_mode', type = str, default = 'fuse_face', help = 'how to mask generated images [none|fuse_face|fuse_face+bg]',
@@ -39,7 +32,21 @@ class BaseGANOptions(BaseOptions):
         # none: do not mask image
         # fuse_face: replace the face&hair part with original image
         # fuse_face_bg: replace the face&hair&background part with original image
+
+        # attribute
+        parser.add_argument('--which_model_AE', type = str, default = 'AE_2.6', help = 'pretrained attribute encoder ID')
+        parser.add_argument('--which_model_FeatST', type = str, default='none', help='use feature spatial transformer')
+        parser.add_argument('--n_attr', type = int, default = 1000, help = 'number of attribute entries')
+        parser.add_argument('--n_attr_feat', type = int, default = 512, help = '# of attribute feature channels')
+        parser.add_argument('--attr_cond_type', type = str, default = 'feat_map', help = 'attribute condition form [feat|prob|none]',
+            choices = ['feat', 'prob', 'feat_map', 'prob_map'])
         parser.add_argument('--no_attr_cond', action = 'store_true', help='do not use attribute condition in generator')
+
+        # edge
+        # parser.add_argument('--use_edge_cond', action = 'store_true', help='use edge condition branch')
+        # parser.add_argument('--edge_nf', type=int, default=16, help='feature dimension of first conv layer in edge encoder')
+        # parser.add_argument('--edge_n_layer',type=int, default=5, help='number of downsample layers in edge encoder')
+
 
         # data files
         # refer to "scripts/preproc_inshop.py" for more information
@@ -69,6 +76,7 @@ class BaseGANOptions(BaseOptions):
         nc_img = 3
         nc_lm = 18
         nc_seg = 7 if opt.input_mask_mode == 'map' else 1
+        nc_edge = 1
 
         if opt.shape_encode == 'lm':
             opt.G_input_nc = nc_lm
@@ -76,6 +84,8 @@ class BaseGANOptions(BaseOptions):
             opt.G_input_nc = nc_seg
         elif opt.shape_encode == 'lm+seg':
             opt.G_input_nc = nc_lm + nc_seg
+        elif opt.shape_encode == 'lm+seg+e':
+            opt.G_input_nc = nc_lm + nc_seg + nc_edge
 
         opt.G_output_nc = nc_img
         opt.D_input_nc = opt.G_input_nc + opt.G_output_nc
@@ -92,6 +102,8 @@ class BaseGANOptions(BaseOptions):
                 opt.fn_landmark = 'Label/ca_landmark_label_256.pkl'
             if opt.fn_seg_path == 'default':
                 opt.fn_seg_path = 'Label/ca_seg_paths.json'
+            if opt.fn_edge_path == 'default':
+                opt.fn_edge_path = 'Label/ca_edge_paths.json'
 
             if opt.fn_split == 'default':
                 if opt.benchmark == 'ca':
@@ -106,6 +118,7 @@ class BaseGANOptions(BaseOptions):
             opt.fn_split = 'Split/debugca_gan_split.json'
             opt.fn_landmark = 'Label/debugca_gan_landmark_label.pkl'
             opt.fn_seg_path = 'Label/debugca_seg_paths.json'
+            opt.fn_edge_path = 'Label/debugca_edge_paths.json'
 
         ###########################################
 
@@ -157,6 +170,8 @@ class TrainGANOptions(BaseGANOptions):
         parser.add_argument('--shape_adaptive', action='store_true', help='add training samples with unmatched shape/attribute representation, \
             and optimize only GAN loss for these samples to force netG to generate realistic images from unmatched conditions')
         
+        # joint train modules
+
         # set train
         self.is_train = True
 

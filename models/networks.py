@@ -1151,21 +1151,24 @@ class LandmarkPool(nn.Module):
 
         
 
-def create_stack_conv_layers(input_nc, feat_nc_s = 64, feat_nc_f = 1024, num_layer = 5):
+def create_stack_conv_layers(input_nc, feat_nc_s = 64, feat_nc_f = 1024, num_layer = 5, norm = 'batch'):
     
     c_in = input_nc
     c_out = feat_nc_s
+    norm_layer = get_norm_layer(norm_type = norm)
     conv_layers = []
 
     for n in range(num_layer):
         conv_layers.append(nn.Conv2d(c_in, c_out, 4,2,1, bias = False))
-        conv_layers.append(nn.BatchNorm2d(c_out))
+        conv_layers.append(norm_layer(c_out))
         conv_layers.append(nn.ReLU())
 
         c_in = c_out
         c_out = feat_nc_f if n == num_layer-2 else c_out * 2
 
     conv = nn.Sequential(*conv_layers)
+
+    conv.input_nc = input_nc
     conv.output_nc = feat_nc_f
 
     return conv

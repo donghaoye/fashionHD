@@ -278,6 +278,7 @@ class GANVisualizer(BaseVisualizer):
         # post-process masks and landmark heatmaps
         visuals['seg_map'] = self._seg_map_to_img(visuals['seg_map'])
         visuals['landmark_heatmap'] = visuals['landmark_heatmap'].max(dim=1, keepdim=True)[0].expand_as(visuals['img_real'])
+        visuals['edge_map'] = visuals['edge_map'].expand_as(visuals['img_real'])
 
         num_vis = min(opt.max_n_vis, visuals['img_real'].size(0))
         imgs = []
@@ -288,12 +289,13 @@ class GANVisualizer(BaseVisualizer):
                 # visuals['img_real_raw'][i],
                 visuals['img_fake_raw'][i],
                 visuals['seg_map'][i],
-                visuals['landmark_heatmap'][i]
+                visuals['landmark_heatmap'][i],
+                visuals['edge_map'][i]
             ]
 
         imgs = torch.stack(imgs)
         fn_img = os.path.join(vis_dir, '%s_epoch%d.jpg' % (subset, epoch))
-        torchvision.utils.save_image(imgs, fn_img, nrow = 5, normalize = True)
+        torchvision.utils.save_image(imgs, fn_img, nrow = 6, normalize = True)
 
     def visualize_image_matrix(self, imgs, imgs_title = None, label = 'default', vis_dir = 'vis'):
         '''
