@@ -1501,7 +1501,7 @@ def define_feat_spatial_transformer(opt):
             max_nf = opt.max_nf,
             n_shape_downsample = opt.n_shape_downsample,
             reduce_type = opt.reduce_type,
-            norm = get_norm_layer(opt.norm),
+            norm_layer = get_norm_layer(opt.norm),
             gpu_ids = opt.gpu_ids
         )
 
@@ -1515,7 +1515,7 @@ def define_feat_spatial_transformer(opt):
 
 
 class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
-    def __init__(self, shape_nc, feat_nc, shape_nf, max_nf, n_shape_downsample, reduce_type, norm, gpu_ids):
+    def __init__(self, shape_nc, feat_nc, shape_nf, max_nf, n_shape_downsample, reduce_type, norm_layer, gpu_ids):
         super(EncoderDecoderFeatureSpatialTransformNet,self).__init__()
 
         self.gpu_ids = gpu_ids
@@ -1529,7 +1529,7 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
             shape_encode_layers += [
                 nn.Conv2d(c_in, c_out, 4, 2, 1, bias = False),
                 # nn.BatchNorm2d(c_out),
-                norm(c_out) if norm is not None else None,
+                norm_layer(c_out) if norm_layer is not None else None,
                 nn.ReLU()
             ]
             c_in = c_out
@@ -1545,22 +1545,22 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
             encode_layers = [
                     nn.Conv2d(c_shape_code+feat_nc, d1, kernel_size=3, stride=2, bias=False),
                     # nn.BatchNorm2d(d1),
-                    norm(d1) if norm is not None else None,
+                    norm_layer(d1) if norm_layer is not None else None,
                     nn.ReLU(),
                     nn.Conv2d(d1, d2, kernel_size=3, stride=2, bias=False),
                     # nn.BatchNorm2d(d2),
-                    norm(d2) if norm is not None else None,
+                    norm_layer(d2) if norm_layer is nn.BatchNorm2d else None,
                     nn.ReLU(),
                 ]
         elif self.reduce_type == 'pool':
             encode_layers = [
                 nn.Conv2d(c_shape_code+feat_nc, d1, kernel_size=3, stride=1, padding=1),
                 # nn.BatchNorm2d(d1),
-                norm(d1) if norm is not None else None,
+                norm_layer(d1) if norm_layer is not None else None,
                 nn.ReLU(),
                 nn.Conv2d(d1, d2, kernel_size=3, stride=1, padding=1),
                 # nn.BatchNorm2d(d2),
-                norm(d2) if norm is not None else None,
+                norm_layer(d2) if norm_layer is nn.BatchNorm2d else None,
                 nn.AvgPool2d(kernel_size=7),
                 nn.ReLU(),
                 ]
@@ -1570,7 +1570,7 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
         decode_layers = [
             nn.Conv2d(c_shape_code+d2, d1, kernel_size=3, stride=1, padding=1),
             # nn.BatchNorm2d(d1),
-            norm(d1) if norm is not None else None,
+            norm_layer(d1) if norm_layer is not None else None,
             nn.ReLU(),
             nn.Conv2d(d1, feat_nc, kernel_size=3, stride=1, padding=1),
             nn.ReLU()
@@ -1579,9 +1579,6 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
         self.decode =nn.Sequential(*decode_layers)
 
     def forward(self, feat_input, shape_src, shape_tar, single_device = False):
-        print(feat_input.size())
-        print(shape_src.size())
-        print(shape_tar.size())
         if len(self.gpu_ids) > 1 and (not single_device):
             return nn.parallel.data_parallel(self, (feat_input, shape_src, shape_tar), module_kwargs = {'single_device': True})
         else:
