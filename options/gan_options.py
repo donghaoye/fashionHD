@@ -24,7 +24,7 @@ class BaseGANOptions(BaseOptions):
         parser.add_argument('--which_gan', type=str, default='dcgan', help='type of gan loss [dcgan|lsgan|wgan]',
             choices = ['dcgan', 'lsgan', 'wgan'])
         parser.add_argument('--shape_encode', type = str, default = 'lm+seg', help = 'cloth shape encoding method',
-            choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e'])
+            choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e'])
         parser.add_argument('--input_mask_mode', type = str, default = 'map', help = 'type of segmentation mask. see base_dataset.segmap_to_mask for details. [foreground|body|target|map]',
             choices = ['foreground', 'body', 'target', 'map'])
         parser.add_argument('--post_mask_mode', type = str, default = 'fuse_face', help = 'how to mask generated images [none|fuse_face|fuse_face+bg]',
@@ -87,6 +87,10 @@ class BaseGANOptions(BaseOptions):
             opt.G_input_nc = nc_lm + nc_seg
         elif opt.shape_encode == 'lm+seg+e':
             opt.G_input_nc = nc_lm + nc_seg + nc_edge
+        elif opt.shape_encode == 'seg+e':
+            opt.G_input_nc = nc_seg + nc_edge
+        elif opt.shape_encode == 'e':
+            opt.G_input_nc = nc_edge
 
         opt.G_output_nc = nc_img
         opt.D_input_nc = opt.G_input_nc + opt.G_output_nc

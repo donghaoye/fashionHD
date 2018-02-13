@@ -396,6 +396,8 @@ class DesignerGAN(BaseModel):
             shape_code = torch.cat((seg_mask, edge_map), dim = 1)
         elif self.opt.shape_encode == 'lm+seg+e':
             shape_code = torch.cat((lm_map, seg_mask, edge_map), dim = 1)
+        elif self.opt.shape_encode == 'e':
+            shape_code = edge_map
 
         if img is not None:
             shape_code = torch.cat((img, shape_code), dim = 1)
