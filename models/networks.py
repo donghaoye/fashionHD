@@ -1527,7 +1527,7 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
         for n in range(n_shape_downsample):
             shape_encode_layers += [
                 nn.Conv2d(c_in, c_out, 4, 2, 1, bias = False),
-                nn.BatchNorm2d(c_out),
+                # nn.BatchNorm2d(c_out),
                 nn.ReLU()
             ]
             c_in = c_out
@@ -1541,19 +1541,19 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
         if self.reduce_type == 'conv':
             encode_layers = [
                     nn.Conv2d(c_shape_code+feat_nc, d1, kernel_size=3, stride=2, bias=False),
-                    nn.BatchNorm2d(d1),
+                    # nn.BatchNorm2d(d1),
                     nn.ReLU(),
                     nn.Conv2d(d1, d2, kernel_size=3, stride=2, bias=False),
-                    nn.BatchNorm2d(d2),
+                    # nn.BatchNorm2d(d2),
                     nn.ReLU(),
                 ]
         elif self.reduce_type == 'pool':
             encode_layers = [
                 nn.Conv2d(c_shape_code+feat_nc, d1, kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm2d(d1),
+                # nn.BatchNorm2d(d1),
                 nn.ReLU(),
                 nn.Conv2d(d1, d2, kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm2d(d2),
+                # nn.BatchNorm2d(d2),
                 nn.AvgPool2d(kernel_size=7),
                 nn.ReLU(),
                 ]
@@ -1561,7 +1561,7 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
 
         decode_layers = [
             nn.Conv2d(c_shape_code+d2, d1, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(d1),
+            # nn.BatchNorm2d(d1),
             nn.ReLU(),
             nn.Conv2d(d1, feat_nc, kernel_size=3, stride=1, padding=1),
             nn.ReLU()

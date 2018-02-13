@@ -26,6 +26,7 @@ class BaseFeatureSpatialTransformerOptions(BaseOptions):
         parser.add_argument('--fn_split', type = str, default = 'default', help = 'path of split file')
         parser.add_argument('--fn_landmark', type = str, default = 'default', help = 'path of landmark label file')
         parser.add_argument('--fn_seg_path', type = str, default = 'default', help = 'path of seg map list')
+        parser.add_argument('--fn_edge_path', type = str, default = 'default', help = 'path of edge map list')
         # misc
         parser.add_argument('--batch_size', type = int, default = 128, help = 'batch size')
         self.parser.add_argument('--pavi', default = False, action = 'store_true', help = 'activate pavi log')
@@ -70,6 +71,8 @@ class BaseFeatureSpatialTransformerOptions(BaseOptions):
                 opt.fn_landmark = 'Label/ca_landmark_label_256.pkl'
             if opt.fn_seg_path == 'default':
                 opt.fn_seg_path = 'Label/ca_seg_paths.json'
+            if opt.fn_edge_path == 'default':
+                opt.fn_edge_path = 'Label/ca_edge_paths.json'
 
             if opt.fn_split == 'default':
                 if opt.benchmark == 'ca':
@@ -84,6 +87,7 @@ class BaseFeatureSpatialTransformerOptions(BaseOptions):
             opt.fn_split = 'Split/debugca_gan_split.json'
             opt.fn_landmark = 'Label/debugca_gan_landmark_label.pkl'
             opt.fn_seg_path = 'Label/debugca_seg_paths.json'
+            opt.fn_edge_path = 'Label/debugca_edge_paths.json'
 
         ###########################################
 

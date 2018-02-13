@@ -76,6 +76,7 @@ class FeatureSpatialTransformer(BaseModel):
         self.input['lm_map'] = self.Tensor(data['lm_map'].size()).copy_(data['lm_map'])
         self.input['seg_mask'] = self.Tensor(data['seg_mask'].size()).copy_(data['seg_mask'])
         self.input['seg_map'] = self.Tensor(data['seg_map'].size()).copy_(data['seg_map'])
+        self.input['edge_map'] = self.Tensor(data['edge_map'].size()).copy_(data['edge_map'])
         self.input['id'] = data['id']
 
         # create input variables
@@ -84,7 +85,7 @@ class FeatureSpatialTransformer(BaseModel):
                 self.input[k] = Variable(v)
 
     def forward(self):
-        shape_code = self.encode_shape(self.input['lm_map'], self.input['seg_mask'])
+        shape_code = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'])
         feat_input = self.encode_attribute(self.input['img'], self.input['lm_map'], output_type = 'feat_map')
         # feat_output = self.net(feat_input, shape_input, shape_tar)
         feat_output = self.net(feat_input, shape_code, shape_code)
@@ -136,7 +137,7 @@ class FeatureSpatialTransformer(BaseModel):
     def eval(self):
         self.net.eval()
 
-    def encode_shape(self, lm_map, seg_mask, img = None):
+    def encode_shape(self, lm_map, seg_mask, edge_map, img = None):
         if self.opt.shape_encode == 'lm':
             shape_code = lm_map
         elif self.opt.shape_encode == 'seg':
