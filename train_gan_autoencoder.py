@@ -76,5 +76,5 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
     
     if epoch % opt.save_epoch_freq == 0:
         model.save(epoch)
-        model.save('latest')
+    model.save('latest')
 
