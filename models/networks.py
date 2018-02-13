@@ -722,7 +722,7 @@ class ResnetGenerator(nn.Module):
 
         mult = 2**n_downsampling
         for i in range(n_blocks):
-            model += [ResnetBlock(ngf * mult, padding_type=padding_type, activation = activation(), norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, activation = activation(), norm_layer=norm_layer, use_dropout=use_dropout, bias=use_bias)]
 
         for i in range(n_downsampling):
             mult = 2**(n_downsampling - i)
@@ -1574,7 +1574,7 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
         self.encode = nn.Sequential(*encode_layers)
 
         decode_layers = [
-            nn.Conv2d(c_shape_code+d2, d1, kernel_size=3, stride=1, padding=1, use_bias=use_bias),
+            nn.Conv2d(c_shape_code+d2, d1, kernel_size=3, stride=1, padding=1, bias=use_bias),
             # nn.BatchNorm2d(d1),
             norm_layer(d1) if norm != 'none' else None,
             nn.ReLU(),
