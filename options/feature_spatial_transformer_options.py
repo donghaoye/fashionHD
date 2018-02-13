@@ -11,6 +11,7 @@ class BaseFeatureSpatialTransformerOptions(BaseOptions):
         parser.add_argument('--feat_nc', type = int, default = 512, help = 'feature dimenssion')
         parser.add_argument('--shape_nf', type = int, default = 3, help = 'shape feat dimenssion of first conv layer')
         parser.add_argument('--max_nf', type = int, default = 2048, help = 'maximum intermediate feature dimension')
+        parser.add_argument('--norm', type=str, default='batch', help='instance normalization or batch normalization [batch|instance|none]')
         parser.add_argument('--n_shape_downsample', type = int, default = 5, help='downsample 5 times to reduce shape map from 22r*224 to 7*7')
         parser.add_argument('--reduce_type', type = str, default = 'pool', help = 'how to reduce a feature map to a non-spatial feature',
             choices = ['conv', 'pool'])
