@@ -45,8 +45,8 @@ class DesignerGAN(BaseModel):
         if opt.which_model_FeatST != 'none':
             self.netFeatST, self.opt_FeatST = network_loader.load_feature_spatial_transformer_net(id=opt.which_model_FeatST, gpu_ids = opt.gpu_ids)
             self.use_FeatST = True
-            assert self.opt_FeatST.shape_encode == self.opt.shape_encode, 'GAN model and FeatST model has different shape encode mode'
-            assert self.opt_FeatST.input_mask_mode == self.opt.input_mask_mode, 'GAN model and FeatST model has different segmentation input mode'
+            # assert self.opt_FeatST.shape_encode == self.opt.shape_encode, 'GAN model and FeatST model has different shape encode mode'
+            # assert self.opt_FeatST.input_mask_mode == self.opt.input_mask_mode, 'GAN model and FeatST model has different segmentation input mode'
         else:
             self.use_FeatST = False
 

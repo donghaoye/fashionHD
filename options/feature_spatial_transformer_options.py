@@ -15,7 +15,7 @@ class BaseFeatureSpatialTransformerOptions(BaseOptions):
         parser.add_argument('--reduce_type', type = str, default = 'pool', help = 'how to reduce a feature map to a non-spatial feature',
             choices = ['conv', 'pool'])
         parser.add_argument('--shape_encode', type = str, default = 'lm+seg', help = 'cloth shape encoding method',
-            choices = ['lm', 'seg', 'lm+seg'])
+            choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e'])
         parser.add_argument('--input_mask_mode', type = str, default = 'map', help = 'type of segmentation mask. see base_dataset.segmap_to_mask for details. [foreground|body|target|map]',
             choices = ['foreground', 'body', 'target', 'map'])
         parser.add_argument('--benchmark', type = str, default = 'ca_upper', help = 'set benchmark [ca|ca_org|inshop|user|debug]',
@@ -39,8 +39,10 @@ class BaseFeatureSpatialTransformerOptions(BaseOptions):
         if not opt.id.startswith('FeatST'):
             opt.id = 'FeatST_' + opt.id
 
+        # check that input/output dimension setting
         nc_lm = 18
         nc_seg = 7 if opt.input_mask_mode == 'map' else 1
+        nc_edge = 1
 
         if opt.shape_encode == 'lm':
             opt.shape_nc = nc_lm
@@ -48,6 +50,12 @@ class BaseFeatureSpatialTransformerOptions(BaseOptions):
             opt.shape_nc = nc_seg
         elif opt.shape_encode == 'lm+seg':
             opt.shape_nc = nc_lm + nc_seg
+        elif opt.shape_encode == 'lm+seg+e':
+            opt.shape_nc = nc_lm + nc_seg + nc_edge
+        elif opt.shape_encode == 'seg+e':
+            opt.shape_nc = nc_seg + nc_edge
+        elif opt.shape_encode == 'e':
+            opt.shape_nc = nc_edge
 
         ###########################################
         # Set default dataset file pathes

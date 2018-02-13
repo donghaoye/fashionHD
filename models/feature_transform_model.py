@@ -143,8 +143,13 @@ class FeatureSpatialTransformer(BaseModel):
             shape_code = seg_mask
         elif self.opt.shape_encode == 'lm+seg':
             shape_code = torch.cat((lm_map, seg_mask), dim = 1)
-        if img is not None:
-            shape_code = torch.cat((img, shape_code), dim = 1)
+        elif self.opt.shape_encode == 'seg+e':
+            shape_code = torch.cat((seg_mask, edge_map), dim = 1)
+        elif self.opt.shape_encode == 'lm+seg+e':
+            shape_code = torch.cat((lm_map, seg_mask, edge_map), dim = 1)
+        elif self.opt.shape_encode == 'e':
+            shape_code = edge_map
+            
         return shape_code
 
     def encode_attribute(self, img, lm_map = None, output_type = None):

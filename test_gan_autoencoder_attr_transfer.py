@@ -46,7 +46,7 @@ for i in range(num_batch):
     data = val_loader_iter.next()
     model.set_input(data)
     img_real = model.input['img']
-    shape_code = model.encode_shape(model.input['lm_map'], model.input['seg_mask'])
+    shape_code = model.encode_shape(model.input['lm_map'], model.input['seg_mask'], model.input['edge_map'])
     attr_code = model.encode_attribute(model.input['img'], model.input['lm_map'])
 
     img_title = data['img']
