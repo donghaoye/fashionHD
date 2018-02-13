@@ -156,7 +156,7 @@ class TrainGANOptions(BaseGANOptions):
         parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')
         parser.add_argument('--display_freq', type = int, default = 10, help='frequency of showing training results on screen')
         # parser.add_argument('--test_epoch_freq', type = int, default = 1, help='frequency of testing model')
-        parser.add_argument('--save_epoch_freq', type = int, default = 1, help='frequency of saving model to disk' )
+        parser.add_argument('--save_epoch_freq', type = int, default = 5, help='frequency of saving model to disk' )
         parser.add_argument('--vis_epoch_freq', type = int, default = 1, help='frequency of visualizing generated images')
         parser.add_argument('--max_n_vis', type = int, default = 20, help='max number of visualized images')
         parser.add_argument('--D_pretrain', type = int, default = 50, help = 'iter num of pretraining net D')

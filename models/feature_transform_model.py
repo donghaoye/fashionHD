@@ -94,7 +94,6 @@ class FeatureSpatialTransformer(BaseModel):
 
         # compute loss
         self.output['loss'] = 0
-
         self.output['loss_L1'] = self.crit_L1(feat_output, feat_input)
         self.output['loss'] += self.output['loss_L1'] * self.opt.loss_weight_L1
 

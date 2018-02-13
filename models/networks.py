@@ -293,9 +293,7 @@ class Vgg19(torch.nn.Module):
             for param in self.parameters():
                 param.requires_grad = False
 
-    def forward(self, xy):
-        x = xy[:,0]
-        y = xy[:,1]
+    def forward(self, x, y):
         bsz = x.size(0)
         input = torch.cat((x,y), dim = 0)
         h_relu1 = self.slice1(input)
@@ -318,11 +316,10 @@ class VGGLoss(nn.Module):
             self.vgg.cuda()
 
     def forward(self, x, y):
-        xy = torch.stack((x,y), dim=1)
         if self.gpu_ids:
-            return nn.parallel.data_parallel(self.vgg, xy).mean()
+            return nn.parallel.data_parallel(self.vgg, (x, y)).mean()
         else:
-            return self.vgg(xy).mean()
+            return self.vgg(x, y).mean()
 
 class TotalVariationLoss(nn.Module):
     def forward(self, x):
