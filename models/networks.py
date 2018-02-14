@@ -719,7 +719,7 @@ class ResnetGenerator(nn.Module):
 
         mult = 2**n_downsampling
         for i in range(n_blocks):
-            model += [ResnetBlock(ngf * mult, padding_type=padding_type, activation = activation(), norm_layer=norm_layer, use_dropout=use_dropout, bias=use_bias)]
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, activation = activation(), norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
 
         for i in range(n_downsampling):
             mult = 2**(n_downsampling - i)

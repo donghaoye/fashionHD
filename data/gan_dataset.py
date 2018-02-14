@@ -63,6 +63,7 @@ class GANDataset(BaseDataset):
 
         # load image
         img = cv2.imread(self.sample_list[index]['img_path'])
+        img = img.astype(np.float32) / 255.
         if img.ndim == 3:
             # convert BRG to RBG
             img = img[:,:,[2,1,0]]
