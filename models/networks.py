@@ -1493,6 +1493,10 @@ class JointNoneSpatialAttributeEncoderNet(nn.Module):
         return feat, feat_map
 
 
+###############################################################################
+# Feature Spatial Transformer
+###############################################################################
+
 def define_feat_spatial_transformer(opt):
     net = EncoderDecoderFeatureSpatialTransformNet(
             shape_nc = opt.shape_nc,
@@ -1594,3 +1598,46 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
             feat_tile = feat_nonspatial.expand(b,c,h,w)
             feat_output = self.decode(torch.cat((feat_tile, shape_code_tar), dim=1))
             return feat_output
+
+
+###############################################################################
+# General Image Encoder
+###############################################################################
+
+class ImageEncoder(nn.Module):
+    def __init__(self, input_nc, output_nc, nf, num_downs, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, gpu_ids=[]):
+        super(ImageEncoder, self).__init__()
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.nf = nf
+        self.num_downs = num_downs
+        self.gpu_ids = gpu_ids
+
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        max_nf = 512
+        c_in = input_nc
+        c_out = nf
+        layers = []
+
+        for n in range(num_downs):
+            layers += [
+                nn.Conv2d(c_in, c_out, kernel_size=4, stride=2, padding=1, bias=use_bias),
+                norm_layer(c_out),
+                activation()
+            ]
+            c_in = c_out
+            c_out = min(c_out*2, max_nf)
+
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, img):
+        if len(self.gpu_ids) > 1:
+            return nn.parallel.data_parallel(self.net, img)
+        else:
+            return self.net(img)
+
+    
