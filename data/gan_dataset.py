@@ -30,6 +30,7 @@ class GANDataset(BaseDataset):
         lm_label = io.load_data(os.path.join(opt.data_root, opt.fn_landmark))
         seg_paths = io.load_json(os.path.join(opt.data_root, opt.fn_seg_path))
         edge_paths = io.load_json(os.path.join(opt.data_root, opt.fn_edge_path))
+        color_paths = io.load_json(os.path.join(opt.data_root, opt.fn_color_path))
 
         self.id_list = data_split[split]
         self.attr_entry = attr_entry
@@ -40,6 +41,7 @@ class GANDataset(BaseDataset):
         self.lm_list = [lm_label[s_id] for s_id in self.id_list]
         self.seg_path_list = [seg_paths[s_id] for s_id in self.id_list]
         self.edge_path_list = [edge_paths[s_id] for s_id in self.id_list]
+        self.color_path_list = [color_paths[s_id] for s_id in self.id_list]
 
 
         # check data
@@ -81,9 +83,11 @@ class GANDataset(BaseDataset):
         # load edge map
         edge_map = cv2.imread(self.edge_path_list[index], cv2.IMREAD_GRAYSCALE)
         edge_map = edge_map.astype(np.float32)[:,:,np.newaxis] / 255.
+        # load color map
+        color_map = cv2.imread(self.color_path_list[index]).astype(np.float32) / 255.
 
-        nc_img, nc_lm, nc_edge = img.shape[-1], lm_map.shape[-1], edge_map.shape[-1]
-        mix = np.concatenate((img, lm_map, edge_map), axis = 2)
+        nc_img, nc_lm, nc_edge, nc_color = img.shape[-1], lm_map.shape[-1], edge_map.shape[-1], color_map.shape[-1]
+        mix = np.concatenate((img, lm_map, edge_map, color_map), axis = 2)
 
         # transform
         if self.opt.resize_or_crop == 'resize':
@@ -111,6 +115,9 @@ class GANDataset(BaseDataset):
         edge_map = mix[:,:,(nc_img+nc_lm):(nc_img+nc_lm+nc_edge)]
         edge_map = torch.Tensor(edge_map.transpose([2, 0, 1])) # convert to CxHxW
 
+        color_map = mix[:,:,(nc_img+nc_lm+nc_edge):(nc_img+nc_lm+nc_edge+nc_color)]
+        color_map = torch.Tensor(color_map.transpose([2, 0, 1])) # convert to CxHxW
+
         seg_map = mix[:,:,-1::]
         seg_mask = segmap_to_mask(seg_map, self.opt.input_mask_mode, self.sample_list[index]['cloth_type'])
         seg_mask = torch.Tensor(seg_mask.transpose([2, 0, 1]))
@@ -126,6 +133,7 @@ class GANDataset(BaseDataset):
             'seg_mask': seg_mask,
             'seg_map': seg_map,
             'edge_map': edge_map,
+            'color_map': color_map,
             'attr_label':att,
             'id': s_id
         }
