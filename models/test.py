@@ -7,9 +7,7 @@ from util.timer import Timer
 def test_AttributeEncoder():
     from attribute_encoder import AttributeEncoder
     from data.data_loader import CreateDataLoader
-    from options.attribute_options import TrainAttributeOptions, TestAttributeOptions
-
-    
+    from options.attribute_options import TrainAttributeOptions, TestAttributeOptions   
     mode = 'train'
 
     timer = Timer()
@@ -33,30 +31,6 @@ def test_AttributeEncoder():
         print(error)
 
         model.save_network(model.net, 'AE', 'ep0', model.opt.gpu_ids)
-
-def test_DesignerGAN():
-    # from designer_gan_model import DesignerGAN
-    from designer_gan_model import DesignerGAN
-    from data.data_loader import CreateDataLoader
-    from options.gan_options import TrainGANOptions
-
-    opt = TrainGANOptions().parse('--benchmark debug --batch_size 10 --gpu_ids -1')
-
-    loader = CreateDataLoader(opt)
-    loader_iter = iter(loader)
-    data = loader_iter.next()
-
-    model = DesignerGAN()
-    model.initialize(opt)
-
-    model.set_input(data)
-    model.forward()
-
-    visuals = model.get_current_visuals()
-    for k, v in visuals.iteritems():
-        print('%s: (%s) %s' % (k, type(v), v.size()))
-    
-
 
 def test_patchGAN_output_size():
     from networks import NLayerDiscriminator
@@ -106,6 +80,43 @@ def test_feature_spatial_transformer():
     for k, v in errors.iteritems():
         print('%s: (%s) %s' % (k, type(v), v.size()))
 
+def test_DesignerGAN():
+    # from designer_gan_model import DesignerGAN
+    from designer_gan_model import DesignerGAN
+    from data.data_loader import CreateDataLoader
+    from options.gan_options import TrainGANOptions
+
+    opt = TrainGANOptions().parse('--benchmark debug --batch_size 10 --gpu_ids -1')
+
+    loader = CreateDataLoader(opt)
+    loader_iter = iter(loader)
+    data = loader_iter.next()
+
+    model = DesignerGAN()
+    model.initialize(opt)
+
+    model.set_input(data)
+    model.forward()
+
+    visuals = model.get_current_visuals()
+    for k, v in visuals.iteritems():
+        print('%s: (%s) %s' % (k, type(v), v.size()))
+
+def test_MultiModalDesignerGAN():
+    from multimodal_designer_gan_model import MultimodalDesignerGAN
+    from data.data_loader import CreateDataLoader
+    from options.multimodal_gan_options import TrainMMGANOptions
+    
+    opt = TrainMMGANOptions().parse('--benchmark debug --batch_size 8 --gpu_ids -1 --use_edge --use_color')
+    loader = CreateDataLoader(opt)
+    loader_iter = iter(loader)
+    data = loader_iter.next()
+
+    model = DesignerGAN()
+    model.initialize(opt)
+
+    model.set_input(data)
+    model.forward()
 
 
 if __name__ == '__main__':

@@ -290,7 +290,8 @@ class GANVisualizer(BaseVisualizer):
                 visuals['img_fake_raw'][i],
                 visuals['seg_map'][i],
                 visuals['landmark_heatmap'][i],
-                visuals['edge_map'][i]
+                visuals['edge_map'][i],
+                visuals['color_map'][i],
             ]
 
         imgs = torch.stack(imgs)

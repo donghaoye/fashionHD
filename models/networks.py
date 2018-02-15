@@ -898,7 +898,8 @@ class ConditionedResnetGenerator(nn.Module):
             if input_c.dim() == 2:
                 c = input_c.view(bsz, self.cond_nc, 1, 1).expand(bsz, self.cond_nc, h_x, w_x)
             elif input_c.dim() == 4:
-                c = F.upsample(input_c, size = (h_x, w_x), mode = self.cond_interp)
+                if not (input_c.size(2) == h_x and input_c.size(3) == w_x):
+                    c = F.upsample(input_c, size = (h_x, w_x), mode = self.cond_interp)
 
             x = self.res_blocks(torch.cat((x, c), dim = 1))
             x = self.up_sample(x)
@@ -1307,9 +1308,6 @@ class SpatialAttributeEncoderNet(nn.Module):
 
         return prob, prob_map
 
-
-
-
 class DualSpatialAttributeEncoderNet(nn.Module):
     '''
     Attribute Encoder with 2 branches of ConvNet, for RGB image and Landmark heatmap respectively.
@@ -1516,8 +1514,6 @@ def define_feat_spatial_transformer(opt):
     init_weights(net, init_type = opt.init_type)
     return net
 
-
-
 class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
     def __init__(self, shape_nc, feat_nc, shape_nf, max_nf, n_shape_downsample, reduce_type, norm, gpu_ids):
         super(EncoderDecoderFeatureSpatialTransformNet,self).__init__()
@@ -1599,16 +1595,38 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
             feat_output = self.decode(torch.cat((feat_tile, shape_code_tar), dim=1))
             return feat_output
 
-
 ###############################################################################
 # General Image Encoder
 ###############################################################################
+def define_image_encoder(opt, encoder_type='edge'):
+    norm_layer = get_norm_layer(opt.norm)
+    activation = nn.ReLU
+    
+    if encoder_type == 'edge':
+        input_nc = 1
+        nf = opt.edge_nf
+        num_downs = opt.edge_num_downs
+    elif encoder_type == 'color':
+        input_nc = 3
+        nf = opt.color_nf
+        num_downs = opt.color_num_downs
+    else:
+        raise NotImplementedError('invalid encoder type %s'%encoder_type)
+    
+    image_encoder = ImageEncoder(input_nc=input_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
+
+    if len(opt.gpu_ids) > 0:
+        image_encoder.cuda()
+    init_weights(image_encoder, init_type=opt.init_type)
+    return image_encoder
+
 
 class ImageEncoder(nn.Module):
-    def __init__(self, input_nc, output_nc, nf, num_downs, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, gpu_ids=[]):
+    def __init__(self, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, gpu_ids=[]):
         super(ImageEncoder, self).__init__()
+        max_nf = 512
         self.input_nc = input_nc
-        self.output_nc = output_nc
+        self.output_nc = output_nc if output_nc>0 else min(nf*2**(num_downs), max_nf)
         self.nf = nf
         self.num_downs = num_downs
         self.gpu_ids = gpu_ids
@@ -1618,19 +1636,19 @@ class ImageEncoder(nn.Module):
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
-        max_nf = 512
-        c_in = input_nc
-        c_out = nf
-        layers = []
+        layers = [
+            nn.Conv2d(input_nc, nf, kernel_size=7, padding=3, bias=use_bias),
+            norm_layer(nf)
+            activation()]
 
         for n in range(num_downs):
+            c_in = min(max_nf, nf*2**n)
+            c_out = min(max_nf, nf*2**(n+1)) if n < num_downs -1 else self.output_nc
             layers += [
                 nn.Conv2d(c_in, c_out, kernel_size=4, stride=2, padding=1, bias=use_bias),
                 norm_layer(c_out),
                 activation()
             ]
-            c_in = c_out
-            c_out = min(c_out*2, max_nf)
 
         self.net = nn.Sequential(*layers)
 
