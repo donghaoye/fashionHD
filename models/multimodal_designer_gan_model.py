@@ -160,7 +160,11 @@ class MultimodalDesignerGAN(BaseModel):
                 self.output['color_feat'] = self.color_encoder(self.input['color_map'])
                 cond_feat.append(self.output['color_feat'])
             if self.opt.use_attr:
-                self.output['attr_feat'] = self.encode_attribute(self.input['img'], self.opt.attr_cond_type)
+                if 'img_for_attr' in self.input:
+                    # for convenience of attribute transfer test
+                    self.output['attr_feat'] = self.encode_attribute(self.input['img_for_attr'], self.opt.attr_cond_type)
+                else:
+                    self.output['attr_feat'] = self.encode_attribute(self.input['img'], self.opt.attr_cond_type)
                 cond_feat.append(self.output['attr_feat'])
             self.output['cond_feat'] = self.align_and_concat(cond_feat, self.opt.G_cond_size)
             self.output['img_fake_raw'] = self.netG(self.output['shape_repr'], self.output['cond_feat'])
@@ -368,6 +372,7 @@ class MultimodalDesignerGAN(BaseModel):
         return output
 
     def encode_attribute(self, img, output_type = None):
+        # input_size is the input image size of attribute model (224 for resnet)
         input_size = 224
         if output_type is None:
             output_type = self.opt.attr_cond_type

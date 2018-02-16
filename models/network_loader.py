@@ -46,7 +46,8 @@ def load_attribute_encoder_net(id, gpu_ids, which_epoch = 'latest'):
     opt = TestAttributeOptions().parse(ord_str = '', save_to_file = False, display = False, set_gpu = False)
     for k, v in opt_var.iteritems():
         if k in opt:
-            opt.__dict__[k] = v
+            # opt.__dict__[k] = v
+            setattr(opt, k, v)
 
     opt.is_train = False
     opt.continue_train = False
@@ -81,7 +82,8 @@ def load_feature_spatial_transformer_net(id, gpu_ids, which_epoch='latest'):
     opt = TestFeatureSpatialTransformerOptions().parse(ord_str = '', save_to_file = False, display = False, set_gpu = False)
     for k, v in opt_var.iteritems():
         if k in opt:
-            opt.__dict__[k] = v
+            # opt.__dict__[k] = v
+            setattr(opt, k, v)
 
     opt.is_train = False
     opt.continue_train = False

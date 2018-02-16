@@ -41,7 +41,7 @@ val_loader_iter = iter(CreateDataLoader(opt, split = 'test'))
 visualizer = GANVisualizer(opt)
 
 for i in range(num_batch):
-    print('[%s] attribute transfer test: %d / %d' % (opt.id, i+1, num_batch))
+    print('[%s] test attribute transfer: %d / %d' % (opt.id, i+1, num_batch))
 
     data = val_loader_iter.next()
     model.set_input(data)
