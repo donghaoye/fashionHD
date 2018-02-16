@@ -248,7 +248,7 @@ def align_image(im, p_src, p_tar, sz_tar, flags = cv2.INTER_CUBIC):
     M = np.linalg.pinv(X).dot(U).flatten()
     trans_mat = np.array([[M[0], M[1], M[2]], [-M[1], M[0], M[3]]], dtype = np.float32)
 
-    im_out = cv2.warpAffine(im, trans_mat, dsize = sz_tar, flags = cv2.INTER_CUBIC, borderMode = cv2.BORDER_REPLICATE)
+    im_out = cv2.warpAffine(im, trans_mat, dsize = sz_tar, flags = flags, borderMode = cv2.BORDER_REPLICATE)
 
     return im_out, trans_mat
 

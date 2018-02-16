@@ -2,6 +2,7 @@ from __future__ import division, print_function
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision
 import networks
 from torch.autograd import Variable
@@ -53,7 +54,7 @@ class MultimodalDesignerGAN(BaseModel):
 
         if opt.use_attr:
             self.attr_encoder, self.opt_AE = network_loader.load_attribute_encoder_net(id = opt.which_model_AE, gpu_ids = opt.gpu_ids)
-        else
+        else:
             self.attr_encoder, self.opt_AE = None, None
 
         if self.is_train:
@@ -107,7 +108,7 @@ class MultimodalDesignerGAN(BaseModel):
 
             # optim_G will optimize parameters of netG and all image encoders (except attr_encoder)
             G_param_groups = [{'params': self.netG.parameters()}]
-            for l, net for self.encoders.iteritems():
+            for l, net in self.encoders.iteritems():
                 G_param_groups.append({'params': net.parameters()})
 
             self.optim_G = torch.optim.Adam(G_param_groups,
@@ -360,11 +361,19 @@ class MultimodalDesignerGAN(BaseModel):
             ])
         return visuals
 
+    
+    def align_and_concat(self, inputs, size):
+        inputs = [F.upsample(x, size, mode=self.opt.G_cond_interp) for x in inputs]
+        output = torch.cat(inputs, dim=1)
+        return output
+
     def encode_attribute(self, img, output_type = None):
+        input_size = 224
         if output_type is None:
             output_type = self.opt.attr_cond_type
         v_img = img if isinstance(img, Variable) else Variable(img)
-
+        v_img = F.upsample(v_img, size=(input_size, input_size), mode='bilinear')
+        
         if self.opt_AE.image_normalize == 'imagenet':
             v_img = self._std_to_imagenet(v_img)
 

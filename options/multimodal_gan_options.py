@@ -56,15 +56,17 @@ class BaseMMGANOptions(BaseOptions):
         # edge encoder
         ##############################
         parser.add_argument('--use_edge', action = 'store_true', help='use edge condition branch')
+        parser.add_argument('--edge_outer', action = 'store_true', help='use all edges instead of inner edge')
+        parser.add_argument('--edge_threshold', type=int, default=26, help='edge threshold to filter small edge [0-255]')
         parser.add_argument('--edge_nf', type=int, default=64, help='feature dimension of first conv layer in edge encoder')
-        parser.add_argument('--edge_n_layer',type=int, default=5, help='number of downsample layers in edge encoder')
+        parser.add_argument('--edge_ndowns',type=int, default=5, help='number of downsample layers in edge encoder')
 
         ##############################
         # color encoder
         ##############################
         parser.add_argument('--use_color', action='store_true', help='use color condition branch')
         parser.add_argument('--color_nf', type=int, default=64, help='feature dimension of first conv layer in color encoder')
-        parser.add_argument('--color_n_layer', type=int, default=5, help='number of downsample layers in color encoder')
+        parser.add_argument('--color_ndowns', type=int, default=5, help='number of downsample layers in color encoder')
 
         ##############################
         # data (refer to "scripts/preproc_inshop.py" for more information)
@@ -92,8 +94,8 @@ class BaseMMGANOptions(BaseOptions):
         opt = self.opt
         ###########################################
         # Add id profix
-        if not opt.id.startswith('GAN_AE_'):
-            opt.id = 'GAN_AE_' + opt.id
+        if not opt.id.startswith('MMDGAN_RECON_'):
+            opt.id = 'MMDGAN_RECON_' + opt.id
         ###########################################
         # set dimmension settings
         nc_img = 3
@@ -101,8 +103,8 @@ class BaseMMGANOptions(BaseOptions):
         nc_seg = 7 if opt.input_mask_mode == 'map' else 1
         nc_edge = 1
         nc_color = 3
-        nf_edge = min(512, opt.edge_nf * 2**(opt.edge_n_layer))
-        nf_color = min(512, opt.color_nf * 2**(opt.color_n_layer))
+        nf_edge = min(512, opt.edge_nf * 2**(opt.edge_ndowns))
+        nf_color = min(512, opt.color_nf * 2**(opt.color_ndowns))
         nf_attr = opt.n_attr_feat if opt.attr_cond_type in {'feat', 'feat_map'} else opt.n_attr
 
         # set netG input_nc
@@ -123,18 +125,18 @@ class BaseMMGANOptions(BaseOptions):
 
         # set netG cond_nc, netD input_nc
         opt.G_cond_nc = 0
-        opt.D_input_nc = nc_img
-        if self.use_edge:
-            opt.G_cond_nc += nf_edge
-            opt.D_input_nc += nc_edge
-        if self.use_color:
-            opt.G_cond_nc += nf_color
-            opt.D_input_nc += nc_color
-        if self.use_attr:
-            opt.G_cond_nc += nf_attr
-            # don not input attribute conditions into netD
-        
-        if opt.D_no_cond:
+        if not opt.D_no_cond:
+            opt.D_input_nc = nc_img + opt.G_input_nc
+            if opt.use_edge:
+                opt.G_cond_nc += nf_edge
+                opt.D_input_nc += nc_edge
+            if opt.use_color:
+                opt.G_cond_nc += nf_color
+                opt.D_input_nc += nc_color
+            if opt.use_attr:
+                opt.G_cond_nc += nf_attr
+                # don not input attribute conditions into netD
+        else:
             opt.D_input_nc = nc_img
 
         ###########################################
@@ -151,7 +153,10 @@ class BaseMMGANOptions(BaseOptions):
             if opt.fn_seg_path == 'default':
                 opt.fn_seg_path = 'Label/ca_seg_paths.json'
             if opt.fn_edge_path == 'default':
-                opt.fn_edge_path = 'Label/ca_edge_paths.json'
+                if opt.edge_outer:
+                    opt.fn_edge_path = 'Label/ca_edge_paths.json'
+                else:
+                    opt.fn_edge_path = 'Label/ca_edge_inner_paths.json'
             if opt.fn_color_path == 'default':
                 opt.fn_color_path = 'Label/ca_edge_paths.json'# Todo: modify this temp setting
 
@@ -197,7 +202,7 @@ class TrainMMGANOptions(BaseMMGANOptions):
         parser.add_argument('--lr_policy', type=str, default='lambda', help='learning rate policy: lambda|step|plateau',
             choices = ['step', 'plateau', 'lambda'])
         parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
-        parser.add_argument('--niter', type = int, default=20, help = '# of iter at starting learning rate')
+        parser.add_argument('--niter', type = int, default=25, help = '# of iter at starting learning rate')
         parser.add_argument('--niter_decay', type=int, default=5, help='# of iter to linearly decay learning rate to zero')
         parser.add_argument('--lr_decay', type=int, default=1, help='multiply by a gamma every lr_decay_interval epochs')
         parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')

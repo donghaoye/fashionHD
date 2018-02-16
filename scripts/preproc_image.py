@@ -253,7 +253,6 @@ def merge_seg_map():
     input seg map:
         0-background, 1-hair, 2-head, 3-upperbody, 4-lowerbody, 5-leg, 6-arm
     '''
-
     # config
     seg_root = '/data2/ynli/Fashion/ICCV17-fashionGAN/complete_demo/output/img_ca_256/seg_7'
     tar_root = 'datasets/DeepFashion/Fashion_design/Img/seg_ca_256'
@@ -357,6 +356,7 @@ def pad_image_for_segmentation():
     io.save_data(lm_label_pad, design_root + 'Label/ca_landmark_label_pad_%d.pkl' % sz_tar)
     io.save_data(bbox_label_pad, design_root + 'Label/ca_bbox_label_pad_%d.pkl' % sz_tar)
 
+
 def create_synthesis_to_CA_index():
     '''
     create an index map A: img_syn[i] = img_ca[A[i]]
@@ -399,6 +399,47 @@ def create_edge_path():
     edge_path = {s_id:os.path.join(edge_root, s_id+'.jpg') for s_id in split['train']+split['test']}
     io.save_json(edge_path, design_root+'Label/debugca_edge_paths.json')    
 
+def create_inner_edge_map():
+    '''
+    extract the edges inside the clothing regions
+    '''
+
+    # config
+    kernel_size = 7
+    threshold = 0
+
+    split = io.load_json(design_root + 'Split/ca_gan_split_trainval.json')
+    id_list = split['train'] + split['test']
+    edge_root = design_root+'Img/edge_ca_256'
+    seg_root = design_root+'Img/seg_ca_256'
+    output_dir = design_root + 'Img/edge_ca_256_inner'
+    io.mkdir_if_missing(output_dir)
+
+    kernel = np.zeros((kernel_size, kernel_size), np.uint8)
+    k = (kernel_size-1)/2
+    for i in range(kernel_size):
+        for j in range(kernel_size):
+            if np.abs(i-k) + np.abs(j-k) <= k:
+                kernel[i,j] = 1
+
+    for i, s_id in enumerate(id_list):
+        edge = image.imread(os.path.join(edge_root, s_id + '.jpg'), 'grayscale')
+        seg = image.imread(os.path.join(seg_root, s_id + '.bmp'), 'grayscale')
+        mask_upper = cv2.erode((seg==3).astype(np.uint8), kernel)
+        mask_lower = cv2.erode((seg==4).astype(np.uint8), kernel)
+        mask = mask_upper | mask_lower
+        edge_inner = edge * mask
+        edge_inner = (edge_inner >= threshold).astype(np.uint8) * edge_inner
+        image.imwrite(edge_inner, os.path.join(output_dir, s_id + '.jpg'))
+        print('extracting inner edge %d / %d'%(i, len(id_list)))
+
+    # create labels
+    edge_paths = {s_id: os.path.join(output_dir, s_id+'.jpg') for s_id in id_list}
+    split_debug = io.load_json(design_root + 'Split/debugca_gan_split.json')
+    edge_paths_debug = {s_id:p for s_id, p in edge_paths.iteritems() if s_id in split_debug['train']+split_debug['test']}
+
+    io.save_json(edge_paths, design_root+'Label/ca_edge_inner_paths.json')
+    io.save_json(edge_paths_debug, design_root+'Label/debugca_edge_inner_paths.json')
 
 if __name__ == '__main__':
     #################################################
@@ -424,7 +465,8 @@ if __name__ == '__main__':
 
     #################################################
     # edge
-    create_edge_path()
+    # create_edge_path()
+    create_inner_edge_map()
     
 
     #################################################

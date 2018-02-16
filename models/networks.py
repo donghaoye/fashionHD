@@ -555,13 +555,13 @@ def define_G(opt):
     if use_gpu:
         assert(torch.cuda.is_available())
 
-    if not opt.no_attr_cond:
+    if opt.G_cond_nc > 0:
         if opt.which_model_netG == 'resnet_9blocks':
-            netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, cond_nc = attr_nc,
+            netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, cond_nc = opt.G_cond_nc,
                 cond_layer = opt.G_cond_layer, cond_interp = opt.G_cond_interp, ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
                 use_dropout = use_dropout, n_blocks = 9, gpu_ids = opt.gpu_ids)
         elif opt.which_model_netG == 'resnet_6blocks':
-            netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, cond_nc = attr_nc,
+            netG = ConditionedResnetGenerator(input_nc = opt.G_input_nc, output_nc = opt.G_output_nc, cond_nc = opt.G_cond_nc,
                 cond_layer = opt.G_cond_layer, cond_interp = opt.G_cond_interp,  ngf = opt.ngf, norm_layer = norm_layer, activation = activation,
                 use_dropout = use_dropout, n_blocks = 6, gpu_ids = opt.gpu_ids)
         else:
@@ -898,7 +898,9 @@ class ConditionedResnetGenerator(nn.Module):
             if input_c.dim() == 2:
                 c = input_c.view(bsz, self.cond_nc, 1, 1).expand(bsz, self.cond_nc, h_x, w_x)
             elif input_c.dim() == 4:
-                if not (input_c.size(2) == h_x and input_c.size(3) == w_x):
+                if (input_c.size(2) == h_x and input_c.size(3) == w_x):
+                    c = input_c
+                else:
                     c = F.upsample(input_c, size = (h_x, w_x), mode = self.cond_interp)
 
             x = self.res_blocks(torch.cat((x, c), dim = 1))
@@ -1605,11 +1607,11 @@ def define_image_encoder(opt, encoder_type='edge'):
     if encoder_type == 'edge':
         input_nc = 1
         nf = opt.edge_nf
-        num_downs = opt.edge_num_downs
+        num_downs = opt.edge_ndowns
     elif encoder_type == 'color':
         input_nc = 3
         nf = opt.color_nf
-        num_downs = opt.color_num_downs
+        num_downs = opt.color_ndowns
     else:
         raise NotImplementedError('invalid encoder type %s'%encoder_type)
     
@@ -1638,7 +1640,7 @@ class ImageEncoder(nn.Module):
 
         layers = [
             nn.Conv2d(input_nc, nf, kernel_size=7, padding=3, bias=use_bias),
-            norm_layer(nf)
+            norm_layer(nf),
             activation()]
 
         for n in range(num_downs):

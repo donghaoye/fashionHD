@@ -82,6 +82,7 @@ class GANDataset(BaseDataset):
         seg_map = cv2.imread(self.seg_path_list[index], cv2.IMREAD_GRAYSCALE)
         # load edge map
         edge_map = cv2.imread(self.edge_path_list[index], cv2.IMREAD_GRAYSCALE)
+        edge_map = (edge_map >= self.opt.edge_threshold) * edge_map
         edge_map = edge_map.astype(np.float32)[:,:,np.newaxis] / 255.
         # load color map
         color_map = cv2.imread(self.color_path_list[index]).astype(np.float32) / 255.

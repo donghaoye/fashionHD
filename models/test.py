@@ -112,11 +112,15 @@ def test_MultiModalDesignerGAN():
     loader_iter = iter(loader)
     data = loader_iter.next()
 
-    model = DesignerGAN()
+    model = MultimodalDesignerGAN()
     model.initialize(opt)
 
     model.set_input(data)
     model.forward()
+
+    visuals = model.get_current_visuals()
+    for k, v in visuals.iteritems():
+        print('%s: (%s) %s' % (k, type(v), v.size()))
 
 
 if __name__ == '__main__':
@@ -125,5 +129,5 @@ if __name__ == '__main__':
     # test_DesignerGAN()
     # test_scheduler()
     # test_Unet_size()
-
-    test_feature_spatial_transformer()
+    # test_feature_spatial_transformer()
+    test_MultiModalDesignerGAN()

@@ -295,8 +295,9 @@ class GANVisualizer(BaseVisualizer):
             ]
 
         imgs = torch.stack(imgs)
+        nrow = int(imgs.size(0)/num_vis)
         fn_img = os.path.join(vis_dir, '%s_epoch%d.jpg' % (subset, epoch))
-        torchvision.utils.save_image(imgs, fn_img, nrow = 6, normalize = True)
+        torchvision.utils.save_image(imgs, fn_img, nrow = nrow, normalize = True)
 
     def visualize_image_matrix(self, imgs, imgs_title = None, label = 'default', vis_dir = 'vis'):
         '''
