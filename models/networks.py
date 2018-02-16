@@ -1627,6 +1627,7 @@ class ImageEncoder(nn.Module):
     def __init__(self, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, gpu_ids=[]):
         super(ImageEncoder, self).__init__()
         max_nf = 512
+        n_innermost = 7 #feat_map at this level has 1x1 size
         self.input_nc = input_nc
         self.output_nc = output_nc if output_nc>0 else min(nf*2**(num_downs), max_nf)
         self.nf = nf
@@ -1646,11 +1647,10 @@ class ImageEncoder(nn.Module):
         for n in range(num_downs):
             c_in = min(max_nf, nf*2**n)
             c_out = min(max_nf, nf*2**(n+1)) if n < num_downs -1 else self.output_nc
-            layers += [
-                nn.Conv2d(c_in, c_out, kernel_size=4, stride=2, padding=1, bias=use_bias),
-                norm_layer(c_out),
-                activation()
-            ]
+            layers.append(nn.Conv2d(c_in, c_out, kernel_size=4, stride=2, padding=1, bias=use_bias))
+            if n < n_innermost or norm_layer.func == nn.BatchNorm2d:
+                layers.append(norm_layer(c_out))
+            layers.append(activation())
 
         self.net = nn.Sequential(*layers)
 

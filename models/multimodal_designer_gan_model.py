@@ -278,7 +278,7 @@ class MultimodalDesignerGAN(BaseModel):
 
     def backward_G_grad_check(self):
         self.output['img_fake'].retain_grad()
-        repr_fake = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], self.output['img_fake'])
+        repr_fake = self.get_sample_repr_for_D('fake', detach_image=False)
         self.output['loss_G'] = 0
         # GAN Loss
         if self.opt.which_gan == 'wgan':
@@ -378,16 +378,16 @@ class MultimodalDesignerGAN(BaseModel):
             v_img = self._std_to_imagenet(v_img)
 
         if output_type == 'feat':
-            feat, _ = self.netAE.extract_feat(v_img)
+            feat, _ = self.attr_encoder.extract_feat(v_img)
             return feat
         elif output_type == 'feat_map':
-            _, feat_map = self.netAE.extract_feat(v_img)
+            _, feat_map = self.attr_encoder.extract_feat(v_img)
             return feat_map
         elif output_type == 'prob':
-            prob, _ = self.netAE(v_img)
+            prob, _ = self.attr_encoder(v_img)
             return prob
         elif output_type == 'feat_map':
-            _, prob_map = self.netAE(v_img)
+            _, prob_map = self.attr_encoder(v_img)
             return prob_map
 
     def encode_shape(self, lm_map, seg_mask, edge_map):
@@ -420,7 +420,7 @@ class MultimodalDesignerGAN(BaseModel):
             raise ValueError('post_mask_mode invalid value: %s' % self.opt.post_mask_mode)
        
     def save(self, label):
-        # Todo: if self.netAE is jointly trained, also save its parameter
+        # Todo: if self.attr_encoder is jointly trained, also save its parameter
         # Todo: if att_fuse module is added, save its parameters
         self.save_network(self.netG, 'G', label, self.gpu_ids)
         self.save_network(self.netD, 'D', label, self.gpu_ids)
