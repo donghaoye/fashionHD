@@ -23,7 +23,7 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--which_model_netG', type = str, default = 'resnet_6blocks', help = 'select model to use for netG')
         parser.add_argument('--which_model_netD', type = str, default = 'basic', help = 'select model to use for netD')
         parser.add_argument('--which_model_init', type = str, default = 'none', help = 'load pretrained model to init netG parameters')
-        parser.add_argument('--norm', type=str, default='batch', help='instance normalization or batch normalization [batch|instance|none]')
+        parser.add_argument('--norm', type=str, default='instance', help='instance normalization or batch normalization [batch|instance|none]')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
         parser.add_argument('--G_cond_layer', type = str, default = 'all', help = 'which layer to add condition feature',
             choices = ['first', 'all'])
@@ -218,8 +218,8 @@ class TrainMMGANOptions(BaseMMGANOptions):
 
         # loss weights
         parser.add_argument('--loss_weight_GAN', type = float, default = 1., help = 'loss wweight of GAN loss (for netG)')
-        parser.add_argument('--loss_weight_L1', type = float, default = 0., help = 'loss weight of L1 loss')
-        parser.add_argument('--loss_weight_vgg', type = float, default = 0., help = 'loss weight of vgg loss (perceptual feature loss)')
+        parser.add_argument('--loss_weight_L1', type = float, default = 100., help = 'loss weight of L1 loss')
+        parser.add_argument('--loss_weight_vgg', type = float, default = 100., help = 'loss weight of vgg loss (perceptual feature loss)')
         parser.add_argument('--loss_weight_gp', type = float, default = 10., help = 'gradient penalty weight in WGAN')
 
         # training method
