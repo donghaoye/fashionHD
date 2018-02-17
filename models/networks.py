@@ -1621,11 +1621,17 @@ def define_image_encoder(opt, encoder_type='edge'):
     activation = nn.ReLU
     
     if encoder_type == 'edge':
-        input_nc = 1
+        if opt.edge_shape_guided:
+            input_nc = 1 + opt.shape_nc
+        else:
+            input_nc = 1
         nf = opt.edge_nf
         num_downs = opt.edge_ndowns
     elif encoder_type == 'color':
-        input_nc = 3
+        if opt.color_shape_guided:
+            input_nc = 3 + opt.shape_nc
+        else:
+            input_nc = 3
         nf = opt.color_nf
         num_downs = opt.color_ndowns
     else:

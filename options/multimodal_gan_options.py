@@ -34,6 +34,7 @@ class BaseMMGANOptions(BaseOptions):
             choices = ['dcgan', 'lsgan', 'wgan'])
         parser.add_argument('--shape_encode', type = str, default = 'seg', help = 'cloth shape encoding method',
             choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e'])
+        parser.add_argument('--shape_nc', type=int, default=0, help='# channels of shape representation, depends on shape_emcode, will be auto set')
         parser.add_argument('--input_mask_mode', type = str, default = 'map', help = 'type of segmentation mask. see base_dataset.segmap_to_mask for details. [foreground|body|target|map]',
             choices = ['foreground', 'body', 'target', 'map'])
         parser.add_argument('--post_mask_mode', type = str, default = 'fuse_face', help = 'how to mask generated images [none|fuse_face|fuse_face+bg]',
@@ -65,11 +66,11 @@ class BaseMMGANOptions(BaseOptions):
         # color encoder
         ##############################
         parser.add_argument('--use_color', action='store_true', help='use color condition branch')
-        parser.add_argument('--color_nf', type=int, default=32, help='feature dimension of first conv layer in color encoder')
-        parser.add_argument('--color_ndowns', type=int, default=64, help='number of downsample layers in color encoder')
+        parser.add_argument('--color_nf', type=int, default=64, help='feature dimension of first conv layer in color encoder')
+        parser.add_argument('--color_ndowns', type=int, default=5, help='number of downsample layers in color encoder')
         parser.add_argument('--color_shape_guided', type=int, default=1, choices=[0,1], help='concat shape_mask and color_map to guide color encoding')
         parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
-        parser.add_argument('--color_gaussian_sigma', type=float, default=5.0, help='gaussian blur sigma')
+        parser.add_argument('--color_gaussian_sigma', type=float, default=10.0, help='gaussian blur sigma')
         ##############################
         # data (refer to "scripts/preproc_inshop.py" for more information)
         ##############################
@@ -108,20 +109,21 @@ class BaseMMGANOptions(BaseOptions):
         nf_color = min(512, opt.color_nf * 2**(opt.color_ndowns))
         nf_attr = opt.n_attr_feat if opt.attr_cond_type in {'feat', 'feat_map'} else opt.n_attr
 
-        # set netG input_nc
+        # set netG input_nc and output_nc
         if opt.shape_encode == 'lm':
-            opt.G_input_nc = nc_lm
+            opt.shape_nc = nc_lm
         elif opt.shape_encode == 'seg':
-            opt.G_input_nc = nc_seg
+            opt.shape_nc = nc_seg
         elif opt.shape_encode == 'lm+seg':
-            opt.G_input_nc = nc_lm + nc_seg
+            opt.shape_nc = nc_lm + nc_seg
         elif opt.shape_encode == 'lm+seg+e':
-            opt.G_input_nc = nc_lm + nc_seg + nc_edge
+            opt.shape_nc = nc_lm + nc_seg + nc_edge
         elif opt.shape_encode == 'seg+e':
-            opt.G_input_nc = nc_seg + nc_edge
+            opt.shape_nc = nc_seg + nc_edge
         elif opt.shape_encode == 'e':
-            opt.G_input_nc = nc_edge
-        # set netG output_nc
+            opt.shape_nc = nc_edge
+        
+        opt.G_input_nc = opt.shape_nc
         opt.G_output_nc = nc_img
 
         # set netG cond_nc, netD input_nc
@@ -212,7 +214,7 @@ class TrainMMGANOptions(BaseMMGANOptions):
         parser.add_argument('--save_epoch_freq', type = int, default = 5, help='frequency of saving model to disk' )
         parser.add_argument('--vis_epoch_freq', type = int, default = 1, help='frequency of visualizing generated images')
         parser.add_argument('--max_n_vis', type = int, default = 32, help='max number of visualized images')
-        parser.add_argument('--D_pretrain', type = int, default = 50, help = 'iter num of pretraining net D')
+        parser.add_argument('--D_pretrain', type = int, default = 0, help = 'iter num of pretraining net D')
         parser.add_argument('--D_train_freq', type = int, default = 1, help='frequency of training netD')
         parser.add_argument('--G_train_freq', type = int, default = 1, help='frequency of training netG')
         parser.add_argument('--check_grad_freq', type = int, default = 100, help = 'frequency of checking gradient of each loss')

@@ -159,7 +159,7 @@ class MultimodalDesignerGAN(BaseModel):
                 self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
                 cond_feat.append(self.output['edge_feat'])
             if self.opt.use_color:
-                self.output['color_feat'] = self.color_encoder(self.input['color_map'], self.output['shape_repr'])
+                self.output['color_feat'] = self.encode_color(self.input['color_map'], self.output['shape_repr'])
                 cond_feat.append(self.output['color_feat'])
             if self.opt.use_attr:
                 if 'img_for_attr' in self.input:
