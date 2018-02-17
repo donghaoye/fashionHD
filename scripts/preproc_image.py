@@ -443,21 +443,21 @@ def create_inner_edge_map():
 
 def create_color_map():
     #### test
-    img = image.imread('datasets/DeepFashion/Fashion_design/Img/img_ca_256/ca_09.jpg')
-    assert img
+    img = image.imread('datasets/DeepFashion/Fashion_design/Img/img_ca_256/ca_9.jpg')
+    assert img is not None
 
     output_dir = 'temp/color_map_generation_test'
     io.mkdir_if_missing(output_dir)
     # color map by gaussian blur
-    kernel_size = 20
+    kernel_size = 21
     for sigma in [1,2,5,10,20]:
-        img_blur = cv2.GaussianBlur(img, kernel_size, sigma)
+        img_blur = cv2.GaussianBlur(img, (kernel_size, kernel_size), sigma)
         image.imwrite(img_blur, os.path.join(output_dir, 'gaussian_%d_%f.jpg' % (kernel_size, sigma)))
     # color map by downsampling
     for scale in [2,4,8,16,32]:
         w, h = img.shape[1], img.shape[0]
-        dw, dh = w/scale, h/scale
-        img_blur = cv2.resize(cv2.resize(img, (dw, dh), cv2.INTER_BILINEAR), (w, h), cv2.INTER_BILINEAR)
+        dw, dh = w//scale, h//scale
+        img_blur = cv2.resize(cv2.resize(img, (dw, dh), interpolation=cv2.INTER_LINEAR), (w, h), interpolation=cv2.INTER_LINEAR)
         image.imwrite(img_blur, os.path.join(output_dir, 'downsample_%d.jpg') % scale)
     
 
