@@ -60,14 +60,14 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--edge_threshold', type=int, default=26, help='edge threshold to filter small edge [0-255]')
         parser.add_argument('--edge_nf', type=int, default=64, help='feature dimension of first conv layer in edge encoder')
         parser.add_argument('--edge_ndowns',type=int, default=5, help='number of downsample layers in edge encoder')
-        parser.add_argument('--edge_shape_guided', action='store_true', help='concat shape_mask and edge_map to guide edge encoding')
+        parser.add_argument('--edge_shape_guided', type=int, default=1, choices=[0,1], help='concat shape_mask and edge_map to guide edge encoding')
         ##############################
         # color encoder
         ##############################
         parser.add_argument('--use_color', action='store_true', help='use color condition branch')
         parser.add_argument('--color_nf', type=int, default=32, help='feature dimension of first conv layer in color encoder')
         parser.add_argument('--color_ndowns', type=int, default=64, help='number of downsample layers in color encoder')
-        parser.add_argument('--color_shape_guided', action='store_true', help='concat shape_mask and color_map to guide color encoding')
+        parser.add_argument('--color_shape_guided', type=int, default=1, choices=[0,1], help='concat shape_mask and color_map to guide color encoding')
         parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
         parser.add_argument('--color_gaussian_sigma', type=float, default=5.0, help='gaussian blur sigma')
         ##############################
