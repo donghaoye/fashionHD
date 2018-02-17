@@ -154,10 +154,10 @@ class MultimodalDesignerGAN(BaseModel):
         if self.opt.G_cond_nc > 0:
             cond_feat = []
             if self.opt.use_edge:
-                self.output['edge_feat'] = self.edge_encoder(self.input['edge_map'])
+                self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
                 cond_feat.append(self.output['edge_feat'])
             if self.opt.use_color:
-                self.output['color_feat'] = self.color_encoder(self.input['color_map'])
+                self.output['color_feat'] = self.color_encoder(self.input['color_map'], self.output['shape_repr'])
                 cond_feat.append(self.output['color_feat'])
             if self.opt.use_attr:
                 if 'img_for_attr' in self.input:
@@ -185,6 +185,18 @@ class MultimodalDesignerGAN(BaseModel):
                 if isinstance(v, Variable):
                     v.volatile = True
             self.forward()
+    
+    def encode_edge(self, img, shape_repr):
+        if self.opt.edge_shape_guided:
+            return self.edge_encoder(torch.cat((img, shape_repr), 1))
+        else:
+            return self.edge_encoder(img)
+    
+    def encode_color(self, img, shape_repr):
+        if self.opt.color_shape_guided:
+            return self.color_encoder(torch.cat((img, shape_repr), 1))
+        else:
+            return self.color_encoder(img)
 
     def get_sample_repr_for_D(self, sample_type='real', detach_image=False):
         '''

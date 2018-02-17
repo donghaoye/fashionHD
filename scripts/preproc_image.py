@@ -441,6 +441,28 @@ def create_inner_edge_map():
     io.save_json(edge_paths, design_root+'Label/ca_edge_inner_paths.json')
     io.save_json(edge_paths_debug, design_root+'Label/debugca_edge_inner_paths.json')
 
+def create_color_map():
+    #### test
+    img = image.imread('datasets/DeepFashion/Fashion_design/Img/img_ca_256/ca_09.jpg')
+    assert img
+
+    output_dir = 'temp/color_map_generation_test'
+    io.mkdir_if_missing(output_dir)
+    # color map by gaussian blur
+    kernel_size = 20
+    for sigma in [1,2,5,10,20]:
+        img_blur = cv2.GaussianBlur(img, kernel_size, sigma)
+        image.imwrite(img_blur, os.path.join(output_dir, 'gaussian_%d_%f.jpg' % (kernel_size, sigma)))
+    # color map by downsampling
+    for scale in [2,4,8,16,32]:
+        w, h = img.shape[1], img.shape[0]
+        dw, dh = w/scale, h/scale
+        img_blur = cv2.resize(cv2.resize(img, (dw, dh), cv2.INTER_BILINEAR), (w, h), cv2.INTER_BILINEAR)
+        image.imwrite(img_blur, os.path.join(output_dir, 'downsample_%d.jpg') % scale)
+    
+
+
+
 if __name__ == '__main__':
     #################################################
     # align_and_resize_image('ca')
@@ -466,7 +488,11 @@ if __name__ == '__main__':
     #################################################
     # edge
     # create_edge_path()
-    create_inner_edge_map()
+    # create_inner_edge_map()
+
+    #################################################
+    # color map
+    create_color_map()
     
 
     #################################################
