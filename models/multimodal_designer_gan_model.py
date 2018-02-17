@@ -100,6 +100,8 @@ class MultimodalDesignerGAN(BaseModel):
                 self.crit_vgg = networks.VGGLoss(self.gpu_ids)
                 self.loss_functions.append(self.crit_vgg)
 
+            self.crit_psnr = networks.SmoothLoss(networks.PSNR())
+            self.loss_functions.append(self.crit_psnr)
             ###################################
             # create optimizers
             ###################################
@@ -174,7 +176,7 @@ class MultimodalDesignerGAN(BaseModel):
         self.output['img_real_raw'] = self.input['img']
         self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.output['img_real_raw'])
         self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
-
+        self.output['PSNR'] = self.crit_psnr(self.output['img_fake'], self.output['img_real'])
 
     def test(self):
         if float(torch.__version__[0:3]) >= 0.4:
@@ -222,7 +224,6 @@ class MultimodalDesignerGAN(BaseModel):
         
         return repr
         
-
     def backward_D(self):
         # fake
         repr_fake = self.get_sample_repr_for_D('fake', detach_image=True)
@@ -356,6 +357,8 @@ class MultimodalDesignerGAN(BaseModel):
             errors['G_VGG'] = self.output['loss_G_VGG'].data[0]
         if 'loss_gp' in self.output:
             errors['D_GP'] = self.output['loss_gp'].data[0]
+        if 'PSNR' in self.output:
+            errors['PSNR'] = self.crit_psnr.smooth_loss(clear=True)
 
         # gradients
         grad_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG']

@@ -42,12 +42,7 @@ class BaseGANOptions(BaseOptions):
             choices = ['feat', 'prob', 'feat_map', 'prob_map'])
         parser.add_argument('--no_attr_cond', action = 'store_true', help='do not use attribute condition in generator')
 
-        # edge
-        # parser.add_argument('--use_edge_cond', action = 'store_true', help='use edge condition branch')
-        # parser.add_argument('--edge_nf', type=int, default=16, help='feature dimension of first conv layer in edge encoder')
-        # parser.add_argument('--edge_n_layer',type=int, default=5, help='number of downsample layers in edge encoder')
-
-
+        
         # data files
         # refer to "scripts/preproc_inshop.py" for more information
         parser.add_argument('--benchmark', type = str, default = 'ca_upper', help = 'set benchmark [ca|ca_org|inshop|user|debug]',

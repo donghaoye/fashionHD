@@ -65,9 +65,11 @@ class BaseMMGANOptions(BaseOptions):
         # color encoder
         ##############################
         parser.add_argument('--use_color', action='store_true', help='use color condition branch')
-        parser.add_argument('--color_nf', type=int, default=64, help='feature dimension of first conv layer in color encoder')
-        parser.add_argument('--color_ndowns', type=int, default=5, help='number of downsample layers in color encoder')
+        parser.add_argument('--color_nf', type=int, default=32, help='feature dimension of first conv layer in color encoder')
+        parser.add_argument('--color_ndowns', type=int, default=64, help='number of downsample layers in color encoder')
         parser.add_argument('--color_shape_guided', action='store_true', help='concat shape_mask and color_map to guide color encoding')
+        parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
+        parser.add_argument('--color_gaussian_sigma', type=float, default=5.0, help='gaussian blur sigma')
         ##############################
         # data (refer to "scripts/preproc_inshop.py" for more information)
         ##############################
@@ -78,10 +80,9 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--fn_entry', type = str, default = 'default', help = 'path of attribute entry file')
         parser.add_argument('--fn_split', type = str, default = 'default', help = 'path of split file')
         parser.add_argument('--fn_landmark', type = str, default = 'default', help = 'path of landmark label file')
-        parser.add_argument('--fn_seg_path', type = str, default = 'default', help = 'path of seg map list')
-        parser.add_argument('--fn_edge_path', type = str, default = 'default', help = 'path of edge map list')
-        parser.add_argument('--fn_color_path', type = str, default = 'default', help = 'path of ')
-        
+        parser.add_argument('--fn_seg_path', type = str, default = 'default', help = 'path of seg map')
+        parser.add_argument('--fn_edge_path', type = str, default = 'default', help = 'path of edge map')
+        parser.add_argument('--fn_color_path', type = str, default = 'default', help = 'path of color map')
         ##############################
         # misc
         ##############################

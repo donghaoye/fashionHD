@@ -107,8 +107,9 @@ def init_weights(net, init_type='normal'):
 class LossBuffer():
     '''
     '''
-    def __init__(self):
+    def __init__(self, size = 1000):
         self.clear()
+        self.size = size
     
     def clear(self):
         self.buffer = []
@@ -121,6 +122,9 @@ class LossBuffer():
             self.buffer.append(loss[0])
         else:
             self.buffer.append(loss)
+        
+        if len(self.buffer) > self.size:
+            self.buffer = self.buffer[-self.size::]
 
     def smooth_loss(self, clear = False):
         if len(self.buffer) == 0:
@@ -133,12 +137,10 @@ class LossBuffer():
             
         return loss
 
-
 class SmoothLoss():
     '''
     wrapper of pytorch loss layer.
     '''
-
     def __init__(self, crit):
         self.crit = crit
         self.max_size = 100000
@@ -169,11 +171,26 @@ class SmoothLoss():
         if len(self.weight_buffer) == 0:
             loss = 0
         else:
-            loss = sum([l * w for l, w in zip(self.buffer, self.weight_buffer)]) / sum(self.weight_buffer)
-            
+            loss = sum([l * w for l, w in zip(self.buffer, self.weight_buffer)]) / sum(self.weight_buffer)            
         if clear:
             self.clear()
         return loss
+
+class PSNR(nn.Module):
+    def __init__(self):
+        super(PSNR, self).__init__()
+        self.Kr = .299
+        self.Kg = .587
+        self.Kb = .114
+        self.lg10 = float(np.log(10))
+
+    def forward(self, img_1, img_2):
+        y_1 = self.Kr * img_1[:,0] + self.Kg * img_1[:,1] + self.Kb * img_1[:,2]
+        y_2 = self.Kr * img_2[:,0] + self.Kg * img_2[:,1] + self.Kb * img_2[:,2]
+        y_d = (y_1 - y_2).view(y_1.size(0), -1)
+        rmse = y_d.pow(2).mean(dim = 1).sqrt().clamp(0, 1)
+        psnr = 20 / self.lg10 * (1/rmse).log().mean()
+        return psnr
 
 class WeightedBCELoss(nn.Module):
     '''
@@ -192,7 +209,6 @@ class WeightedBCELoss(nn.Module):
         - Target: (N, *)
 
     '''
-
     def __init__(self, pos_rate, class_norm = True, size_average = True):
         super(WeightedBCELoss, self).__init__()
         self.class_norm = class_norm

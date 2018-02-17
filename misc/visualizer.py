@@ -332,7 +332,7 @@ class GANVisualizer(BaseVisualizer):
     def pavi_log(self, phase, iter_num, outputs):
         # upper_list = ['D_real', 'D_fake', '']
         upper_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG', 'grad_G_attr']
-        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'G_attr', 'G_sa']
+        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'G_attr', 'G_sa', 'PSNR']
 
         new_outputs = {}
         for k,v in outputs.iteritems():

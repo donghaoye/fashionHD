@@ -30,7 +30,7 @@ class GANDataset(BaseDataset):
         lm_label = io.load_data(os.path.join(opt.data_root, opt.fn_landmark))
         seg_paths = io.load_json(os.path.join(opt.data_root, opt.fn_seg_path))
         edge_paths = io.load_json(os.path.join(opt.data_root, opt.fn_edge_path))
-        color_paths = io.load_json(os.path.join(opt.data_root, opt.fn_color_path))
+        # color_paths = io.load_json(os.path.join(opt.data_root, opt.fn_color_path))
 
         self.id_list = data_split[split]
         self.attr_entry = attr_entry
@@ -41,7 +41,7 @@ class GANDataset(BaseDataset):
         self.lm_list = [lm_label[s_id] for s_id in self.id_list]
         self.seg_path_list = [seg_paths[s_id] for s_id in self.id_list]
         self.edge_path_list = [edge_paths[s_id] for s_id in self.id_list]
-        self.color_path_list = [color_paths[s_id] for s_id in self.id_list]
+        # self.color_path_list = [color_paths[s_id] for s_id in self.id_list]
 
 
         # check data
@@ -85,8 +85,10 @@ class GANDataset(BaseDataset):
         edge_map = (edge_map >= self.opt.edge_threshold) * edge_map
         edge_map = edge_map.astype(np.float32)[:,:,np.newaxis] / 255.
         # load color map
-        color_map = cv2.imread(self.color_path_list[index]).astype(np.float32) / 255.
-
+        # color_map = cv2.imread(self.color_path_list[index]).astype(np.float32) / 255.
+        # create color map on the fly
+        color_map = cv2.GaussianBlur(img, (self.opt.color_gaussian_ksz, self.opt.color_gaussian_ksz), self.opt.color_gaussian_simga)
+        
         nc_img, nc_lm, nc_edge, nc_color = img.shape[-1], lm_map.shape[-1], edge_map.shape[-1], color_map.shape[-1]
         mix = np.concatenate((img, lm_map, edge_map, color_map), axis = 2)
 
