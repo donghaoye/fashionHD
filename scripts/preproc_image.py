@@ -461,6 +461,28 @@ def create_color_map():
         image.imwrite(img_blur, os.path.join(output_dir, 'downsample_%d.jpg') % scale)
     
 
+def test_affine_augmentation():
+    img = image.imread('datasets/DeepFashion/Fashion_design/Img/img_ca_256/ca_9.jpg')
+    assert img is not None
+
+    output_dir = 'temp/affine_augmentation'
+    io.mkdir_if_missing(output_dir)
+
+    # config
+    scale = [0.05, 0.1, 0.15]
+    num_per_scale = 5
+
+    w, h  = img.shape[1], img.shape[0]
+    keypoint_src = np.array([[0,0], [w,0], [0,h]], dtype=np.float32)
+    for s in scale:
+        for i in range(num_per_scale):
+            offset = (np.random.rand(3,2)*2-1) * np.array([w, h]) * s
+            offset = offset.astype(np.float32)
+            keypoint_dst = keypoint_src + offset
+            m = cv2.getAffineTransform(keypoint_src, keypoint_dst)
+            img_trans = cv2.warpAffine(img, m, dsize=(w,h), flags=cv2.INTER_LINEAR, borderMode = cv2.BORDER_REPLICATE)
+            image.imwrite(img_trans, os.path.join(output_dir, 'affine_%f_%d.jpg' % (s, i)))
+
 
 
 if __name__ == '__main__':
@@ -492,7 +514,10 @@ if __name__ == '__main__':
 
     #################################################
     # color map
-    create_color_map()
+    # create_color_map()
+
+    #################################################
+    # geometric transformation
     
 
     #################################################
