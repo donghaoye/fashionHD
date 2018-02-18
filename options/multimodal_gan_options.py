@@ -44,6 +44,11 @@ class BaseMMGANOptions(BaseOptions):
         # fuse_face_bg: replace the face&hair&background part with original image
 
         ##############################
+        # encoders
+        ##############################
+        parser.add_argument('--affine_aug', action='store_true', help='apply random affine transformation on the input of encoders to disentangle desired information from shape')
+        parser.add_argument('--affine_aug_scale', type=float, default=0.05, help='scale of random affine transformation augmentation')
+        ##############################
         # attribute encoder
         ##############################
         parser.add_argument('--use_attr', action='store_true', help='use attribute encoder')
@@ -52,7 +57,6 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--n_attr_feat', type = int, default = 512, help = '# of attribute feature channels')
         parser.add_argument('--attr_cond_type', type = str, default = 'feat_map', help = 'attribute condition form [feat|prob|none]',
             choices = ['feat', 'prob', 'feat_map', 'prob_map'])
-
         ##############################
         # edge encoder
         ##############################

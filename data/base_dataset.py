@@ -18,11 +18,9 @@ class BaseDataset(data.Dataset):
     def initialize(self, opt):
         pass
 
-
 #####################################
 # Image Transform Modules
 #####################################
-
 def landmark_to_heatmap(img_sz, lm_label, cloth_type, delta = 15.):
     '''
     Generate a landmark heatmap from landmark coordinates
@@ -137,5 +135,34 @@ def trans_random_horizontal_flip(img):
         return cv2.flip(img, flipCode = 1) # horizontal flip
     else:
         return img
+
+def trans_random_affine(input, scale=0.05):
+    '''
+    input: list of ndarray
+    scale: float
+    '''
+    num_input = len(input)
+    nc_cum = np.array([0]+[x.shape[2] for x in input], np.int).cumsum()
+    input = np.concatenate(input, axis=2)
+
+    w, h, c = input.shape[1], input.shape[0], input.shape[2]
+    keypoint_src = np.array([[0,0], [w,0], [0,h]], dtype=np.float32)
+    offset = (np.random.rand(3,2)*2-1) * np.array([w, h]) * s
+    keypoint_dst = (keypoint_src + offset).astype(np.float32)
+    M = cv2.getAffineTransform(keypoint_src, keypoint_dst)
+
+    if c <= 4:
+        output_mix = cv2.warpAffine(input, M, dsize=(w,h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    else:
+        output_mix = []
+        for i in range(0, c, 4):
+            output_mix.append(cv2.warpAffine(input[i:(i+4)], M, dsize=(w,h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE))
+        output_mix = np.concatenate(output, axis=2)
+
+    output = []
+    for i in range(num_input):
+        output.append(output_mix[:,:,nc_cum[i]:nc_cum[i+1]])
+    return output
+    
 
 ###############################################################################

@@ -143,6 +143,11 @@ class MultimodalDesignerGAN(BaseModel):
         self.input['color_map'] = self.Tensor(data['color_map'].size()).copy_(data['color_map'])
         self.input['id'] = data['id']
 
+        if self.opt.affine_aug:
+            self.input['seg_mask_affine'] = self.Tensor(data['seg_mask_affine'].size()).copy_(data['seg_mask_affine'])
+            self.input['edge_map_affine'] = self.Tensor(data['edge_map_affine'].size()).copy_(data['edge_map_affine'])
+            self.input['color_map_affine'] = self.Tensor(data['color_map_affine'].size()).copy_(data['color_map_affine'])
+
         # create input variables
         for k, v in self.input.iteritems():
             if isinstance(v, torch.tensor._TensorBase):
@@ -151,17 +156,26 @@ class MultimodalDesignerGAN(BaseModel):
     def forward(self):
         # compute shape representation
         self.output['shape_repr'] = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'])
-        
+        if self.opt.affine_aug:
+            self.output['shape_repr_affine'] = self.encode_shape(self.input['lm_map_affine'], self.input['seg_mask_affine'], self.input['edge_map_affine'])
+
         # compute conditions
         if self.opt.G_cond_nc > 0:
             cond_feat = []
             if self.opt.use_edge:
-                self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
+                if self.opt.affine_aug:
+                    self.output['edge_feat'] = self.encode_edge(self.input['edge_map_affine'], self.output['shape_repr_affine'])
+                else:
+                    self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
                 cond_feat.append(self.output['edge_feat'])
             if self.opt.use_color:
-                self.output['color_feat'] = self.encode_color(self.input['color_map'], self.output['shape_repr'])
+                if self.opt.affine_aug:
+                    self.output['color_feat'] = self.encode_color(self.input['color_map_affine'], self.output['shape_repr_affine'])
+                else:
+                    self.output['color_feat'] = self.encode_color(self.input['color_map'], self.output['shape_repr'])
                 cond_feat.append(self.output['color_feat'])
             if self.opt.use_attr:
+                # Todo: need affine augmentation for attribute encoder?
                 if 'img_for_attr' in self.input:
                     # for convenience of attribute transfer test
                     self.output['attr_feat'] = self.encode_attribute(self.input['img_for_attr'], self.opt.attr_cond_type)

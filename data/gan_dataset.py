@@ -109,37 +109,48 @@ class GANDataset(BaseDataset):
                 mix = trans_center_crop(mix, size = (self.opt.fine_size, self.opt.fine_size))
 
         img = mix[:,:,0:nc_img]
-        img_t = self.to_tensor(img)
-        img = self.tensor_normalize_std(img_t)
+        t_img = self.to_tensor(img)
+        t_img = self.tensor_normalize_std(t_img)
 
         lm_map = mix[:,:,nc_img:(nc_img+nc_lm)]
-        lm_map = torch.Tensor(lm_map.transpose([2, 0, 1])) # convert to CxHxW
+        t_lm_map = torch.Tensor(lm_map.transpose([2, 0, 1])) # convert to CxHxW
 
         edge_map = mix[:,:,(nc_img+nc_lm):(nc_img+nc_lm+nc_edge)]
-        edge_map = torch.Tensor(edge_map.transpose([2, 0, 1])) # convert to CxHxW
+        t_edge_map = torch.Tensor(edge_map.transpose([2, 0, 1])) # convert to CxHxW
 
         color_map = mix[:,:,(nc_img+nc_lm+nc_edge):(nc_img+nc_lm+nc_edge+nc_color)]
-        color_map = torch.Tensor(color_map.transpose([2, 0, 1])) # convert to CxHxW
+        t_color_map = torch.Tensor(color_map.transpose([2, 0, 1])) # convert to CxHxW
 
         seg_map = mix[:,:,-1::]
         seg_mask = segmap_to_mask(seg_map, self.opt.input_mask_mode, self.sample_list[index]['cloth_type'])
-        seg_mask = torch.Tensor(seg_mask.transpose([2, 0, 1]))
-        seg_map = torch.Tensor(seg_map.transpose([2, 0, 1]))
-        
+        t_seg_mask = torch.Tensor(seg_mask.transpose([2, 0, 1]))
+        t_seg_map = torch.Tensor(seg_map.transpose([2, 0, 1]))
 
         # load label
         att = np.array(self.attr_label_list[index], dtype = np.float32)
 
         data = {
-            'img': img,
-            'lm_map': lm_map,
-            'seg_mask': seg_mask,
-            'seg_map': seg_map,
-            'edge_map': edge_map,
-            'color_map': color_map,
+            'img': t_img,
+            'lm_map': t_lm_map,
+            'seg_mask': t_seg_mask,
+            'seg_map': t_seg_map,
+            'edge_map': t_edge_map,
+            'color_map': t_color_map,
             'attr_label':att,
             'id': s_id
         }
+
+        # affine augmentatin
+        if self.opt.affine_aug:
+            if 'lm' in self.opt.shape_encode:
+                edge_map_affine, color_map_affine, seg_mask_affine, lm_map_affine = trans_random_affine([edge_map, color_map, seg_mask, lm_map], self.opt.affine_aug_scale)
+            else:
+                edge_map_affine, color_map_affine, seg_mask_affine = trans_random_affine([edge_map, color_map, seg_mask], self.opt.affine_aug_scale)
+                lm_map_affine = lm_map #don't comput affine transformation of lm_map for efficiency
+
+            data['edge_map_aug'] = torch.Tensor(edge_map_affine.transpose([2,0,1]))
+            data['color_map_aug'] = torch.Tensor(color_map_affine.transpose([2,0,1]))
+            data['seg_mask_aug'] = torch.Tensor(seg_mask_affine.transpose[2,0,1])
 
         return data
 

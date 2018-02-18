@@ -470,7 +470,7 @@ def test_affine_augmentation():
 
     # config
     scale = [0.05, 0.1, 0.15]
-    num_per_scale = 5
+    num_per_scale = 10
 
     w, h  = img.shape[1], img.shape[0]
     keypoint_src = np.array([[0,0], [w,0], [0,h]], dtype=np.float32)
@@ -481,6 +481,7 @@ def test_affine_augmentation():
             keypoint_dst = keypoint_src + offset
             m = cv2.getAffineTransform(keypoint_src, keypoint_dst)
             img_trans = cv2.warpAffine(img, m, dsize=(w,h), flags=cv2.INTER_LINEAR, borderMode = cv2.BORDER_REPLICATE)
+            img_trans = img_trans*0.8 + img * 0.2
             image.imwrite(img_trans, os.path.join(output_dir, 'affine_%f_%d.jpg' % (s, i)))
 
 
