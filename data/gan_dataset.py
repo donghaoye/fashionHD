@@ -151,8 +151,8 @@ class GANDataset(BaseDataset):
 
                 data['edge_map_aug'] = torch.Tensor(edge_map_affine.transpose([2,0,1]))
                 data['color_map_aug'] = torch.Tensor(color_map_affine.transpose([2,0,1]))
-                data['seg_mask_aug'] = torch.Tensor(seg_mask_affine.transpose[2,0,1])
-                data['lm_map_aug'] = torch.Tensor(lm_map_affine.transpose[2,0,1])
+                data['seg_mask_aug'] = torch.Tensor(seg_mask_affine.transpose([2,0,1]))
+                data['lm_map_aug'] = torch.Tensor(lm_map_affine.transpose([2,0,1]))
             else:
                 data['edge_map_aug'] = data['edge_map']
                 data['color_map_aug'] = data['color_map']

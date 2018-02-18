@@ -147,7 +147,7 @@ def trans_random_affine(input, scale=0.05):
 
     w, h, c = input.shape[1], input.shape[0], input.shape[2]
     keypoint_src = np.array([[0,0], [w,0], [0,h]], dtype=np.float32)
-    offset = (np.random.rand(3,2)*2-1) * np.array([w, h]) * s
+    offset = (np.random.rand(3,2)*2-1) * np.array([w, h]) * scale
     keypoint_dst = (keypoint_src + offset).astype(np.float32)
     M = cv2.getAffineTransform(keypoint_src, keypoint_dst)
 
@@ -156,8 +156,8 @@ def trans_random_affine(input, scale=0.05):
     else:
         output_mix = []
         for i in range(0, c, 4):
-            output_mix.append(cv2.warpAffine(input[i:(i+4)], M, dsize=(w,h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE))
-        output_mix = np.concatenate(output, axis=2)
+            output_mix.append(cv2.warpAffine(input[:,:,i:(i+4)], M, dsize=(w,h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE))
+        output_mix = np.concatenate(output_mix, axis=2)
 
     output = []
     for i in range(num_input):

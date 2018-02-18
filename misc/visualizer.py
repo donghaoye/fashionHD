@@ -291,7 +291,7 @@ class GANVisualizer(BaseVisualizer):
         
         imgs = [visuals[item_name] for item_name in item_list if item_name in visuals]
         imgs = torch.stack(imgs, dim=1)[0:num_vis]
-        imgs = imgs.view(imgs.size(0)*imgs.size(1), imgs.size(2), imgs.size(3))
+        imgs = imgs.view(imgs.size(0)*imgs.size(1), imgs.size(2), imgs.size(3), imgs.size(4))
         nrow = int(imgs.size(0)/num_vis)
         fn_img = os.path.join(vis_dir, '%s_epoch%d.jpg' % (subset, epoch))
         torchvision.utils.save_image(imgs, fn_img, nrow = nrow, normalize = True)

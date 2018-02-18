@@ -147,6 +147,7 @@ class MultimodalDesignerGAN(BaseModel):
             self.input['seg_mask_aug'] = self.Tensor(data['seg_mask_aug'].size()).copy_(data['seg_mask_aug'])
             self.input['edge_map_aug'] = self.Tensor(data['edge_map_aug'].size()).copy_(data['edge_map_aug'])
             self.input['color_map_aug'] = self.Tensor(data['color_map_aug'].size()).copy_(data['color_map_aug'])
+            self.input['lm_map_aug'] = self.Tensor(data['lm_map_aug'].size()).copy_(data['lm_map_aug'])
 
         # create input variables
         for k, v in self.input.iteritems():
@@ -393,10 +394,10 @@ class MultimodalDesignerGAN(BaseModel):
             ('color_map', self.input['color_map'].data.clone())
             ])
 
-            if self.opt.affine_aug:
-                visuals['seg_mask_aug'] = self.input['seg_mask_aug'].data.clone()
-                visuals['edge_map_aug'] = self.input['edge_map_aug'].data.clone()
-                visuals['color_map_aug'] = self.input['color_map_aug'].data.clone()
+        if self.opt.affine_aug:
+            visuals['seg_mask_aug'] = self.input['seg_mask_aug'].data.clone()
+            visuals['edge_map_aug'] = self.input['edge_map_aug'].data.clone()
+            visuals['color_map_aug'] = self.input['color_map_aug'].data.clone()
         return visuals
 
     
