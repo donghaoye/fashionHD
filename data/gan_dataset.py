@@ -142,15 +142,22 @@ class GANDataset(BaseDataset):
 
         # affine augmentatin
         if self.opt.affine_aug:
-            if 'lm' in self.opt.shape_encode:
-                edge_map_affine, color_map_affine, seg_mask_affine, lm_map_affine = trans_random_affine([edge_map, color_map, seg_mask, lm_map], self.opt.affine_aug_scale)
-            else:
-                edge_map_affine, color_map_affine, seg_mask_affine = trans_random_affine([edge_map, color_map, seg_mask], self.opt.affine_aug_scale)
-                lm_map_affine = lm_map #don't comput affine transformation of lm_map for efficiency
+            if self.split == 'train':
+                if 'lm' in self.opt.shape_encode:
+                    edge_map_affine, color_map_affine, seg_mask_affine, lm_map_affine = trans_random_affine([edge_map, color_map, seg_mask, lm_map], self.opt.affine_aug_scale)
+                else:
+                    edge_map_affine, color_map_affine, seg_mask_affine = trans_random_affine([edge_map, color_map, seg_mask], self.opt.affine_aug_scale)
+                    lm_map_affine = lm_map #don't comput affine transformation of lm_map for efficiency
 
-            data['edge_map_aug'] = torch.Tensor(edge_map_affine.transpose([2,0,1]))
-            data['color_map_aug'] = torch.Tensor(color_map_affine.transpose([2,0,1]))
-            data['seg_mask_aug'] = torch.Tensor(seg_mask_affine.transpose[2,0,1])
+                data['edge_map_aug'] = torch.Tensor(edge_map_affine.transpose([2,0,1]))
+                data['color_map_aug'] = torch.Tensor(color_map_affine.transpose([2,0,1]))
+                data['seg_mask_aug'] = torch.Tensor(seg_mask_affine.transpose[2,0,1])
+                data['lm_map_aug'] = torch.Tensor(lm_map_affine.transpose[2,0,1])
+            else:
+                data['edge_map_aug'] = data['edge_map']
+                data['color_map_aug'] = data['color_map']
+                data['seg_mask_aug'] = data['seg_mask']
+                data['lm_map_aug'] = data['lm_map']
 
         return data
 

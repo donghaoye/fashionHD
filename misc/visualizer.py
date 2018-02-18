@@ -275,26 +275,23 @@ class GANVisualizer(BaseVisualizer):
         io.mkdir_if_missing(vis_dir)
         print('[%s] visualizing %s images' % (opt.id, subset))
 
-        # post-process masks and landmark heatmaps
+        # post-process
         visuals['seg_map'] = self._seg_map_to_img(visuals['seg_map'])
         visuals['landmark_heatmap'] = visuals['landmark_heatmap'].max(dim=1, keepdim=True)[0].expand_as(visuals['img_real'])
         visuals['edge_map'] = visuals['edge_map'].expand_as(visuals['img_real'])
-
+        if 'seg_mask_aug' in visuals:
+            visuals['seg_mask_aug'] = visuals['seg_mask_aug'][:,1::].sum(dim=1,keepdim=True).expand_as(visuals['img_real'])
+        if 'edge_map_aug' in visuals:
+            visuals['edge_map_aug'] = visuals['edge_map_aug'].expand_as(visuals['img_real'])
+        
+        # display
         num_vis = min(opt.max_n_vis, visuals['img_real'].size(0))
-        imgs = []
-        for i in range(num_vis):
-            imgs += [
-                visuals['img_real'][i],
-                visuals['img_fake'][i],
-                # visuals['img_real_raw'][i],
-                visuals['img_fake_raw'][i],
-                visuals['seg_map'][i],
-                visuals['landmark_heatmap'][i],
-                visuals['edge_map'][i],
-                visuals['color_map'][i],
-            ]
-
-        imgs = torch.stack(imgs)
+        item_list = ['img_real', 'img_fake', 'img_fake_raw', 'seg_map', 'edge_map', 'color_map', 'landmark_heatmap',
+                        'seg_mask_aug', 'edge_map_aug', 'color_map_aug']
+        
+        imgs = [visuals[item_name] for item_name in item_list if item_name in visuals]
+        imgs = torch.stack(imgs, dim=1)[0:num_vis]
+        imgs = imgs.view(imgs.size(0)*imgs.size(1), imgs.size(2), imgs.size(3))
         nrow = int(imgs.size(0)/num_vis)
         fn_img = os.path.join(vis_dir, '%s_epoch%d.jpg' % (subset, epoch))
         torchvision.utils.save_image(imgs, fn_img, nrow = nrow, normalize = True)

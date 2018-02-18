@@ -144,9 +144,9 @@ class MultimodalDesignerGAN(BaseModel):
         self.input['id'] = data['id']
 
         if self.opt.affine_aug:
-            self.input['seg_mask_affine'] = self.Tensor(data['seg_mask_affine'].size()).copy_(data['seg_mask_affine'])
-            self.input['edge_map_affine'] = self.Tensor(data['edge_map_affine'].size()).copy_(data['edge_map_affine'])
-            self.input['color_map_affine'] = self.Tensor(data['color_map_affine'].size()).copy_(data['color_map_affine'])
+            self.input['seg_mask_aug'] = self.Tensor(data['seg_mask_aug'].size()).copy_(data['seg_mask_aug'])
+            self.input['edge_map_aug'] = self.Tensor(data['edge_map_aug'].size()).copy_(data['edge_map_aug'])
+            self.input['color_map_aug'] = self.Tensor(data['color_map_aug'].size()).copy_(data['color_map_aug'])
 
         # create input variables
         for k, v in self.input.iteritems():
@@ -157,20 +157,20 @@ class MultimodalDesignerGAN(BaseModel):
         # compute shape representation
         self.output['shape_repr'] = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'])
         if self.opt.affine_aug:
-            self.output['shape_repr_affine'] = self.encode_shape(self.input['lm_map_affine'], self.input['seg_mask_affine'], self.input['edge_map_affine'])
+            self.output['shape_repr_aug'] = self.encode_shape(self.input['lm_map_aug'], self.input['seg_mask_aug'], self.input['edge_map_aug'])
 
         # compute conditions
         if self.opt.G_cond_nc > 0:
             cond_feat = []
             if self.opt.use_edge:
                 if self.opt.affine_aug:
-                    self.output['edge_feat'] = self.encode_edge(self.input['edge_map_affine'], self.output['shape_repr_affine'])
+                    self.output['edge_feat'] = self.encode_edge(self.input['edge_map_aug'], self.output['shape_repr_aug'])
                 else:
                     self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
                 cond_feat.append(self.output['edge_feat'])
             if self.opt.use_color:
                 if self.opt.affine_aug:
-                    self.output['color_feat'] = self.encode_color(self.input['color_map_affine'], self.output['shape_repr_affine'])
+                    self.output['color_feat'] = self.encode_color(self.input['color_map_aug'], self.output['shape_repr_aug'])
                 else:
                     self.output['color_feat'] = self.encode_color(self.input['color_map'], self.output['shape_repr'])
                 cond_feat.append(self.output['color_feat'])
@@ -392,6 +392,11 @@ class MultimodalDesignerGAN(BaseModel):
             ('edge_map', self.input['edge_map'].data.clone()),
             ('color_map', self.input['color_map'].data.clone())
             ])
+
+            if self.opt.affine_aug:
+                visuals['seg_mask_aug'] = self.input['seg_mask_aug'].data.clone()
+                visuals['edge_map_aug'] = self.input['edge_map_aug'].data.clone()
+                visuals['color_map_aug'] = self.input['color_map_aug'].data.clone()
         return visuals
 
     
