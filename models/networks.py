@@ -1626,6 +1626,7 @@ def define_image_encoder(opt, encoder_type='edge'):
         else:
             input_nc = 1
         nf = opt.edge_nf
+        output_nc = opt.edge_nof
         num_downs = opt.edge_ndowns
     elif encoder_type == 'color':
         if opt.color_shape_guided:
@@ -1633,11 +1634,15 @@ def define_image_encoder(opt, encoder_type='edge'):
         else:
             input_nc = 3
         nf = opt.color_nf
+        output_nc = opt_color_nof
         num_downs = opt.color_ndowns
     else:
         raise NotImplementedError('invalid encoder type %s'%encoder_type)
     
-    image_encoder = ImageEncoder(input_nc=input_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
+    if opt.encoder_type == 'normal':
+        image_encoder = ImageEncoder(input_nc=input_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
+    elif opt.encoder_type == 'pool':
+        image_encoder = PoolingImageEncoder(input_nc=input_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
 
     if len(opt.gpu_ids) > 0:
         image_encoder.cuda()
@@ -1681,5 +1686,59 @@ class ImageEncoder(nn.Module):
             return nn.parallel.data_parallel(self.net, img)
         else:
             return self.net(img)
+
+class PoolingImageEncoder(nn.Modules):
+    def __init__(self, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, use_attention=False, gpu_ids=[]):
+        max_nf = 512
+        self.input_nc = input_nc
+        self.output_nc = output_nc if output_nc > 0 else min(nf*2**(num_downs), max_nf)
+        self.nf = nf
+        self.num_downs = num_downs
+        self.use_attention
+        self.gpu_ids = gpu_ids
+
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        layers = [
+            nn.Conv2d(input_nc, nf, kernel_size=7, padding=3, bias=use_bias),
+            norm_layer(nf),
+            activation()]
+
+        for n in range(num_downs):
+            c_in = min(max_nf, nf*2**n)
+            c_out = min(max_nf, nf*2**(n+1)) if n < num_downs -1 else self.output_nc
+            layers.append(nn.Conv2d(c_in, c_out, kernel_size=4, stride=2, padding=1, bias=use_bias))          
+            layers.append(norm_layer(c_out))
+            if n < num_downs - 1:
+                layers.append(activation())
+        
+        self.conv = nn.Sequential(*layers)
+        self.activation = activation()
+        if use_attention:
+            self.attention_cls = nn.Sequential(
+                nn.Conv2d(c_out, 1, kernel_size=1),
+                nn.Softmax2d()
+            )
+        else:
+            self.attention_cls = None
+        
+    def forward(self, img):
+        if len(self.gpu_ids) > 1:
+            feat_map = nn.parallel.data_parallel(self.conv, img)
+        else:
+            feat_map = self.conv(img)
+        
+        if self.use_attention:
+            attention = self.attention_cls(feat_map)
+            feat_map = feat_map * attention
+            feat_map = feat_map.sum(dim=4, keepdim=True).sum(dim=3, keepdim=True)
+        else:
+            feat_map = feat_map.mean(dim=4, keepdim=True).mean(dim=3, keepdim=True)
+        
+        return self.activation(feat_map)
+
 
     

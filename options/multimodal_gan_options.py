@@ -44,10 +44,14 @@ class BaseMMGANOptions(BaseOptions):
         # fuse_face_bg: replace the face&hair&background part with original image
 
         ##############################
-        # encoders
+        # encoder general setting
         ##############################
         parser.add_argument('--affine_aug', action='store_true', help='apply random affine transformation on the input of encoders to disentangle desired information from shape')
         parser.add_argument('--affine_aug_scale', type=float, default=0.05, help='scale of random affine transformation augmentation')
+        parser.add_argument('--encoder_type', type=str, default='normal', help='network architecture of encoder',
+            choices = ['normal', 'pool'])
+        parser.add_argument('--encoder_attention', type=int, default=0, help='only useful when encoder_type is "pool". set 1 to use attention weighted pooling',
+            choices = [0,1])
         ##############################
         # attribute encoder
         ##############################
@@ -64,6 +68,7 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--edge_outer', action = 'store_true', help='use all edges instead of inner edge')
         parser.add_argument('--edge_threshold', type=int, default=26, help='edge threshold to filter small edge [0-255]')
         parser.add_argument('--edge_nf', type=int, default=64, help='feature dimension of first conv layer in edge encoder')
+        parser.add_argument('--edge_nof', type=int, default=-1, help='output feature dimension, set -1  to use default setting')
         parser.add_argument('--edge_ndowns',type=int, default=5, help='number of downsample layers in edge encoder')
         parser.add_argument('--edge_shape_guided', type=int, default=1, choices=[0,1], help='concat shape_mask and edge_map to guide edge encoding')
         ##############################
@@ -71,6 +76,7 @@ class BaseMMGANOptions(BaseOptions):
         ##############################
         parser.add_argument('--use_color', action='store_true', help='use color condition branch')
         parser.add_argument('--color_nf', type=int, default=64, help='feature dimension of first conv layer in color encoder')
+        parser.add_argument('--color_nof', type=int, default=-1, help='output feature dimension, set -1  to use default setting')
         parser.add_argument('--color_ndowns', type=int, default=5, help='number of downsample layers in color encoder')
         parser.add_argument('--color_shape_guided', type=int, default=1, choices=[0,1], help='concat shape_mask and color_map to guide color encoding')
         parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
