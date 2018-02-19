@@ -1634,7 +1634,7 @@ def define_image_encoder(opt, encoder_type='edge'):
         else:
             input_nc = 3
         nf = opt.color_nf
-        output_nc = opt_color_nof
+        output_nc = opt.color_nof
         num_downs = opt.color_ndowns
     else:
         raise NotImplementedError('invalid encoder type %s'%encoder_type)
