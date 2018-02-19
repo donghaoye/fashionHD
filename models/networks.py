@@ -1687,14 +1687,15 @@ class ImageEncoder(nn.Module):
         else:
             return self.net(img)
 
-class PoolingImageEncoder(nn.Modules):
+class PoolingImageEncoder(nn.Module):
     def __init__(self, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, use_attention=False, gpu_ids=[]):
+        super(PoolingImageEncoder, self).__init__()
         max_nf = 512
         self.input_nc = input_nc
         self.output_nc = output_nc if output_nc > 0 else min(nf*2**(num_downs), max_nf)
         self.nf = nf
         self.num_downs = num_downs
-        self.use_attention
+        self.use_attention = use_attention
         self.gpu_ids = gpu_ids
 
         if type(norm_layer) == functools.partial:
@@ -1734,9 +1735,9 @@ class PoolingImageEncoder(nn.Modules):
         if self.use_attention:
             attention = self.attention_cls(feat_map)
             feat_map = feat_map * attention
-            feat_map = feat_map.sum(dim=4, keepdim=True).sum(dim=3, keepdim=True)
+            feat_map = feat_map.sum(dim=3, keepdim=True).sum(dim=2, keepdim=True)
         else:
-            feat_map = feat_map.mean(dim=4, keepdim=True).mean(dim=3, keepdim=True)
+            feat_map = feat_map.mean(dim=3, keepdim=True).mean(dim=2, keepdim=True)
         
         return self.activation(feat_map)
 
