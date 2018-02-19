@@ -1640,9 +1640,9 @@ def define_image_encoder(opt, encoder_type='edge'):
         raise NotImplementedError('invalid encoder type %s'%encoder_type)
     
     if opt.encoder_type == 'normal':
-        image_encoder = ImageEncoder(input_nc=input_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
+        image_encoder = ImageEncoder(input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
     elif opt.encoder_type == 'pool':
-        image_encoder = PoolingImageEncoder(input_nc=input_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
+        image_encoder = PoolingImageEncoder(input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
 
     if len(opt.gpu_ids) > 0:
         image_encoder.cuda()
