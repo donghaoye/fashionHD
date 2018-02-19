@@ -115,8 +115,8 @@ class BaseMMGANOptions(BaseOptions):
         nc_seg = 7 if opt.input_mask_mode == 'map' else 1
         nc_edge = 1
         nc_color = 3
-        nf_edge = min(512, opt.edge_nf * 2**(opt.edge_ndowns))
-        nf_color = min(512, opt.color_nf * 2**(opt.color_ndowns))
+        nf_edge = min(512, opt.edge_nf * 2**(opt.edge_ndowns)) if opt.edge_nof == -1 else opt.edge_nof
+        nf_color = min(512, opt.color_nf * 2**(opt.color_ndowns)) if opt.color_nof == -1 else opt.color_nof
         nf_attr = opt.n_attr_feat if opt.attr_cond_type in {'feat', 'feat_map'} else opt.n_attr
 
         # set netG input_nc and output_nc
