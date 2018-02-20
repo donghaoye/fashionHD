@@ -52,6 +52,8 @@ class BaseMMGANOptions(BaseOptions):
             choices = ['normal', 'pool'])
         parser.add_argument('--encoder_attention', type=int, default=0, help='only useful when encoder_type is "pool". set 1 to use attention weighted pooling',
             choices = [0,1])
+        parser.add_argument('--encoder_block_type', type=string, default='residual', help='block type of downsample layers in encoder networks',
+            choices = ['residual', 'downsample'])
         ##############################
         # attribute encoder
         ##############################

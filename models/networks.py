@@ -925,7 +925,6 @@ class ConditionedResnetGenerator(nn.Module):
             return x
 
 
-
 class UnetSkipConnectionBlock(nn.Module):
     def __init__(self, outer_nc, inner_nc, input_nc=None,
                  submodule=None, outermost=False, innermost=False, norm_layer=nn.BatchNorm2d, use_dropout=False):
@@ -1642,16 +1641,55 @@ def define_image_encoder(opt, encoder_type='edge'):
     if opt.encoder_type == 'normal':
         image_encoder = ImageEncoder(input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
     elif opt.encoder_type == 'pool':
-        image_encoder = PoolingImageEncoder(input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
+        image_encoder = PoolingImageEncoder(block=opt.encoder_block_type, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
 
     if len(opt.gpu_ids) > 0:
         image_encoder.cuda()
     init_weights(image_encoder, init_type=opt.init_type)
     return image_encoder
 
+class DownsampleEncoderBlock(nn.Module):
+    def __init__(self, input_nc, output_nc, norm_layer, activation, use_bias):
+        super(DownsampleEncoderBlock, self).__init__()
+        layers = []
+        layers.append(nn.Conv2d(input_nc, output_nc, kernel_size=4, stride=2, padding=1, bias=use_bias))
+        if norm_layer is not None:
+            layers.append(norm_layer(output_nc))
+        if activation is not None:
+            layers.append(activation())
+        self.model = nn.Sequential(*layers)
+    def forward(self, input):
+        return self.model(input)
+
+class ResidualEncoderBlock(nn.Module):
+    def __init__(self, input_nc, output_nc, norm_layer, activation, use_bias, stride=2):
+        super(ResidualEncoderBlock, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(input_nc, output_nc, kernel_size=3, stride=stride, padding=1, bias=use_bias),
+            norm_layer(output_nc),
+            activation(),
+            nn.Conv2d(output_nc, output_nc, kernel_size=3, stride=1, padding=1, bias=use_bias),
+            norm_layer(output_nc))
+
+        if input_nc == output_nc and stride == 1:
+            self.donwsample = None
+        else:
+            self.downsample = nn.Sequential(
+                nn.Conv2d(input_nc, output_nc, kernel_size=1, stride=stride, bias=use_bias),
+                norm_layer(output_nc)
+            )
+        self.activation = activation()
+
+    def forward(self, input):
+        out = self.conv(input)
+        if self.downsample is None:
+            residual = input
+        else:
+            residual = self.downsample(input)
+        return self.activation(out + residual)
 
 class ImageEncoder(nn.Module):
-    def __init__(self, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, gpu_ids=[]):
+    def __init__(self, block, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, gpu_ids=[]):
         super(ImageEncoder, self).__init__()
         max_nf = 512
         n_innermost = 7 #feat_map at this level has 1x1 size
@@ -1688,7 +1726,7 @@ class ImageEncoder(nn.Module):
             return self.net(img)
 
 class PoolingImageEncoder(nn.Module):
-    def __init__(self, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, use_attention=False, gpu_ids=[]):
+    def __init__(self, block, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, use_attention=False, gpu_ids=[]):
         super(PoolingImageEncoder, self).__init__()
         max_nf = 512
         self.input_nc = input_nc
@@ -1697,6 +1735,7 @@ class PoolingImageEncoder(nn.Module):
         self.num_downs = num_downs
         self.use_attention = use_attention
         self.gpu_ids = gpu_ids
+        self.block = block # downsample or residual
 
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
@@ -1711,10 +1750,10 @@ class PoolingImageEncoder(nn.Module):
         for n in range(num_downs):
             c_in = min(max_nf, nf*2**n)
             c_out = min(max_nf, nf*2**(n+1)) if n < num_downs -1 else self.output_nc
-            layers.append(nn.Conv2d(c_in, c_out, kernel_size=4, stride=2, padding=1, bias=use_bias))          
-            layers.append(norm_layer(c_out))
-            if n < num_downs - 1:
-                layers.append(activation())
+            if block == 'downsample':
+                layers.append(DownsampleEncoderBlock(c_in, c_out, norm_layer, activation, use_bias))
+            elif block == 'residual':
+                layers.append(ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=2))
         
         self.conv = nn.Sequential(*layers)
         self.activation = activation()
@@ -1738,8 +1777,5 @@ class PoolingImageEncoder(nn.Module):
             feat_map = feat_map.sum(dim=3, keepdim=True).sum(dim=2, keepdim=True)
         else:
             feat_map = feat_map.mean(dim=3, keepdim=True).mean(dim=2, keepdim=True)
-        
         return self.activation(feat_map)
-
-
     
