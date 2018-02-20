@@ -75,7 +75,7 @@ class MultimodalDesignerGAN(BaseModel):
         else:
             self.load_network(self.netG, 'G', opt.which_epoch)
             for l, net in self.encoders.iteritems():
-                self.load_network(net, l, which_epoch)
+                self.load_network(net, l, opt.which_epoch)
 
 
         if self.is_train:
@@ -191,7 +191,6 @@ class MultimodalDesignerGAN(BaseModel):
         self.output['img_real_raw'] = self.input['img']
         self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.output['img_real_raw'])
         self.output['img_real'] = self.mask_image(self.output['img_real_raw'], self.input['seg_map'], self.output['img_real_raw'])
-        self.output['PSNR'] = self.crit_psnr(self.output['img_fake'], self.output['img_real'])
 
     def test(self):
         if float(torch.__version__[0:3]) >= 0.4:
@@ -240,6 +239,8 @@ class MultimodalDesignerGAN(BaseModel):
         return repr
         
     def backward_D(self):
+        # PSNR
+        self.output['PSNR'] = self.crit_psnr(self.output['img_fake'], self.output['img_real'])
         # fake
         repr_fake = self.get_sample_repr_for_D('fake', detach_image=True)
         repr_fake = self.fake_pool.query(repr_fake.data)

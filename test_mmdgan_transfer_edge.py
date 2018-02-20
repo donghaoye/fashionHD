@@ -25,7 +25,7 @@ opt = TestMMGANOptions().parse()
 opt.batch_size = batch_size
 train_opt = io.load_json(os.path.join('checkpoints', opt.id, 'train_opt.json'))
 preserved_opt = {'gpu_ids', 'batch_size', 'is_train'}
-for k, v in train_opt:
+for k, v in train_opt.iteritems():
     if k in opt and (k not in preserved_opt):
         setattr(opt, k, v)
 # create model
@@ -42,7 +42,7 @@ for i in range(num_batch):
 
     data = val_loader_iter.next()
     edge_map = data['edge_map']
-    imgs_title = data['img']
+    imgs_title = data['img'].clone()
     imgs_generated = []
 
     for j in range(batch_size):
@@ -53,7 +53,7 @@ for i in range(num_batch):
         
         model.set_input(data)
         model.test()
-        imgs_generated.append(model.output['img_fake'])
+        imgs_generated.append(model.output['img_fake'].data.cpu().clone())
     
     imgs_generated = torch.stack(imgs_generated, 0)
     for j in range(1, batch_size):
