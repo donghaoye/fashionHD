@@ -1639,7 +1639,7 @@ def define_image_encoder(opt, encoder_type='edge'):
         raise NotImplementedError('invalid encoder type %s'%encoder_type)
     
     if opt.encoder_type == 'normal':
-        image_encoder = ImageEncoder(input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
+        image_encoder = ImageEncoder(block=opt.encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
     elif opt.encoder_type == 'pool':
         image_encoder = PoolingImageEncoder(block=opt.encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
 
@@ -1698,6 +1698,7 @@ class ImageEncoder(nn.Module):
         self.nf = nf
         self.num_downs = num_downs
         self.gpu_ids = gpu_ids
+        self.block = block
 
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
@@ -1712,10 +1713,13 @@ class ImageEncoder(nn.Module):
         for n in range(num_downs):
             c_in = min(max_nf, nf*2**n)
             c_out = min(max_nf, nf*2**(n+1)) if n < num_downs -1 else self.output_nc
-            layers.append(nn.Conv2d(c_in, c_out, kernel_size=4, stride=2, padding=1, bias=use_bias))
-            if n < n_innermost or norm_layer.func == nn.BatchNorm2d:
-                layers.append(norm_layer(c_out))
-            layers.append(activation())
+            if block == 'downsample':
+                layers.append(nn.Conv2d(c_in, c_out, kernel_size=4, stride=2, padding=1, bias=use_bias))
+                if n < n_innermost or norm_layer.func == nn.BatchNorm2d:
+                    layers.append(norm_layer(c_out))
+                layers.append(activation())
+            elif block == 'residual':
+                layers.append(ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=2))
 
         self.net = nn.Sequential(*layers)
 
