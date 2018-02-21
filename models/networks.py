@@ -1789,6 +1789,7 @@ class FCImageEncoder(nn.Module):
     def __init__(self, block, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, use_attention=False, gpu_ids=[]):
         super(FCImageEncoder, self).__init__()
         max_nf = 512
+        input_size = 256
         self.input_nc = input_nc
         self.output_nc = output_nc if output_nc > 0 else min(nf*2**(num_downs), max_nf)
         self.nf = nf
@@ -1796,6 +1797,7 @@ class FCImageEncoder(nn.Module):
         self.use_attention = use_attention
         self.gpu_ids = gpu_ids
         self.block = block # downsample or residual
+        self.feat_size = input_size // 2**num_downs
 
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
@@ -1815,19 +1817,15 @@ class FCImageEncoder(nn.Module):
             elif block == 'residual':
                 layers.append(ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=2))
         
-        self.conv = nn.Sequential(*layers)
-        self.fc = nn.Sequential(
-            nn.Linear(c_out, self.output_nc),
+        layers += [
+            nn.Conv2d(c_out, self.output_nc, kernel_size=self.feat_size),
             activation()
-        )
+            ]
+        self.net = nn.Sequential(*layers)
         
     def forward(self, img):
         if len(self.gpu_ids) > 1:
-            feat = nn.parallel.data_parallel(self.conv, img)
+            return nn.parallel.data_parallel(self.net, img)
         else:
-            feat = self.conv(img)
-        
-        feat = feat.view(feat.size(0))
-        out = self.fc(feat).view(feat.size(0), -1, 1, 1)
-        return out
-        
+            return self.net(img)
+             
