@@ -154,7 +154,17 @@ class MultimodalDesignerGAN(BaseModel):
             if isinstance(v, torch.tensor._TensorBase):
                 self.input[k] = Variable(v)
 
-    def forward(self):
+    def forward(self, check_grad=False):
+        # check grad
+        if check_grad:
+            self.input['seg_mask'].requires_grad=True
+            self.input['lm_map'].requires_grad=True
+            if self.opt.affine_aug:
+                self.input['edge_map_aug'].requires_grad=True
+                self.input['color_map_aug'].requires_grad=True
+            else:
+                self.input['edge_map'].requires_grad=True
+                self.input['color_map'].requires_grad=True
         # compute shape representation
         self.output['shape_repr'] = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'])
         if self.opt.affine_aug:
@@ -337,13 +347,17 @@ class MultimodalDesignerGAN(BaseModel):
             (self.output['loss_G_VGG'] * self.opt.loss_weight_vgg).backward()
             self.output['loss_G'] += self.output['loss_G_VGG'] * self.opt.loss_weight_vgg
             self.output['grad_G_VGG'] = (self.output['img_fake'].grad - grad).norm()
+        
+        # gradient of input channels
+        self.output['grad_seg'] = self.input['seg_mask'].grad.norm()
+        self.output['grad_edge'] = self.input['edge_map'].grad.norm()
+        self.output['grad_color'] = self.input['color_map'].grad.norm()
 
 
     def optimize_parameters(self, train_D = True, train_G = True, check_grad = False):
         # clear previous output
         self.output = {}
-
-        self.forward()
+        self.forward(check_grad)
         # optimize D
         self.optim_D.zero_grad()
         if self.opt.which_gan == 'wgan':
@@ -377,7 +391,7 @@ class MultimodalDesignerGAN(BaseModel):
             errors['PSNR'] = self.crit_psnr.smooth_loss(clear=True)
 
         # gradients
-        grad_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG']
+        grad_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG', 'grad_seg', 'grad_edge', 'grad_color']
         for grad_name in grad_list:
             if grad_name in self.output:
                 errors[grad_name] = self.output[grad_name].data[0]
