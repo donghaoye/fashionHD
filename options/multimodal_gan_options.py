@@ -54,6 +54,8 @@ class BaseMMGANOptions(BaseOptions):
             choices = [0,1])
         parser.add_argument('--encoder_block', type=str, default='residual', help='block type of downsample layers in encoder networks',
             choices = ['residual', 'downsample'])
+        parser.add_argument('--encoder_norm', type=str, default='instance', help='norm layers in encoder net',
+            choices = ['instance', 'batch'])
         ##############################
         # attribute encoder
         ##############################

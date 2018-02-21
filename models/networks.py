@@ -1615,7 +1615,7 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
 # General Image Encoder
 ###############################################################################
 def define_image_encoder(opt, encoder_type='edge'):
-    norm_layer = get_norm_layer(opt.norm)
+    norm_layer = get_norm_layer(opt.encoder_norm)
     activation = nn.ReLU
     
     if encoder_type == 'edge':
