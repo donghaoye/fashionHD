@@ -25,7 +25,7 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--which_model_init', type = str, default = 'none', help = 'load pretrained model to init netG parameters')
         parser.add_argument('--norm', type=str, default='instance', help='instance normalization or batch normalization [batch|instance|none]')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
-        parser.add_argument('--G_cond_layer', type = str, default = 'all', help = 'which layer to add condition feature',
+        parser.add_argument('--G_cond_layer', type = str, default = 'first', help = 'which layer to add condition feature',
             choices = ['first', 'all'])
         parser.add_argument('--G_cond_interp', type = str, default = 'bilinear', help = 'interpolation when upsample condition feature map to desired size',
             choices = ['bilinear', 'nearest'])
@@ -140,18 +140,17 @@ class BaseMMGANOptions(BaseOptions):
 
         # set netG cond_nc, netD input_nc
         opt.G_cond_nc = 0
-        if not opt.D_no_cond:
-            opt.D_input_nc = nc_img + opt.G_input_nc
-            if opt.use_edge:
-                opt.G_cond_nc += nf_edge
-                opt.D_input_nc += nc_edge
-            if opt.use_color:
-                opt.G_cond_nc += nf_color
-                opt.D_input_nc += nc_color
-            if opt.use_attr:
-                opt.G_cond_nc += nf_attr
-                # don not input attribute conditions into netD
-        else:
+        opt.D_input_nc = nc_img + opt.G_input_nc
+        if opt.use_edge:
+            opt.G_cond_nc += nf_edge
+            opt.D_input_nc += nc_edge
+        if opt.use_color:
+            opt.G_cond_nc += nf_color
+            opt.D_input_nc += nc_color
+        if opt.use_attr:
+            opt.G_cond_nc += nf_attr
+            # don not input attribute conditions into netD
+        if opt.D_no_cond:
             opt.D_input_nc = nc_img
 
         ###########################################

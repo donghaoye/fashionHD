@@ -1058,7 +1058,6 @@ class NLayerDiscriminator(nn.Module):
             return self.model(input)
 
 
-
 class PixelDiscriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, norm_layer=nn.BatchNorm2d, use_sigmoid=False, gpu_ids=[]):
         super(PixelDiscriminator, self).__init__()
