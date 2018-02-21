@@ -58,9 +58,9 @@ class GANDataset(BaseDataset):
 
         if self.opt.color_patch:
             img_size = self.opt.fine_size
-            patch_size = 64
+            patch_size = 32 
             self.patch_mask = np.zeros((img_size, img_size, 3))
-            self.patch_mask[(img_size//2-patch_size)::(img_size//2+patch_size+1),(img_size//2-patch_size)::(img_size//2+patch_size+1)]
+            self.patch_mask[(img_size//2-patch_size):(img_size//2+patch_size+1),(img_size//2-patch_size):(img_size//2+patch_size+1)]=1
 
     def __len__(self):
         return len(self.id_list)
