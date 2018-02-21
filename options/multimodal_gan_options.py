@@ -83,6 +83,7 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--color_shape_guided', type=int, default=1, choices=[0,1], help='concat shape_mask and color_map to guide color encoding')
         parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
         parser.add_argument('--color_gaussian_sigma', type=float, default=10.0, help='gaussian blur sigma')
+        parser.add_argument('--color_patch', action='store_true', help='use a patch inside the clothing region')
         ##############################
         # data (refer to "scripts/preproc_inshop.py" for more information)
         ##############################

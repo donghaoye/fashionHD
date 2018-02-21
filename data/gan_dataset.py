@@ -55,7 +55,12 @@ class GANDataset(BaseDataset):
         # image will be normalized again (under imagenet distribution) before fed into attribute encoder in GAN model
         self.tensor_normalize_std = transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
         self.tensor_normalize_imagenet = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        
+
+        if self.opt.color_patch:
+            img_size = self.opt.fine_size
+            patch_size = 64
+            self.patch_mask = np.zeros((img_size, img_size, 3))
+            self.patch_mask[(img_size//2-patch_size)::(img_size//2+patch_size+1),(img_size//2-patch_size)::(img_size//2+patch_size+1)]
 
     def __len__(self):
         return len(self.id_list)
@@ -87,8 +92,7 @@ class GANDataset(BaseDataset):
         # load color map
         # color_map = cv2.imread(self.color_path_list[index]).astype(np.float32) / 255.
         # create color map on the fly
-        color_map = cv2.GaussianBlur(img, (self.opt.color_gaussian_ksz, self.opt.color_gaussian_ksz), self.opt.color_gaussian_sigma)
-        
+        color_map = cv2.GaussianBlur(img, (self.opt.color_gaussian_ksz, self.opt.color_gaussian_ksz), self.opt.color_gaussian_sigma)            
         nc_img, nc_lm, nc_edge, nc_color = img.shape[-1], lm_map.shape[-1], edge_map.shape[-1], color_map.shape[-1]
         mix = np.concatenate((img, lm_map, edge_map, color_map), axis = 2)
 
@@ -119,7 +123,9 @@ class GANDataset(BaseDataset):
         t_edge_map = torch.Tensor(edge_map.transpose([2, 0, 1])) # convert to CxHxW
 
         color_map = mix[:,:,(nc_img+nc_lm+nc_edge):(nc_img+nc_lm+nc_edge+nc_color)]
-        t_color_map = torch.Tensor(color_map.transpose([2, 0, 1])) # convert to CxHxW
+        if self.opt.color_patch:
+            color_map = color_map * self.patch_mask
+        t_color_map = self.tensor_normalize_std(self.to_tensor(color_map))
 
         seg_map = mix[:,:,-1::]
         seg_mask = segmap_to_mask(seg_map, self.opt.input_mask_mode, self.sample_list[index]['cloth_type'])
@@ -150,7 +156,7 @@ class GANDataset(BaseDataset):
                     lm_map_affine = lm_map #don't comput affine transformation of lm_map for efficiency
 
                 data['edge_map_aug'] = torch.Tensor(edge_map_affine.transpose([2,0,1]))
-                data['color_map_aug'] = torch.Tensor(color_map_affine.transpose([2,0,1]))
+                data['color_map_aug'] = self.tensor_normalize_std(self.to_tensor(color_map_affine))
                 data['seg_mask_aug'] = torch.Tensor(seg_mask_affine.transpose([2,0,1]))
                 data['lm_map_aug'] = torch.Tensor(lm_map_affine.transpose([2,0,1]))
             else:
@@ -158,6 +164,5 @@ class GANDataset(BaseDataset):
                 data['color_map_aug'] = data['color_map']
                 data['seg_mask_aug'] = data['seg_mask']
                 data['lm_map_aug'] = data['lm_map']
-
         return data
 
