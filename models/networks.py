@@ -1642,6 +1642,8 @@ def define_image_encoder(opt, encoder_type='edge'):
         image_encoder = ImageEncoder(block=opt.encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
     elif opt.encoder_type == 'pool':
         image_encoder = PoolingImageEncoder(block=opt.encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
+    elif opt.encoder_type == 'fc':
+        image_encoder = FCImageEncoder(block=opt.encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
 
     if len(opt.gpu_ids) > 0:
         image_encoder.cuda()
@@ -1783,3 +1785,49 @@ class PoolingImageEncoder(nn.Module):
             feat_map = feat_map.mean(dim=3, keepdim=True).mean(dim=2, keepdim=True)
         return self.activation(feat_map)
     
+class FCImageEncoder(nn.Module):
+    def __init__(self, block, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, use_attention=False, gpu_ids=[]):
+        super(FCImageEncoder, self).__init__()
+        max_nf = 512
+        self.input_nc = input_nc
+        self.output_nc = output_nc if output_nc > 0 else min(nf*2**(num_downs), max_nf)
+        self.nf = nf
+        self.num_downs = num_downs
+        self.use_attention = use_attention
+        self.gpu_ids = gpu_ids
+        self.block = block # downsample or residual
+
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        layers = [
+            nn.Conv2d(input_nc, nf, kernel_size=7, padding=3, bias=use_bias),
+            norm_layer(nf),
+            activation()]
+
+        for n in range(num_downs):
+            c_in = min(max_nf, nf*2**n)
+            c_out = min(max_nf, nf*2**(n+1))
+            if block == 'downsample':
+                layers.append(DownsampleEncoderBlock(c_in, c_out, norm_layer, activation, use_bias))
+            elif block == 'residual':
+                layers.append(ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=2))
+        
+        self.conv = nn.Sequential(*layers)
+        self.fc = nn.Sequential(
+            nn.Linear(c_out, self.output_nc),
+            activation()
+        )
+        
+    def forward(self, img):
+        if len(self.gpu_ids) > 1:
+            feat = nn.parallel.data_parallel(self.conv, img)
+        else:
+            feat = self.conv(img)
+        
+        feat = feat.view(feat.size(0))
+        out = self.fc(feat).view(feat.size(0), -1, 1, 1)
+        return out
+        

@@ -48,8 +48,8 @@ class BaseMMGANOptions(BaseOptions):
         ##############################
         parser.add_argument('--affine_aug', action='store_true', help='apply random affine transformation on the input of encoders to disentangle desired information from shape')
         parser.add_argument('--affine_aug_scale', type=float, default=0.05, help='scale of random affine transformation augmentation')
-        parser.add_argument('--encoder_type', type=str, default='pool', help='network architecture of encoder',
-            choices = ['normal', 'pool'])
+        parser.add_argument('--encoder_type', type=str, default='fc', help='network architecture of encoder',
+            choices = ['normal', 'pool', 'fc'])
         parser.add_argument('--encoder_attention', type=int, default=0, help='only useful when encoder_type is "pool". set 1 to use attention weighted pooling',
             choices = [0,1])
         parser.add_argument('--encoder_block', type=str, default='residual', help='block type of downsample layers in encoder networks',
