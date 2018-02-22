@@ -73,14 +73,6 @@ class GANDataset(BaseDataset):
     def __getitem__(self, index):
         s_id = self.id_list[index]
 
-        # load image
-        # if self.opt.color_jitter:
-        #     img = PIL.Image.open(self.sample_list[index]['img_path'])
-        #     img = self.color_jitter(img)
-        #     img = self.to_tensor(img)
-        #     img = img.numpy().transpose([1,2,0])
-        # else:
-
         # load segmentation map
         seg_map = cv2.imread(self.seg_path_list[index], cv2.IMREAD_GRAYSCALE)
 
