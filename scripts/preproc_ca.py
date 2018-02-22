@@ -256,6 +256,27 @@ def create_gan_split():
     io.save_json(split_gan, design_root + 'Split/ca_gan_split_trainval.json')
     io.save_json(split_gan_upper, design_root + 'Split/ca_gan_split_trainval_upper.json')
 
+def create_color_attribute_label():
+    '''
+    attributes related to color
+    attribute types: 1-texture, 2-fabrix, 3-shape, 4-part, 5-style
+    '''
+
+    attr_entry = io.load_json(design_root+'Label/attr_entry.json')
+    attr_label = io.load_data(design_root+'Label/ca_attr_label.pkl')
+    index = [i for i, entry in enumerate(attr_entry) if entry['type'] in {1,2,5}]
+    n = 0
+    new_attr_label = {}
+    for s_id, label in attr_label.iteritems():
+        new_attr_label[s_id] = [label[i] for i in index]
+        n+=1
+        print('%d/%d' % (n, len(attr_label)))
+
+    new_attr_entry = [attr_entry[i] for i in index]
+    print('%d color-related attributes' % len(index))
+
+    io.save_data(new_attr_label, design_root+'Label/ca_color_attr_label.pkl')
+    io.save_json(new_attr_entry, design_root+'Label/color_attr_entry.json')
 
 
 if __name__ == '__main__':
@@ -264,5 +285,6 @@ if __name__ == '__main__':
     # create_attr_entry()
     # create_category_label()
     # visualize_samples()
-    create_gan_split()
+    # create_gan_split()
+    create_color_attribute_label()
 

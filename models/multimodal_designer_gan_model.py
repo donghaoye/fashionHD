@@ -501,4 +501,6 @@ class MultimodalDesignerGAN(BaseModel):
         self.save_network(self.netD, 'D', label, self.gpu_ids)
         for l, net in self.encoders.iteritems():
             self.save_network(net, l, label, self.gpu_ids)
+        for l, net in self.auxiliaryDs.iteritems():
+            self.save_network(net, l, label, self.gpu_ids)
 

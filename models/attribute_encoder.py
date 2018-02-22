@@ -158,10 +158,10 @@ class AttributeEncoder(BaseModel):
 
     def get_current_errors(self, clear = True):
         errors = OrderedDict([
-            ('loss_attr', self.crit_attr.SmoothLoss(clear)),
+            ('loss_attr', self.crit_attr.smooth_loss(clear)),
             ])
         if self.opt.joint_cat:
-            errors['loss_cat'] = self.crit_cat.SmoothLoss(clear)
+            errors['loss_cat'] = self.crit_cat.smooth_loss(clear)
         return errors
 
     def train(self):

@@ -4,6 +4,7 @@ import torchvision.transforms as transforms
 from base_dataset import *
 
 import cv2
+import PIL
 import numpy as np
 import os
 import util.io as io
@@ -62,6 +63,10 @@ class GANDataset(BaseDataset):
             self.patch_mask = np.zeros((img_size, img_size, 3))
             self.patch_mask[(img_size//2-patch_size):(img_size//2+patch_size+1),(img_size//2-patch_size):(img_size//2+patch_size+1)]=1
 
+        if self.opt.color_jitter:
+            self.color_jitter = transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.3)
+            self.to_pil_image = transforms.ToPILImage()
+
     def __len__(self):
         return len(self.id_list)
 
@@ -69,11 +74,30 @@ class GANDataset(BaseDataset):
         s_id = self.id_list[index]
 
         # load image
-        img = cv2.imread(self.sample_list[index]['img_path'])
-        img = img.astype(np.float32) / 255.
-        if img.ndim == 3:
+        # if self.opt.color_jitter:
+        #     img = PIL.Image.open(self.sample_list[index]['img_path'])
+        #     img = self.color_jitter(img)
+        #     img = self.to_tensor(img)
+        #     img = img.numpy().transpose([1,2,0])
+        # else:
+
+        # load segmentation map
+        seg_map = cv2.imread(self.seg_path_list[index], cv2.IMREAD_GRAYSCALE)
+
+        # load image
+        img_uint = cv2.imread(self.sample_list[index]['img_path'])
+        if img_uint.ndim == 3:
             # convert BRG to RBG
-            img = img[:,:,[2,1,0]]
+            img_uint = img_uint[:,:,[2,1,0]]
+        img = img_uint.astype(np.float32) / 255.
+        if self.opt.color_jitter and self.split == 'train':
+            img_j = self.to_pil_image(img_uint)
+            img_j = self.color_jitter(img_j)
+            img_j = self.to_tensor(img_j).numpy().transpose([1,2,0])
+            mask = ((seg_map==3) | (seg_map==4)).astype(np.float32)[:,:,np.newaxis]
+            img = img_j * mask + img * (1-mask)
+
+
 
         # create landmark heatmap
         h, w = img.shape[0:2]
@@ -83,8 +107,6 @@ class GANDataset(BaseDataset):
             cloth_type = self.sample_list[index]['cloth_type']
             )
 
-        # load segmentation map
-        seg_map = cv2.imread(self.seg_path_list[index], cv2.IMREAD_GRAYSCALE)
         # load edge map
         edge_map = cv2.imread(self.edge_path_list[index], cv2.IMREAD_GRAYSCALE)
         edge_map = (edge_map >= self.opt.edge_threshold) * edge_map

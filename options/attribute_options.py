@@ -33,7 +33,7 @@ class BaseAttributeOptions(BaseOptions):
         # data files
         # refer to "scripts/preproc_inshop.py" for more information
         parser.add_argument('--benchmark', type = str, default = 'ca', help = 'set benchmark [ca|ca_org|inshop|user|debug]',
-            choices = ['ca', 'inshop', 'debug', 'user', 'ca_org'])
+            choices = ['ca', 'ca_color', 'inshop', 'debug', 'user', 'ca_org'])
         parser.add_argument('--fn_sample', type = str, default = 'default', help = 'path of sample index file')
         parser.add_argument('--fn_label', type = str, default = 'default', help = 'path of attribute label file')
         parser.add_argument('--fn_entry', type = str, default = 'default', help = 'path of attribute entry file')
@@ -70,6 +70,21 @@ class BaseAttributeOptions(BaseOptions):
                 opt.fn_landmark = 'Label/ca_landmark_label_256.pkl'
             if opt.fn_cat == 'default':
                 opt.fn_cat = 'Label/ca_cat_label.pkl'
+
+        elif opt.benchmark == 'ca_color':
+            if opt.fn_sample == 'default':
+                opt.fn_sample = 'Label/ca_samples.json'
+            if opt.fn_label == 'default':
+                opt.fn_label = 'Label/ca_color_attr_label.pkl'
+            if opt.fn_entry == 'default':
+                opt.fn_entry = 'Label/color_attr_entry.json'
+            if opt.fn_split == 'default':
+                opt.fn_split = 'Split/ca_split_trainval.json'
+            if opt.fn_landmark == 'default':
+                opt.fn_landmark = 'Label/ca_landmark_label_256.pkl'
+            if opt.fn_cat == 'default':
+                opt.fn_cat = 'Label/ca_cat_label.pkl'
+            opt.n_attr = 604
 
         elif opt.benchmark == 'ca_org':
             if opt.fn_sample == 'default':
@@ -142,8 +157,8 @@ class TrainAttributeOptions(BaseAttributeOptions):
         self.parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')
 
         self.parser.add_argument('--display_freq', type = int, default = 10, help='frequency of showing training results on screen')
-        self.parser.add_argument('--test_epoch_freq', type = int, default = 1, help='frequency of testing model')
-        self.parser.add_argument('--save_epoch_freq', type = int, default = 1, help='frequency of saving model to disk' )
+        self.parser.add_argument('--test_epoch_freq', type = int, default = 5, help='frequency of testing model')
+        self.parser.add_argument('--save_epoch_freq', type = int, default = 5, help='frequency of saving model to disk' )
 
         # set train
         self.is_train = True
