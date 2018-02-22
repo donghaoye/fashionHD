@@ -54,8 +54,8 @@ class BaseMMGANOptions(BaseOptions):
             choices = [0,1])
         parser.add_argument('--encoder_block', type=str, default='residual', help='block type of downsample layers in encoder networks',
             choices = ['residual', 'downsample'])
-        parser.add_argument('--encoder_norm', type=str, default='instance', help='norm layers in encoder net',
-            choices = ['instance', 'batch'])
+        # parser.add_argument('--encoder_norm', type=str, default='instance', help='norm layers in encoder net',
+        #     choices = ['instance', 'batch'])
         ##############################
         # attribute encoder
         ##############################
@@ -75,6 +75,8 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--edge_nof', type=int, default=128, help='output feature dimension, set -1  to use default setting')
         parser.add_argument('--edge_ndowns',type=int, default=5, help='number of downsample layers in edge encoder')
         parser.add_argument('--edge_shape_guided', type=int, default=1, choices=[0,1], help='concat shape_mask and edge_map to guide edge encoding')
+        parser.add_argument('--edge_encoder_type', type=str, default='default')
+        parser.add_argument('--edge_encoder_block', type=str, default='default')
         ##############################
         # color encoder
         ##############################
@@ -86,6 +88,8 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
         parser.add_argument('--color_gaussian_sigma', type=float, default=10.0, help='gaussian blur sigma')
         parser.add_argument('--color_patch', action='store_true', help='use a patch inside the clothing region')
+        parser.add_argument('--color_encoder_type', type=str, default='default')
+        parser.add_argument('--color_encoder_block', type=str, default='default')
         ##############################
         # data (refer to "scripts/preproc_inshop.py" for more information)
         ##############################
@@ -99,6 +103,12 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--fn_seg_path', type = str, default = 'default', help = 'path of seg map')
         parser.add_argument('--fn_edge_path', type = str, default = 'default', help = 'path of edge map')
         parser.add_argument('--fn_color_path', type = str, default = 'default', help = 'path of color map')
+        ##############################
+        # auxiliary discriminators
+        ##############################
+        parser.add_argument('--use_edge_D', action='store_true', help='use auxiliary edge matching discriminator')
+        parser.add_argument('--use_color_D', action='store_true', help='use auxiliary color matching discriminator')
+        parser.add_argument('--use_attr_D', action='store_true', help='use auxiliary attribute matching discriminator')
         ##############################
         # misc
         ##############################

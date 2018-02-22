@@ -25,62 +25,68 @@ class MultimodalDesignerGAN(BaseModel):
     def initialize(self, opt):
         super(MultimodalDesignerGAN, self).initialize(opt)
         ###################################
-        # define data tensors
-        ###################################
-        # self.input['img'] = self.Tensor()
-        # self.input['img_attr'] = self.Tensor()
-        # self.input['lm_map'] = self.Tensor()
-        # self.input['seg_mask'] = self.Tensor()
-        # self.input['attr_label'] = self.Tensor()
-        # self.input['id'] = []
-
-        ###################################
         # load/define networks
         ###################################
-
+        
+        # basic G
         self.netG = networks.define_G(opt)
+
+        # encoders
         self.encoders = {}
         if opt.use_edge:
             self.edge_encoder = networks.define_image_encoder(opt, 'edge')
             self.encoders['edge_encoder'] = self.edge_encoder
-        else:
-            self.edge_encoder = None
-        
         if opt.use_color:
             self.color_encoder = networks.define_image_encoder(opt, 'color')
             self.encoders['color_encoder'] = self.color_encoder
-        else:
-            self.color_encoder = None
-
         if opt.use_attr:
             self.attr_encoder, self.opt_AE = network_loader.load_attribute_encoder_net(id = opt.which_model_AE, gpu_ids = opt.gpu_ids)
-        else:
-            self.attr_encoder, self.opt_AE = None, None
-
+        
+        # basic D and auxiliary Ds
         if self.is_train:
+            # basic D
             self.netD = networks.define_D(opt)
+            # auxiliary Ds
+            self.auxiliaryDs = {}
+            if opt.use_edge_D:
+                assert opt.use_edge
+                self.netD_edge = networks.define_D_from_params(input_nc=opt.edge_nof+3, ndf=opt.ndf, which_model_netD=opt.which_model_netD,
+                    n_layers_D=opt.n_layers_D, norm=opt.norm, which_gan='dcgan', init_type=opt.init_type, gpu_ids=opt.gpu_ids)
+                self.auxiliaryDs['D_edge'] = self.netD_edge
+            if opt.use_color_D:
+                assert opt.use_color
+                self.netD_color = networks.define_D_from_params(input_nc=opt.color_nof+3, ndf=opt.ndf, which_model_netD=opt.which_model_netD,
+                    n_layers_D=opt.n_layers_D, norm=opt.norm, which_gan='dcgan', init_type=opt.init_type, gpu_ids=opt.gpu_ids)
+                self.auxiliaryDs['D_color'] = self.netD_color
+            if opt.use_attr_D:
+                assert opt.use_attr
+                attr_nof = opt.n_attr_feat if opt.attr_cond_type in {'feat', 'feat_map'} else opt.n_attr
+                self.netD_attr = networks.define_D_from_params(input_nc=attr_nof+3, ndf=opt.ndf, which_model_netD=opt.which_model_netD,
+                    n_layers_D=opt.n_layers_D, norm=opt.norm, which_gan='dcgan', init_type=opt.init_type, gpu_ids=opt.gpu_ids)
+                self.auxiliaryDs['D_attr'] = self.netD_attr
+            # load weights
             if not opt.continue_train:
-                # Todo: add support to load pretrained encoders
                 if opt.which_model_init != 'none':
                     self.load_network(self.netG, 'G', 'latest', opt.which_model_init)
                     self.load_network(self.netD, 'D', 'latest', opt.which_model_init)
                     for l, net in self.encoders.iteritems():
                         self.load_network(net, l, 'latest', opt.which_model_init)
-
+                    for l, net in self.auxiliaryDs.iteritems():
+                        self.load_network(net, l, 'latest', opt.which_model_init)
             else:
                 self.load_network(self.netG, 'G', opt.which_epoch)
                 self.load_network(self.netD, 'D', opt.which_epoch)
                 for l, net in self.encoders.iteritems():
+                    self.load_network(net, l, opt.which_epoch)
+                for l, net in self.auxiliaryDs.iteritems():
                     self.load_network(net, l, opt.which_epoch)
         else:
             self.load_network(self.netG, 'G', opt.which_epoch)
             for l, net in self.encoders.iteritems():
                 self.load_network(net, l, opt.which_epoch)
 
-
         if self.is_train:
             self.fake_pool = ImagePool(opt.pool_size)
-
             ###################################
             # define loss functions and loss buffers
             ###################################
@@ -112,14 +118,16 @@ class MultimodalDesignerGAN(BaseModel):
             G_param_groups = [{'params': self.netG.parameters()}]
             for l, net in self.encoders.iteritems():
                 G_param_groups.append({'params': net.parameters()})
-
-            self.optim_G = torch.optim.Adam(G_param_groups,
-                lr = opt.lr, betas = (opt.beta1, opt.beta2))
-            self.optim_D = torch.optim.Adam(self.netD.parameters(),
-                lr = opt.lr_D, betas = (opt.beta1, opt.beta2))
+            self.optim_G = torch.optim.Adam(G_param_groups, lr = opt.lr, betas = (opt.beta1, opt.beta2))
             self.optimizers.append(self.optim_G)
+            # optim_D will optimize parameters of netD
+            self.optim_D = torch.optim.Adam(self.netD.parameters(), lr = opt.lr_D, betas = (opt.beta1, opt.beta2))
             self.optimizers.append(self.optim_D)
-            
+            # optim_D_aux will optimize parameters of auxiliaryDs
+            if len(self.auxiliaryDs) > 0:
+                aux_D_param_groups = [{'params': net.parameters()} for net in self.auxiliaryDs.values()]
+                self.optim_D_aux = torch.optim.Adam(aux_D_param_groups, lr=opt.lr_D, betas=(opt.beta1, opt.beta2))
+                self.optimizers.append(self.optim_D_aux)
             for optim in self.optimizers:
                 self.schedulers.append(networks.get_scheduler(optim, opt))
 
@@ -265,9 +273,16 @@ class MultimodalDesignerGAN(BaseModel):
         # combined loss
         self.output['loss_D'] = (self.output['loss_D_real'] + self.output['loss_D_fake']) * 0.5
         self.output['loss_D'].backward()
+    
+    def backward_auxiliary_D(self):
+        for l, netD in self.auxiliaryDs.iteritems():
+            pass
+
 
     def backward_D_wgangp(self):
-        # optimize netD using wasserstein gan loss with gradient penalty. 
+        ''' optimize netD using wasserstein gan loss with gradient penalty.  '''
+        # PSNR
+        self.output['PSNR'] = self.crit_psnr(self.output['img_fake'], self.output['img_real'])
         # when using wgan, loss_D_fake(real) means critic output for fake(real) data, instead of loss
         bsz = self.output['img_fake'].size(0)
         # fake
@@ -421,13 +436,18 @@ class MultimodalDesignerGAN(BaseModel):
         output = torch.cat(inputs, dim=1)
         return output
 
-    def encode_attribute(self, img, output_type = None):
-        # input_size is the input image size of attribute model (224 for resnet)
-        input_size = 224
+    def encode_attribute(self, img, output_type = None):        
         if output_type is None:
             output_type = self.opt.attr_cond_type
         v_img = img if isinstance(img, Variable) else Variable(img)
-        v_img = F.upsample(v_img, size=(input_size, input_size), mode='bilinear')
+
+        if output_type is not 'feat_map':
+            # When computing "prob", pooling layers in attr_encoder network will be used. So the input image must be
+            # resize to the standard size of the encoder (224 for resnet).
+            # When only computing feat_map, only convolution layers in attr_encoder will be used. So the input can be
+            # arbitrary size
+            input_size = 224
+            v_img = F.upsample(v_img, size=(input_size, input_size), mode='bilinear')
         
         if self.opt_AE.image_normalize == 'imagenet':
             v_img = self._std_to_imagenet(v_img)

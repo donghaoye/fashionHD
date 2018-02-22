@@ -611,32 +611,31 @@ def define_G(opt):
     return netG
 
 
-# def define_D(input_nc, ndf, which_model_netD,
-#              n_layers_D=3, norm='batch', use_sigmoid=False, init_type='normal', gpu_ids=[]):
-def define_D(opt):
+def define_D_from_params(input_nc, ndf, which_model_netD, n_layers_D, norm, which_gan, init_type, gpu_ids):
     netD = None
-    use_gpu = len(opt.gpu_ids) > 0
-    # use_sigmoid = opt.no_lsgan
-    use_sigmoid = (opt.which_gan == 'dcgan')
-    norm_layer = get_norm_layer(norm_type=opt.norm)
-
+    use_gpu = len(gpu_ids) > 0
+    use_sigmoid = (which_gan == 'dcgan')
+    output_bias = (which_gan != 'wgan')
     if use_gpu:
         assert(torch.cuda.is_available())
-
-    output_bias = (opt.which_gan != 'wgan')
-
-    if opt.which_model_netD == 'basic':
-        netD = NLayerDiscriminator(input_nc = opt.D_input_nc, ndf = opt.ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid, output_bias = output_bias, gpu_ids=opt.gpu_ids)
-    elif opt.which_model_netD == 'n_layers':
-        netD = NLayerDiscriminator(input_nc = opt.D_input_nc, ndf = opt.ndf, n_layers=opt.n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid, output_bias = output_bias, gpu_ids=opt.gpu_ids)
-    elif opt.which_model_netD == 'pixel':
-        netD = PixelDiscriminator(input_nc = opt.D_input_nc, ndf = opt.ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=opt.gpu_ids)
+    
+    if which_model_netD == 'basic':
+        netD = NLayerDiscriminator(input_nc = D_input_nc, ndf = ndf, n_layers=3, norm_layer=norm_layer, use_sigmoid=use_sigmoid, output_bias = output_bias, gpu_ids=gpu_ids)
+    elif which_model_netD == 'n_layers':
+        netD = NLayerDiscriminator(input_nc = D_input_nc, ndf = ndf, n_layers=n_layers_D, norm_layer=norm_layer, use_sigmoid=use_sigmoid, output_bias = output_bias, gpu_ids=gpu_ids)
+    elif which_model_netD == 'pixel':
+        netD = PixelDiscriminator(input_nc = D_input_nc, ndf = ndf, norm_layer=norm_layer, use_sigmoid=use_sigmoid, gpu_ids=gpu_ids)
     else:
-        raise NotImplementedError('Discriminator model name [%s] is not recognized' %
-                                  opt.which_model_netD)
+        raise NotImplementedError('Discriminator model name [%s] is not recognized' % which_model_netD)
+
     if use_gpu:
         netD.cuda()
-    init_weights(netD, init_type=opt.init_type)
+    init_weights(netD, init_type=init_type)
+    return netD
+
+def define_D(opt):
+    netD = define_D_from_params(input_nc=opt.D_input_nc, ndf=opt.ndf, which_model_netD=opt.which_model_netD, n_layers_D=opt.n_layers_D, norm=opt.norm,
+        which_gan=opt.which_gan, init_type=opt.init_type, gpu_ids=opt.gpu_ids)
     return netD
 
 def print_network(net):
@@ -1615,7 +1614,7 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
 # General Image Encoder
 ###############################################################################
 def define_image_encoder(opt, encoder_type='edge'):
-    norm_layer = get_norm_layer(opt.encoder_norm)
+    norm_layer = get_norm_layer(opt.norm)
     activation = nn.ReLU
     
     if encoder_type == 'edge':
@@ -1626,6 +1625,8 @@ def define_image_encoder(opt, encoder_type='edge'):
         nf = opt.edge_nf
         output_nc = opt.edge_nof
         num_downs = opt.edge_ndowns
+        encoder_type = opt.encoder_type if opt.edge_encoder_type == 'default' else opt.edge_encoder_type
+        encoder_block = opt.encoder_block if opt.edge_encoder_block == 'default' else opt.edge_encoder_block
     elif encoder_type == 'color':
         if opt.color_shape_guided:
             input_nc = 3 + opt.shape_nc
@@ -1634,15 +1635,17 @@ def define_image_encoder(opt, encoder_type='edge'):
         nf = opt.color_nf
         output_nc = opt.color_nof
         num_downs = opt.color_ndowns
+        encoder_type = opt.encoder_type if opt.color_encoder_type == 'default' else opt.color_encoder_type
+        encoder_block = opt.encoder_block if opt.color_encoder_block == 'default' else opt.color_encoder_block
     else:
         raise NotImplementedError('invalid encoder type %s'%encoder_type)
     
-    if opt.encoder_type == 'normal':
-        image_encoder = ImageEncoder(block=opt.encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
-    elif opt.encoder_type == 'pool':
-        image_encoder = PoolingImageEncoder(block=opt.encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
-    elif opt.encoder_type == 'fc':
-        image_encoder = FCImageEncoder(block=opt.encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
+    if encoder_type == 'normal':
+        image_encoder = ImageEncoder(block=encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
+    elif encoder_type == 'pool':
+        image_encoder = PoolingImageEncoder(block=encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
+    elif encoder_type == 'fc':
+        image_encoder = FCImageEncoder(block=encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
 
     if len(opt.gpu_ids) > 0:
         image_encoder.cuda()
