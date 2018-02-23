@@ -1670,20 +1670,19 @@ class DownsampleEncoderBlock(nn.Module):
 class ResidualEncoderBlock(nn.Module):
     def __init__(self, input_nc, output_nc, norm_layer, activation, use_bias, stride=2):
         super(ResidualEncoderBlock, self).__init__()
+
         self.conv = nn.Sequential(
             nn.Conv2d(input_nc, output_nc, kernel_size=3, stride=stride, padding=1, bias=use_bias),
             norm_layer(output_nc),
             activation(),
             nn.Conv2d(output_nc, output_nc, kernel_size=3, stride=1, padding=1, bias=use_bias),
             norm_layer(output_nc))
-
         if input_nc == output_nc and stride == 1:
             self.donwsample = None
         else:
             self.downsample = nn.Sequential(
                 nn.Conv2d(input_nc, output_nc, kernel_size=1, stride=stride, bias=use_bias),
-                norm_layer(output_nc)
-            )
+                norm_layer(output_nc))
         self.activation = activation()
 
     def forward(self, input):
@@ -1719,7 +1718,7 @@ class ImageEncoder(nn.Module):
         for n in range(num_downs):
             c_in = min(max_nf, nf*2**n)
             c_out = min(max_nf, nf*2**(n+1)) if n < num_downs -1 else self.output_nc
-            if block == 'downsample':
+            if block == 'downsample' or n == n_innermost:
                 layers.append(nn.Conv2d(c_in, c_out, kernel_size=4, stride=2, padding=1, bias=use_bias))
                 if n < n_innermost or norm_layer.func == nn.BatchNorm2d:
                     layers.append(norm_layer(c_out))

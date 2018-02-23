@@ -333,6 +333,7 @@ class MultimodalDesignerGAN(BaseModel):
         # backward
         self.output['loss_G'].backward()
 
+
     def backward_G_grad_check(self):
         self.output['img_fake'].retain_grad()
         repr_fake = self.get_sample_repr_for_D('fake', detach_image=False)
@@ -361,7 +362,6 @@ class MultimodalDesignerGAN(BaseModel):
             (self.output['loss_G_VGG'] * self.opt.loss_weight_vgg).backward()
             self.output['loss_G'] += self.output['loss_G_VGG'] * self.opt.loss_weight_vgg
             self.output['grad_G_VGG'] = (self.output['img_fake'].grad - grad).norm()
-        
         # gradient of input channels
         self.output['grad_seg'] = self.input['seg_mask'].grad.norm() if self.input['seg_mask'].grad is not None else Variable(torch.zeros(1))
         if self.opt.affine_aug:
