@@ -170,7 +170,7 @@ class GANDataset(BaseDataset):
                     lm_map_affine = lm_map #don't comput affine transformation of lm_map for efficiency
 
                 data['edge_map_aug'] = torch.Tensor(edge_map_affine.transpose([2,0,1]))
-                data['color_map_aug'] = self.tensor_normalize_std(self.to_tensor(color_map_affine))
+                data['color_map_aug'] = self.to_tensor(color_map_affine)# has been normalized, no need to do it again
                 data['seg_mask_aug'] = torch.Tensor(seg_mask_affine.transpose([2,0,1]))
                 data['lm_map_aug'] = torch.Tensor(lm_map_affine.transpose([2,0,1]))
             else:

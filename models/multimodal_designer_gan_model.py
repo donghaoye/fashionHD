@@ -275,8 +275,7 @@ class MultimodalDesignerGAN(BaseModel):
         self.output['loss_D'].backward()
     
     def backward_auxiliary_D(self):
-        for l, netD in self.auxiliaryDs.iteritems():
-            pass
+        raise NotImplementedError('backward_auxiliary_D not implemented!')
 
 
     def backward_D_wgangp(self):
@@ -364,12 +363,11 @@ class MultimodalDesignerGAN(BaseModel):
             self.output['grad_G_VGG'] = (self.output['img_fake'].grad - grad).norm()
         
         # gradient of input channels
+        self.output['grad_seg'] = self.input['seg_mask'].grad.norm() if self.input['seg_mask'].grad is not None else Variable(torch.zeros(1))
         if self.opt.affine_aug:
-            self.output['grad_seg'] = self.input['seg_mask_aug'].grad.norm() if self.input['seg_mask_aug'].grad is not None else Variable(torch.zeros(1))
             self.output['grad_edge'] = self.input['edge_map_aug'].grad.norm() if self.input['edge_map_aug'].grad is not None else Variable(torch.zeros(1))
             self.output['grad_color'] = self.input['color_map_aug'].grad.norm() if self.input['color_map_aug'].grad is not None else Variable(torch.zeros(1))
         else:
-            self.output['grad_seg'] = self.input['seg_mask'].grad.norm() if self.input['seg_mask'].grad is not None else Variable(torch.zeros(1))
             self.output['grad_edge'] = self.input['edge_map'].grad.norm() if self.input['edge_map'].grad is not None else Variable(torch.zeros(1))
             self.output['grad_color'] = self.input['color_map'].grad.norm() if self.input['color_map'].grad is not None else Variable(torch.zeros(1))
 
