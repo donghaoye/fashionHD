@@ -41,15 +41,25 @@ for i in range(num_batch):
     print('[%s] test attribute transfer: %d / %d' % (opt.id, i+1, num_batch))
 
     data = val_loader_iter.next()
-    edge_map = data['edge_map']
     imgs_title = data['img'].clone()
     imgs_generated = []
 
+    if opt.affine_aug:
+        edge_map = data['edge_map_aug']
+    else:
+        edge_map = data['edge_map']
+
     for j in range(batch_size):
-        if j == 0:
-            data['edge_map'] = edge_map.clone()
+        if opt.affine_aug:
+            if j == 0:
+                data['edge_map_aug'] = edge_map.clone()
+            else:
+                data['edge_map_aug'] = torch.cat((edge_map[j::], edge_map[0:j]), 0)
         else:
-            data['edge_map'] = torch.cat((edge_map[j::], edge_map[0:j]), 0)
+            if j == 0:
+                data['edge_map'] = edge_map.clone()
+            else:
+                data['edge_map'] = torch.cat((edge_map[j::], edge_map[0:j]), 0)
         
         model.set_input(data)
         model.test()

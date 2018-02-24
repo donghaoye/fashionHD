@@ -41,15 +41,26 @@ for i in range(num_batch):
     print('[%s] test attribute transfer: %d / %d' % (opt.id, i+1, num_batch))
 
     data = val_loader_iter.next()
-    color_map = data['color_map']
     imgs_title = data['img'].clone()
     imgs_generated = []
 
+    if opt.affine_aug:
+        color_map = data['color_map_aug']
+    else:
+        color_map = data['color_map']
+
+
     for j in range(batch_size):
-        if j == 0:
-            data['color_map'] = color_map.clone()
+        if opt.affine_aug:
+            if j == 0:
+                data['color_map_aug'] = color_map.clone()
+            else:
+                data['color_map_aug'] = torch.cat((color_map[j::], color_map[0:j]), 0)
         else:
-            data['color_map'] = torch.cat((color_map[j::], color_map[0:j]), 0)
+            if j == 0:
+                data['color_map'] = color_map.clone()
+            else:
+                data['color_map'] = torch.cat((color_map[j::], color_map[0:j]), 0)
         
         model.set_input(data)
         model.test()

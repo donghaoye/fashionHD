@@ -230,7 +230,7 @@ class TrainMMGANOptions(BaseMMGANOptions):
         parser.add_argument('--lr_policy', type=str, default='lambda', help='learning rate policy: lambda|step|plateau',
             choices = ['step', 'plateau', 'lambda'])
         parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
-        parser.add_argument('--niter', type = int, default=25, help = '# of iter at starting learning rate')
+        parser.add_argument('--niter', type = int, default=20, help = '# of iter at starting learning rate')
         parser.add_argument('--niter_decay', type=int, default=5, help='# of iter to linearly decay learning rate to zero')
         parser.add_argument('--lr_decay', type=int, default=1, help='multiply by a gamma every lr_decay_interval epochs')
         parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')
