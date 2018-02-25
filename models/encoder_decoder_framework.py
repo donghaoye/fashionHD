@@ -76,28 +76,24 @@ class EncoderDecoderFramework(BaseModel):
         for k, v in self.input.iteritems():
             if isinstance(v, torch.tensor._TensorBase):
                 self.input[k] = Variable(v)
-
-    def encode_edge(self, img, shape_repr, guide=None):
-        if self.opt.edge_shape_guided:
-            input = torch.cat((img, shape_repr), 1)
-        else:
-            input = img
-        
-        if self.opt.encoder_type == 'st':
-            return self.edge_encoder(input, guide)
-        else:
-            return self.edge_encoder(input)
     
-    def encode_color(self, img, shape_repr, guide=None):
-        if self.opt.color_shape_guided:
+    def encode(self, img, shape_repr, guide=None):
+        if (self.encoder_type=='edge' and self.edge_shape_guided) or (self.encoder_type=='color' and self.color_shape_guided):
             input = torch.cat((img, shape_repr), 1)
         else:
             input = img
 
-        if self.opt.encoder_type == 'st':
-            return self.color_encoder(input, guide)
+        if self.opt.encoder_type == 'st' and self.opt.tar_guided:
+            return self.encoder(input, guide)
         else:
-            return self.color_encoder(input)
+            return self.encoder(input)
+    
+    def decode(self, feat, guide):
+        if not (guide.size(2)==feat.size(2) and guide.size(3)==feat.size(3)):
+            guide = F.upsample(guide, feat.size()[2:3], mode = 'bilinear')
+        input = torch.cat((feat, guide), 1)
+        return self.decoder(input)
+        
 
     def encode_shape(self, lm_map, seg_mask, edge_map):
         if self.opt.shape_encode == 'lm':
@@ -115,8 +111,31 @@ class EncoderDecoderFramework(BaseModel):
 
 
     def forward(self):
-        pass
-
+        if self.opt.affine_aug:
+            lm_map = self.input['lm_map_aug']
+            edge_map = self.input['edge_map_aug']
+            color_map = self.input['color_map_aug']
+            seg_mask = self.input['seg_mask_aug']
+        else:
+            lm_map = self.input['lm_map']
+            edge_map = self.input['edge_map']
+            color_map = self.input['color_map']
+            seg_mask = self.input['seg_mask']
+       
+        if self.encoder_type == 'edge':
+            input = edge_map
+            tar = self.input['edge_map']
+        elif self.encoder_type == 'color':
+            input = color_map
+            tar = self.input['color_map']
+        
+        shape_repr = self.encode_shape(lm_map, seg_mask, edge_map)
+        shape_repr_tar = self.encode_shape(self.input['lm_map'], self.input['seg_mask', self.input['edge_map']])
+        
+        self.output['feat'] = self.encode(input, shape_repr, shape_repr_tar)
+        self.output['img'] = self.decode(self.output['feat'], shape_repr_tar)
+        self.output['loss'] = self.crit_L1(self.output['img'], input)
+        
     def test(self):
         if float(torch.__version__[0:3]) >= 0.4:
             with torch.no_grad():
