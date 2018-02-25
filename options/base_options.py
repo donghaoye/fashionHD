@@ -41,8 +41,8 @@ class BaseOptions(object):
             choices = ['imagenet', 'standard'])
 
         self.initialized = True
+        
 
-    
     def auto_set(self):
         '''
         options that will be automatically set

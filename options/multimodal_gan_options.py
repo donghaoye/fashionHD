@@ -48,7 +48,7 @@ class BaseMMGANOptions(BaseOptions):
         ##############################
         parser.add_argument('--affine_aug', action='store_true', help='apply random affine transformation on the input of encoders to disentangle desired information from shape')
         parser.add_argument('--affine_aug_scale', type=float, default=0.05, help='scale of random affine transformation augmentation')
-        parser.add_argument('--encoder_type', type=str, default='fc', help='network architecture of encoder',
+        parser.add_argument('--encoder_type', type=str, default='normal', help='network architecture of encoder',
             choices = ['normal', 'pool', 'fc', 'st'])
         parser.add_argument('--encoder_attention', type=int, default=0, help='only useful when encoder_type is "pool". set 1 to use attention weighted pooling',
             choices = [0,1])
@@ -257,8 +257,8 @@ class TrainMMGANOptions(BaseMMGANOptions):
         parser.add_argument('--loss_weight_gp', type = float, default = 10., help = 'gradient penalty weight in WGAN')
 
         # training method
-        parser.add_argument('--shape_adaptive', action='store_true', help='add training samples with unmatched shape/attribute representation, \
-            and optimize only GAN loss for these samples to force netG to generate realistic images from unmatched conditions')
+        # parser.add_argument('--shape_adaptive', action='store_true', help='add training samples with unmatched shape/attribute representation, \
+        #     and optimize only GAN loss for these samples to force netG to generate realistic images from unmatched conditions')
         
         # joint train modules
 

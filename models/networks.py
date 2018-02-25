@@ -1918,3 +1918,52 @@ class SpatialTransformerNetwork(nn.Module):
         grid = F.affine_grid(theta, x.size())
         return F.grid_sample(x, grid)
 
+
+def define_image_decoder_from_params(input_nc, output_nc, nf=512, num_ups=5, norm='batch', output_activation=nn.Tanh, gpu_ids=[], init_type='normal'):
+    # Todo: from option
+    norm_layer = get_norm_layer(norm)
+    activation=nn.ReLU
+    image_decoder = ImageDecoder(input_nc, output_nc, nf, num_ups, norm_layer, activation, output_activation, gpu_ids)
+    if len(gpu_ids)>0:
+        image_decoder.cuda()
+    init_weights(image_decoder, init_type)
+    return image_decoder
+
+
+class ImageDecoder(nn.Module):
+    def __init__(self, input_nc, output_nc, nf=512, num_ups=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, output_activation=nn.Tanh, gpu_ids=[]):
+        super(ImageDecoder, self).__init__()
+        min_nf = 64
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.nf = nf
+        self.num_ups=num_ups
+        self.gpu_ids = gpu_ids
+
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        layers = []
+        for n in range(num_ups):
+            c_in = max(nf//(2**n), min_nf)
+            c_out = max(c_in//2, min_nf)
+            layers += [
+                nn.ConvTranspose2d(c_in, c_out, kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
+                norm_layer(c_out),
+                activation()
+            ]
+
+        layers += [nn.ReflectionPad2d(3)]
+        layers += [nn.Conv2d(c_out, output_nc, kernel_size=7)]
+        if output_activation is not None:
+            layers += [output_activation()]
+
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, input):
+        if len(self.gpu_ids) > 1:
+            return nn.parallel.data_parallel(self.model, input)
+        else:
+            return self.model(input)
