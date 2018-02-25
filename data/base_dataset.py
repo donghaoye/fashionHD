@@ -97,8 +97,28 @@ def segmap_to_mask(seg_map, mask_type, cloth_type):
     elif mask_type == 'map':
         mask = [(seg_map==i) for i in range(7)]
         mask = np.concatenate(mask, axis=2).astype(np.float32)
+    elif mask_type == 'grid_map':
+        # encode spatial information into upperbody/lowerbody channels
+        # background=0, foreground in range of [-0.5, 0.5]
+        mask = []
+        for i in range(7):
+            m = (seg_map==i).astype(np.float32)[:,:,0]
+            if i in {3,4}:
+                grid_x, grid_y = np.meshgrid(np.linspace(0,1,m.shape[1]), np.linspace(0,1,m.shape[0]))
+                x_max = (grid_x * m).max()
+                x_min = 1-((1-grid_x)*m).max()
+                grid_x_std = ((grid_x-x_min)/(x_max-x_min+1e-5)-0.5) * m
 
+                y_max = (grid_y * m).max()
+                y_min = 1-((1-grid_y)*m).max()
+                gird_y_std = ((grid_y-y_min)/(y_max-y_min+1e-5)-0.5) * m
+
+                mask += [grid_x_std, gird_y_std]
+            else:
+                mask.append(m)
+        mask = np.stack(mask, axis=2).astype(np.float32)
     return mask
+
 
 
 def trans_resize(img, size, interp = cv2.INTER_LINEAR):
@@ -156,7 +176,10 @@ def trans_random_affine(input, scale=0.05):
     else:
         output_mix = []
         for i in range(0, c, 4):
-            output_mix.append(cv2.warpAffine(input[:,:,i:(i+4)], M, dsize=(w,h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE))
+            out = cv2.warpAffine(input[:,:,i:(i+4)], M, dsize=(w,h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+            if out.ndim == 2:
+                out = out[:,:,np.newaxis]
+            output_mix.append(out)
         output_mix = np.concatenate(output_mix, axis=2)
 
     output = []

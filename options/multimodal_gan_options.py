@@ -36,7 +36,7 @@ class BaseMMGANOptions(BaseOptions):
             choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e'])
         parser.add_argument('--shape_nc', type=int, default=0, help='# channels of shape representation, depends on shape_emcode, will be auto set')
         parser.add_argument('--input_mask_mode', type = str, default = 'map', help = 'type of segmentation mask. see base_dataset.segmap_to_mask for details. [foreground|body|target|map]',
-            choices = ['foreground', 'body', 'target', 'map'])
+            choices = ['foreground', 'body', 'target', 'map', 'grid_map'])
         parser.add_argument('--post_mask_mode', type = str, default = 'fuse_face', help = 'how to mask generated images [none|fuse_face|fuse_face+bg]',
             choices = ['none', 'fuse_face', 'fuse_face+bg'])
         # none: do not mask image
@@ -129,9 +129,14 @@ class BaseMMGANOptions(BaseOptions):
         # set dimmension settings
         nc_img = 3
         nc_lm = 18
-        nc_seg = 7 if opt.input_mask_mode == 'map' else 1
         nc_edge = 1
         nc_color = 3
+        if opt.input_mask_mode == 'map':
+            nc_seg = 7
+        elif opt.input_mask_mode == 'grid_map':
+            nc_seg = 9
+        else:
+            nc_seg = 1
         nf_edge = min(512, opt.edge_nf * 2**(opt.edge_ndowns)) if opt.edge_nof == -1 else opt.edge_nof
         nf_color = min(512, opt.color_nf * 2**(opt.color_ndowns)) if opt.color_nof == -1 else opt.color_nof
         nf_attr = opt.n_attr_feat if opt.attr_cond_type in {'feat', 'feat_map'} else opt.n_attr
