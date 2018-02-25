@@ -1647,8 +1647,12 @@ def define_image_encoder(opt, encoder_type='edge'):
     elif encoder_type == 'pool':
         image_encoder = PoolingImageEncoder(block=encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
     elif encoder_type == 'fc':
-        image_encoder = FCImageEncoder(block=encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, use_attention=opt.encoder_attention, gpu_ids=opt.gpu_ids)
-
+        image_encoder = FCImageEncoder(block=encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
+    elif encoder_type == 'st':
+        if opt.tar_guided:
+            image_encoder = STImageEncoder(block=encoder_block, input_nc=input_nc, output_nc=output_nc, guide_nc=opt.shape_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
+        else:
+            image_encoder = STImageEncoder(block=encoder_block, input_nc=input_nc, output_nc=output_nc, guide_nc=0, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
     if len(opt.gpu_ids) > 0:
         image_encoder.cuda()
     init_weights(image_encoder, init_type=opt.init_type)
@@ -1789,7 +1793,7 @@ class PoolingImageEncoder(nn.Module):
         return self.activation(feat_map)
     
 class FCImageEncoder(nn.Module):
-    def __init__(self, block, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, use_attention=False, gpu_ids=[]):
+    def __init__(self, block, input_nc, output_nc=-1, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, gpu_ids=[]):
         super(FCImageEncoder, self).__init__()
         max_nf = 512
         input_size = 256
@@ -1797,7 +1801,6 @@ class FCImageEncoder(nn.Module):
         self.output_nc = output_nc if output_nc > 0 else min(nf*2**(num_downs), max_nf)
         self.nf = nf
         self.num_downs = num_downs
-        self.use_attention = use_attention
         self.gpu_ids = gpu_ids
         self.block = block # downsample or residual
         self.feat_size = input_size // 2**num_downs
@@ -1831,4 +1834,87 @@ class FCImageEncoder(nn.Module):
             return nn.parallel.data_parallel(self.net, img)
         else:
             return self.net(img)
-             
+
+class STImageEncoder(nn.Module):
+    def __init__(self, block, input_nc, output_nc=-1, guide_nc=0, nf=64, num_downs=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, gpu_ids=[]):
+        super(STImageEncoder,self).__init__()
+        max_nf = 512
+        input_size = 256
+        self.input_nc = input_nc
+        self.output_nc = output_nc if output_nc > 0 else min(nf*2**(num_downs), max_nf)
+        self.nf = nf
+        self.num_downs = num_downs
+        self.gpu_ids = gpu_ids
+        self.block = block # downsample or residual
+        self.feat_size = input_size // 2**num_downs
+        self.guide_nc = guide_nc
+
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        layers = [
+            nn.Conv2d(input_nc, nf, kernel_size=7, padding=3, bias=use_bias),
+            norm_layer(nf),
+            activation()]
+
+        for n in range(num_downs):
+            c_in = min(max_nf, nf*2**n)
+            c_out = min(max_nf, nf*2**(n+1)) if n < num_downs-1 else self.output_nc
+            if block == 'downsample':
+                layers.append(DownsampleEncoderBlock(c_in, c_out, norm_layer, activation, use_bias))
+            elif block == 'residual':
+                layers.append(ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=2))
+
+        self.conv = nn.Sequential(*layers)
+        self.stn = SpatialTransformerNetwork(input_nc=self.output_nc+guide_nc, size=self.feat_size)
+
+    def forward(self, img, guide = None, single_device=False):
+        if len(self.gpu_ids) > 1 and not single_device:
+            if guide is None:
+                return nn.parallel.data_parallel(self, img, module_kwargs={'guide':None, 'single_device':True})
+            else:
+                return nn.parallel.data_parallel(self, (img, guide), module_kwargs={'single_device':True})
+        else:
+            feat = self.conv(img)
+            if self.guide_nc>0:
+                guide = F.upsample(guide, size=(self.feat_size, self.feat_size), mode='bilinear')
+                feat = torch.cat((feat, guide), dim=1)
+
+            return self.stn(feat)[:,0:self.output_nc]
+        
+# return nn.parallel.data_parallel(self, (feat_input, shape_src, shape_tar), module_kwargs = {'single_device': True})
+
+class SpatialTransformerNetwork(nn.Module):
+    def __init__(self, input_nc, size=8):
+        super(SpatialTransformerNetwork, self).__init__()
+        self.input_nc = input_nc
+        self.size = size
+
+        self.loc_conv = nn.Sequential(
+            nn.Conv2d(input_nc, 32, kernel_size=3, stride=1, padding=1),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.ReLU(True),
+            nn.Conv2d(32,32, kernel_size=3, stride=1, padding=1),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.ReLU(True)
+            )
+        self.loc_fc = nn.Sequential(
+            nn.Linear(32*size*size//16, 32),
+            nn.ReLU(True),
+            nn.Linear(32, 6)
+            )
+
+        self.loc_fc[2].weight.data.fill_(0)
+        self.loc_fc[2].bias.data = torch.FloatTensor([1,0,0,0,1,0])
+
+    def forward(self, x):
+        xs = self.loc_conv(x)
+        xs = xs.view(x.size(0),-1)
+        theta = self.loc_fc(xs)
+        theta = theta.view(-1, 2, 3)
+
+        grid = F.affine_grid(theta, x.size())
+        return F.grid_sample(x, grid)
+

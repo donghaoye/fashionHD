@@ -182,16 +182,16 @@ class MultimodalDesignerGAN(BaseModel):
         if self.opt.G_cond_nc > 0:
             cond_feat = []
             if self.opt.use_edge:
-                if self.opt.affine_aug:
-                    self.output['edge_feat'] = self.encode_edge(self.input['edge_map_aug'], self.output['shape_repr_aug'])
-                else:
-                    self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
+                edge_map = self.input['edge_map'] if not self.opt.affine_aug else self.input['edge_map_aug']
+                shape_repr = self.output['shape_repr'] if not self.opt.affine_aug else self.output['shape_repr_aug']
+                guide = self.output['shape_repr'] if self.opt.tar_guided else None
+                self.output['edge_feat'] = self.encode_edge(edge_map, shape_repr, guide)
                 cond_feat.append(self.output['edge_feat'])
             if self.opt.use_color:
-                if self.opt.affine_aug:
-                    self.output['color_feat'] = self.encode_color(self.input['color_map_aug'], self.output['shape_repr_aug'])
-                else:
-                    self.output['color_feat'] = self.encode_color(self.input['color_map'], self.output['shape_repr'])
+                color_map = self.input['color_map'] if not self.opt.affine_aug else self.input['color_map_aug']
+                shape_repr = self.output['shape_repr'] if not self.opt.affine_aug else self.output['shape_repr_aug']
+                guide = self.output['shape_repr'] if self.opt.tar_guided else None
+                self.output['color_feat'] = self.encode_edge(color_map, shape_repr, guide)
                 cond_feat.append(self.output['color_feat'])
             if self.opt.use_attr:
                 # Todo: need affine augmentation for attribute encoder?
@@ -220,17 +220,24 @@ class MultimodalDesignerGAN(BaseModel):
                     v.volatile = True
             self.forward()
     
-    def encode_edge(self, img, shape_repr):
+    def encode_edge(self, img, shape_repr, guide=None):
         if self.opt.edge_shape_guided:
-            return self.edge_encoder(torch.cat((img, shape_repr), 1))
+            img = torch.cat((img, shape_repr), 1)
+        
+        if guide is not None:
+            return self.edge_encoder(img, guide)
         else:
-            return self.edge_encoder(img)
+            return self.opt.edge_encoder(img)
     
-    def encode_color(self, img, shape_repr):
+    def encode_color(self, img, shape_repr, guide=None):
         if self.opt.color_shape_guided:
-            return self.color_encoder(torch.cat((img, shape_repr), 1))
+            img = torch.cat((img, shape_repr), 1)
+
+        if guide is not None:
+            return self.edge_encoder(img, guide)
         else:
-            return self.color_encoder(img)
+            return self.opt.edge_encoder(img)
+
 
     def get_sample_repr_for_D(self, sample_type='real', detach_image=False):
         '''
