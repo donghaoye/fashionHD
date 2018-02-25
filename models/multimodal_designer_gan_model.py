@@ -191,7 +191,7 @@ class MultimodalDesignerGAN(BaseModel):
                 color_map = self.input['color_map'] if not self.opt.affine_aug else self.input['color_map_aug']
                 shape_repr = self.output['shape_repr'] if not self.opt.affine_aug else self.output['shape_repr_aug']
                 guide = self.output['shape_repr'] if self.opt.tar_guided else None
-                self.output['color_feat'] = self.encode_edge(color_map, shape_repr, guide)
+                self.output['color_feat'] = self.encode_color(color_map, shape_repr, guide)
                 cond_feat.append(self.output['color_feat'])
             if self.opt.use_attr:
                 # Todo: need affine augmentation for attribute encoder?
@@ -222,21 +222,25 @@ class MultimodalDesignerGAN(BaseModel):
     
     def encode_edge(self, img, shape_repr, guide=None):
         if self.opt.edge_shape_guided:
-            img = torch.cat((img, shape_repr), 1)
-        
-        if guide is not None:
-            return self.edge_encoder(img, guide)
+            input = torch.cat((img, shape_repr), 1)
         else:
-            return self.opt.edge_encoder(img)
+            input = img
+        
+        if self.opt.encoder_type == 'st':
+            return self.edge_encoder(input, guide)
+        else:
+            return self.edge_encoder(input)
     
     def encode_color(self, img, shape_repr, guide=None):
         if self.opt.color_shape_guided:
-            img = torch.cat((img, shape_repr), 1)
-
-        if guide is not None:
-            return self.edge_encoder(img, guide)
+            input = torch.cat((img, shape_repr), 1)
         else:
-            return self.opt.edge_encoder(img)
+            input = img
+
+        if self.opt.encoder_type == 'st':
+            return self.color_encoder(input, guide)
+        else:
+            return self.color_encoder(input)
 
 
     def get_sample_repr_for_D(self, sample_type='real', detach_image=False):
