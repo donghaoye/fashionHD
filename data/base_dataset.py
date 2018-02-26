@@ -195,6 +195,7 @@ def get_color_patch(color_map, seg_map, mode):
     grid = np.stack((grid_x, grid_y), axis=2)
     for r in [3,4]:
         m = (seg_map==r)[:,:,0:1].astype(np.float32)
+        area = m.sum()
         if mode == 'single':
             if r == 3:
                 patch_size = 64
@@ -203,15 +204,22 @@ def get_color_patch(color_map, seg_map, mode):
                 patches.append(color_map * m_patch)
         elif mode == 'center':
             patch_size = 64
-            c = (grid*m).sum(axis=(0,1)) / m.sum()
-            c = c.astype(np.int)
+            if area>0:
+                c = (grid*m).sum(axis=(0,1)) / area
+                c = c.astype(np.int)
+            else:
+                c = np.array([w//2, h//2], np.int)
             m_patch = np.zeros((h,w,1), np.float32)
             m_patch[(c[1]-patch_size//2):(c[1]+patch_size//2), (c[0]-patch_size//2):(c[0]+patch_size//2)] = 1
             patches.append(color_map * m_patch * m)
         elif mode == 'crop5':
             patch_size = 32
-            c = (grid*m).sum(axis=(0,1)) / m.sum()
-            l = (grid*m).max(axis=(0,1)) + ((max(w, h)-grid)*m).max(axis=(0,1)) - max(w,h)
+            if area>0:
+                c = (grid*m).sum(axis=(0,1)) / area
+                l = (grid*m).max(axis=(0,1)) + ((max(w, h)-grid)*m).max(axis=(0,1)) - max(w,h)
+            else:
+                c = np.array([w//2, h//2], np.int)
+                l = np.array([w//3, h//2], np.int)
             cs = [c, c-l*0.25, c+l*0.25, c+l*0.25*np.array([1,-1]), c+l*0.25*np.array([-1,1])]
             m_patch = np.zeros((h,w,1), np.float32)
             for p in cs:

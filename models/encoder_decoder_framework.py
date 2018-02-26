@@ -161,7 +161,7 @@ class EncoderDecoderFramework(BaseModel):
         self.output['img_raw'] = self.decode(self.output['feat'], shape_repr_tar)
         self.output['img'] = self.mask_image(self.output['img_raw'], self.input['seg_map'], self.output['tar'])
         self.output['loss'] = self.crit_L1(self.output['img'], self.output['tar'])
-        
+
     def test(self):
         if float(torch.__version__[0:3]) >= 0.4:
             with torch.no_grad():
@@ -183,18 +183,25 @@ class EncoderDecoderFramework(BaseModel):
         self.save_network(self.encoder, self.encoder_name, label, self.gpu_ids)
         self.save_network(self.decoder, self.decoder_name, label, self.gpu_ids)
 
-    def get_corrent_errors(self, clear=True):
+    def get_current_errors(self, clear=True):
         errors = OrderedDict([
             ('loss_L1', self.crit_L1.smooth_loss(clear))
             ])
+        return errors
 
     def get_current_visuals(self):
         visuals = OrderedDict([
             ('img_real', self.input['img'].data.clone()),
             ('img_fake', self.output['img'].data.clone()),
             ('img_fake_raw', self.output['img_raw'].data.clone()),
-            ('img_real_raw', self.output['tar'].data.clone()),
+            ('img_real_raw', self.output['tar'].data.clone())
             ])
+
+        if self.encoder_type == 'edge':
+            visuals['edge_map'] = self.input['edge_map'].data.clone()
+        elif self.encoder_type == 'color':
+            visuals['color_map'] = self.input['color_map'].data.clone()
+
 
         for k, v in visuals.iteritems():
             if v.size(1)==1:

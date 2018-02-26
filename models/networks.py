@@ -43,7 +43,6 @@ def weights_init_normal2(m):
     if 'bias' in m._parameters and m.bias is not None:
         init.constant(m.bias.data, 0.0)
 
-
 def weights_init_xavier(m):
     classname = m.__class__.__name__
     # print(classname)
@@ -1952,7 +1951,7 @@ class ImageDecoder(nn.Module):
             norm_layer(nf),
             activation()
         ]
-        
+
         for n in range(num_ups):
             c_in = max(nf//(2**n), min_nf)
             c_out = max(c_in//2, min_nf)

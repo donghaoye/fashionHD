@@ -38,14 +38,12 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
 
         if total_steps % opt.display_freq == 0:
             train_error = model.get_current_errors()
-            
             visualizer.print_train_error(
                 iter_num = total_steps,
                 epoch = epoch, 
                 num_batch = len(train_loader), 
                 lr = model.optimizers[0].param_groups[0]['lr'], 
                 errors = train_error)
-
             if opt.pavi:
                 visualizer.pavi_log(phase = 'train', iter_num = total_steps, outputs = train_error)
 
@@ -60,6 +58,7 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
         print('\n')
 
         test_error = model.get_current_errors()
+        visualizer.print_test_error(iter_num = total_steps, epoch=epoch, errors = test_error)
         if opt.pavi:
             visualizer.pavi_log(phase = 'test', iter_num = total_steps, outputs = test_error)
 
