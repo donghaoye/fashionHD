@@ -1116,7 +1116,7 @@ class FeatureFusionNetwork(nn.Module):
         self.recover = nn.Sequential(*recover_layer)
     
     def forward(self, feat, input_guide, output_guide, single_device=False):
-        if not (feat.size()[2:4] == input_guide.size()(2:4)):
+        if not (feat.size()[2:4] == input_guide.size()[2:4]):
             input_guide = F.upsample(input_guide, feat.size()[2:4], mode='bilinear')
         if not (feat.size()[2:4] == output_guide.size()[2:4]):
             output_guide = F.upsample(output_guide, feat.size()[2:4], mode='bilinear')
