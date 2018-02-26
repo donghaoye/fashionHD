@@ -184,13 +184,13 @@ class MultimodalDesignerGAN(BaseModel):
             if self.opt.use_edge:
                 edge_map = self.input['edge_map'] if not self.opt.affine_aug else self.input['edge_map_aug']
                 shape_repr = self.output['shape_repr'] if not self.opt.affine_aug else self.output['shape_repr_aug']
-                guide = self.output['shape_repr'] if self.opt.tar_guided else None
+                guide = self.output['shape_repr']
                 self.output['edge_feat'] = self.encode_edge(edge_map, shape_repr, guide)
                 cond_feat.append(self.output['edge_feat'])
             if self.opt.use_color:
                 color_map = self.input['color_map'] if not self.opt.affine_aug else self.input['color_map_aug']
                 shape_repr = self.output['shape_repr'] if not self.opt.affine_aug else self.output['shape_repr_aug']
-                guide = self.output['shape_repr'] if self.opt.tar_guided else None
+                guide = self.output['shape_repr']
                 self.output['color_feat'] = self.encode_color(color_map, shape_repr, guide)
                 cond_feat.append(self.output['color_feat'])
             if self.opt.use_attr:
@@ -226,7 +226,7 @@ class MultimodalDesignerGAN(BaseModel):
         else:
             input = img
         
-        if self.opt.encoder_type == 'st':
+        if self.opt.encoder_type == 'st' and self.opt.target_guided:
             return self.edge_encoder(input, guide)
         else:
             return self.edge_encoder(input)
@@ -237,7 +237,7 @@ class MultimodalDesignerGAN(BaseModel):
         else:
             input = img
 
-        if self.opt.encoder_type == 'st':
+        if self.opt.encoder_type == 'st' and self.opt.target_guided:
             return self.color_encoder(input, guide)
         else:
             return self.color_encoder(input)
