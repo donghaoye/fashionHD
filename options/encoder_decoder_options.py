@@ -1,6 +1,13 @@
 from multimodal_gan_options import BaseMMGANOptions
 
 class EncoderDecoderOptions(BaseMMGANOptions):
+    def initialize(self):
+        super(EncoderDecoderOptions, self).initialize()
+        parser = self.parser
+
+        parser.add_argument('--decode_guided', action = 'store_true', help='use shape to guide decode')
+
+
     def auto_set(self):
         super(EncoderDecoderOptions, self).auto_set()
         opt = self.opt
@@ -9,10 +16,13 @@ class EncoderDecoderOptions(BaseMMGANOptions):
         if not opt.id.startswith('ED_'):
             opt.id = 'ED_' + opt.id
         ###########################################
+        opt.edge_threshold = 0
+        ###########################################
 
 class TrainEncoderDecoderOptions(EncoderDecoderOptions):
     def initialize(self):
         super(TrainEncoderDecoderOptions, self).initialize()
+        parser = self.parser
         # basic
         parser.add_argument('--continue_train', action = 'store_true', default = False, help = 'coninue training from saved model')
         
@@ -32,6 +42,7 @@ class TrainEncoderDecoderOptions(EncoderDecoderOptions):
         # parser.add_argument('--test_epoch_freq', type = int, default = 1, help='frequency of testing model')
         parser.add_argument('--save_epoch_freq', type = int, default = 5, help='frequency of saving model to disk' )
         parser.add_argument('--vis_epoch_freq', type = int, default = 1, help='frequency of visualizing generated images')
+        parser.add_argument('--test_epoch_freq', type = int, default = 1, help='frequency of testing model')
         parser.add_argument('--max_n_vis', type = int, default = 32, help='max number of visualized images')
 
         # set train

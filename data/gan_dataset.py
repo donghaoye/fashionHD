@@ -139,9 +139,11 @@ class GANDataset(BaseDataset):
             patches = get_color_patch(color_map, seg_map, self.opt.color_patch_mode)
             patches = [self.tensor_normalize_std(self.to_tensor(p)) for p in patches]
             t_color_map = torch.cat(patches, dim=0)
+            t_color_map_full = self.tensor_normalize_std(self.to_tensor(color_map))
 
         else:
             t_color_map = self.tensor_normalize_std(self.to_tensor(color_map))
+            t_color_map_full = t_color_map.clone()
 
         # load label
         att = np.array(self.attr_label_list[index], dtype = np.float32)
@@ -153,6 +155,7 @@ class GANDataset(BaseDataset):
             'seg_map': t_seg_map,
             'edge_map': t_edge_map,
             'color_map': t_color_map,
+            'color_map_full': t_color_map_full,
             'attr_label':att,
             'id': s_id
         }

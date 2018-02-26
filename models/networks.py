@@ -1947,7 +1947,12 @@ class ImageDecoder(nn.Module):
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
-        layers = []
+        layers = [
+            nn.Conv2d(input_nc, nf, kernel_size=1, stride=1,padding=0),
+            norm_layer(nf),
+            activation()
+        ]
+        
         for n in range(num_ups):
             c_in = max(nf//(2**n), min_nf)
             c_out = max(c_in//2, min_nf)

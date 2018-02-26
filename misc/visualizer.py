@@ -276,22 +276,25 @@ class GANVisualizer(BaseVisualizer):
         print('[%s] visualizing %s images' % (opt.id, subset))
 
         # post-process
-        visuals['seg_map'] = self._seg_map_to_img(visuals['seg_map'])
-        visuals['landmark_heatmap'] = visuals['landmark_heatmap'].max(dim=1, keepdim=True)[0].expand_as(visuals['img_real'])
-        visuals['edge_map'] = visuals['edge_map'].expand_as(visuals['img_real'])
+        if 'seg_map' in visuals:
+            visuals['seg_map'] = self._seg_map_to_img(visuals['seg_map'])
+        if 'landmark_heatmap' in visuals:
+            visuals['landmark_heatmap'] = visuals['landmark_heatmap'].max(dim=1, keepdim=True)[0].expand_as(visuals['img_real'])
+        if 'edge_map' in visuals:
+            visuals['edge_map'] = visuals['edge_map'].expand_as(visuals['img_real'])
         if 'seg_mask_aug' in visuals:
             visuals['seg_mask_aug'] = visuals['seg_mask_aug'][:,1::].sum(dim=1,keepdim=True).expand_as(visuals['img_real'])
         if 'edge_map_aug' in visuals:
             visuals['edge_map_aug'] = visuals['edge_map_aug'].expand_as(visuals['img_real'])
-        if visuals['color_map'].size(1)==6:
+        if 'color_map' in visuals and visuals['color_map'].size(1)==6:
             visuals['color_map'] = visuals['color_map'][:,0:3] + visuals['color_map'][:,3:6]
         if 'color_map_aug' in visuals and visuals['color_map_aug'].size(1)==6:
             visuals['color_map_aug'] = visuals['color_map_aug'][:,0:3] + visuals['color_map_aug'][:,3:6]
         
         # display
         num_vis = min(opt.max_n_vis, visuals['img_real'].size(0))
-        item_list = ['img_real', 'img_fake', 'img_fake_raw', 'seg_map', 'edge_map', 'color_map', 'landmark_heatmap',
-                        'seg_mask_aug', 'edge_map_aug', 'color_map_aug']
+        item_list = ['img_real', 'img_real_raw', 'img_fake', 'img_fake_raw', 'seg_map', 'edge_map', 'color_map', 'landmark_heatmap',
+                        'seg_mask_aug', 'edge_map_aug', 'color_map_aug',]
         
         imgs = [visuals[item_name] for item_name in item_list if item_name in visuals]
         imgs = torch.stack(imgs, dim=1)[0:num_vis]
@@ -333,7 +336,7 @@ class GANVisualizer(BaseVisualizer):
     def pavi_log(self, phase, iter_num, outputs):
         # upper_list = ['D_real', 'D_fake', '']
         upper_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG', 'grad_G_attr']
-        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'G_attr', 'G_sa', 'PSNR']
+        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'G_attr', 'G_sa', 'PSNR', 'loss_L1']
 
         new_outputs = {}
         for k,v in outputs.iteritems():
