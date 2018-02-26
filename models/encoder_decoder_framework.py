@@ -100,7 +100,7 @@ class EncoderDecoderFramework(BaseModel):
     def decode(self, feat, guide):
         if self.opt.decode_guided:
             if not (guide.size(2)==feat.size(2) and guide.size(3)==feat.size(3)):
-                guide = F.upsample(guide, feat.size()[2:3], mode = 'bilinear')
+                guide = F.upsample(guide, feat.size()[2:4], mode = 'bilinear')
             input = torch.cat((feat, guide), 1)
         else:
             input = feat

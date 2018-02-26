@@ -1947,11 +1947,13 @@ class ImageDecoder(nn.Module):
             use_bias = norm_layer == nn.InstanceNorm2d
 
         c_out = min(max_nf, nf*2**num_ups)
-        layers = [
-            nn.Conv2d(input_nc, c_out, kernel_size=1, stride=1,padding=0),
-            norm_layer(c_out),
-            activation()
-        ]
+        layers = []
+        
+        layers.append(nn.Conv2d(input_nc, c_out, kernel_size=1, stride=1,padding=0))
+        if num_ups < 8 or (not use_bias):
+            # not InstanceNorm + vector
+            layers.append(norm_layer(c_out))
+        layers.append(activation())
 
         for n in range(num_ups, 0, -1):
             c_in = min(max_nf, nf*2**n)
