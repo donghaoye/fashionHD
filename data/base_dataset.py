@@ -186,6 +186,40 @@ def trans_random_affine(input, scale=0.05):
     for i in range(num_input):
         output.append(output_mix[:,:,nc_cum[i]:nc_cum[i+1]])
     return output
-    
+
+
+def get_color_patch(color_map, seg_map, mode):
+    patches = []
+    w, h = color_map.shape[1], color_map.shape[0]
+    grid_x, grid_y = np.meshgrid(range(w), range(h))
+    grid = np.stack((grid_x, grid_y), axis=2)
+    for r in [3,4]:
+        m = (seg_map==r)[:,:,0:1].astype(np.float32)
+        if mode == 'single':
+            if r == 3:
+                patch_size = 64
+                m_patch = np.zeros((h,w,1), np.float32)
+                m_patch[(h-patch_size)//2:(h+patch_size)//2, (w-patch_size)//2:(w+patch_size)//2] = 1
+                patches.append(color_map * m_patch)
+        elif mode == 'center':
+            patch_size = 64
+            c = (grid*m).sum(axis=(0,1)) / m.sum()
+            c = c.astype(np.int)
+            m_patch = np.zeros((h,w,1), np.float32)
+            m_patch[(c[1]-patch_size//2):(c[1]+patch_size//2), (c[0]-patch_size//2):(c[0]+patch_size//2)] = 1
+            patches.append(color_map * m_patch * m)
+        elif mode == 'crop5':
+            patch_size = 32
+            c = (grid*m).sum(axis=(0,1)) / m.sum()
+            l = (grid*m).max(axis=(0,1)) + ((max(w, h)-grid)*m).max(axis=(0,1)) - max(w,h)
+            cs = [c, c-l*0.25, c+l*0.25, c+l*0.25*np.array([1,-1]), c+l*0.25*np.array([-1,1])]
+            m_patch = np.zeros((h,w,1), np.float32)
+            for p in cs:
+                p = p.astype(np.int)
+                m_patch[(p[1]-patch_size//2):(p[1]+patch_size//2), (p[0]-patch_size//2):(p[0]+patch_size//2)] = 1
+            patches.append(color_map * m_patch * m)
+
+    return patches
+
 
 ###############################################################################

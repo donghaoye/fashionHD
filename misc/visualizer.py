@@ -283,6 +283,10 @@ class GANVisualizer(BaseVisualizer):
             visuals['seg_mask_aug'] = visuals['seg_mask_aug'][:,1::].sum(dim=1,keepdim=True).expand_as(visuals['img_real'])
         if 'edge_map_aug' in visuals:
             visuals['edge_map_aug'] = visuals['edge_map_aug'].expand_as(visuals['img_real'])
+        if visuals['color_map'].size(1)==6:
+            visuals['color_map'] = visuals['color_map'][:,0:3] + visuals['color_map'][:,3:6]
+        if 'color_map_aug' in visuals and visuals['color_map_aug'].size(1)==6:
+            visuals['color_map_aug'] = visuals['color_map_aug'][:,0:3] + visuals['color_map_aug'][:,3:6]
         
         # display
         num_vis = min(opt.max_n_vis, visuals['img_real'].size(0))

@@ -56,13 +56,6 @@ class GANDataset(BaseDataset):
         # image will be normalized again (under imagenet distribution) before fed into attribute encoder in GAN model
         self.tensor_normalize_std = transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
         self.tensor_normalize_imagenet = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-
-        if self.opt.color_patch:
-            img_size = self.opt.fine_size
-            patch_size = 32 
-            self.patch_mask = np.zeros((img_size, img_size, 3))
-            self.patch_mask[(img_size//2-patch_size):(img_size//2+patch_size+1),(img_size//2-patch_size):(img_size//2+patch_size+1)]=1
-
         if self.opt.color_jitter:
             self.color_jitter = transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.3)
             self.to_pil_image = transforms.ToPILImage()
@@ -126,6 +119,11 @@ class GANDataset(BaseDataset):
             else:
                 mix = trans_center_crop(mix, size = (self.opt.fine_size, self.opt.fine_size))
 
+        seg_map = mix[:,:,-1::]
+        seg_mask = segmap_to_mask(seg_map, self.opt.input_mask_mode, self.sample_list[index]['cloth_type'])
+        t_seg_mask = torch.Tensor(seg_mask.transpose([2, 0, 1]))
+        t_seg_map = torch.Tensor(seg_map.transpose([2, 0, 1]))
+
         img = mix[:,:,0:nc_img]
         t_img = self.to_tensor(img)
         t_img = self.tensor_normalize_std(t_img)
@@ -138,13 +136,12 @@ class GANDataset(BaseDataset):
 
         color_map = mix[:,:,(nc_img+nc_lm+nc_edge):(nc_img+nc_lm+nc_edge+nc_color)]
         if self.opt.color_patch:
-            color_map = color_map * self.patch_mask
-        t_color_map = self.tensor_normalize_std(self.to_tensor(color_map))
+            patches = get_color_patch(color_map, seg_map, self.opt.color_patch_mode)
+            patches = [self.tensor_normalize_std(self.to_tensor(p)) for p in patches]
+            t_color_map = torch.cat(patches, dim=0)
 
-        seg_map = mix[:,:,-1::]
-        seg_mask = segmap_to_mask(seg_map, self.opt.input_mask_mode, self.sample_list[index]['cloth_type'])
-        t_seg_mask = torch.Tensor(seg_mask.transpose([2, 0, 1]))
-        t_seg_map = torch.Tensor(seg_map.transpose([2, 0, 1]))
+        else:
+            t_color_map = self.tensor_normalize_std(self.to_tensor(color_map))
 
         # load label
         att = np.array(self.attr_label_list[index], dtype = np.float32)

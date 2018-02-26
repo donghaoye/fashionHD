@@ -90,6 +90,7 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
         parser.add_argument('--color_gaussian_sigma', type=float, default=10.0, help='gaussian blur sigma')
         parser.add_argument('--color_patch', action='store_true', help='use a patch inside the clothing region')
+        parser.add_argument('--color_patch_mode', type=str, default='center', choices=['center', 'crop5', 'single'], help='method to extract patch')
         parser.add_argument('--color_encoder_type', type=str, default='default')
         parser.add_argument('--color_encoder_block', type=str, default='default')
         ##############################
@@ -130,7 +131,7 @@ class BaseMMGANOptions(BaseOptions):
         nc_img = 3
         nc_lm = 18
         nc_edge = 1
-        nc_color = 3
+        nc_color = 6 if (opt.color_patch and opt.color_patch_mode != 'single') else 3
         if opt.input_mask_mode == 'map':
             nc_seg = 7
         elif opt.input_mask_mode == 'grid_map':

@@ -129,8 +129,7 @@ class EncoderDecoderFramework(BaseModel):
 
     def optimize_parameters():
         pass
-
-
+        
     def save(self, label):
         self.save_network(self.encoder, 'E', label, self.gpu_ids)
         self.save_network(self.decoder, 'D', label, self.gpu_ids)

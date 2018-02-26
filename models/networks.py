@@ -1630,10 +1630,12 @@ def define_image_encoder(opt, encoder_type='edge'):
         encoder_type = opt.encoder_type if opt.edge_encoder_type == 'default' else opt.edge_encoder_type
         encoder_block = opt.encoder_block if opt.edge_encoder_block == 'default' else opt.edge_encoder_block
     elif encoder_type == 'color':
-        if opt.color_shape_guided:
-            input_nc = 3 + opt.shape_nc
+        if opt.color_patch and opt.color_patch!='single':
+            input_nc = 6
         else:
             input_nc = 3
+        if opt.color_shape_guided:
+            input_nc += opt.shape_nc
         nf = opt.color_nf
         output_nc = opt.color_nof
         num_downs = opt.color_ndowns
