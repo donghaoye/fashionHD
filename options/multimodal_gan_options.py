@@ -72,7 +72,7 @@ class BaseMMGANOptions(BaseOptions):
         ##############################
         parser.add_argument('--use_edge', action = 'store_true', help='use edge condition branch')
         parser.add_argument('--edge_outer', action = 'store_true', help='use all edges instead of inner edge')
-        parser.add_argument('--edge_threshold', type=int, default=26, help='edge threshold to filter small edge [0-255]')
+        parser.add_argument('--edge_threshold', type=int, default=0, help='edge threshold to filter small edge [0-255]')
         parser.add_argument('--edge_nf', type=int, default=64, help='feature dimension of first conv layer in edge encoder')
         parser.add_argument('--edge_nof', type=int, default=128, help='output feature dimension, set -1  to use default setting')
         parser.add_argument('--edge_ndowns',type=int, default=5, help='number of downsample layers in edge encoder')

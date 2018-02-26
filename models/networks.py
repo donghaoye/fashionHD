@@ -1920,7 +1920,7 @@ class SpatialTransformerNetwork(nn.Module):
         return F.grid_sample(x, grid)
 
 
-def define_image_decoder_from_params(input_nc, output_nc, nf=512, num_ups=5, norm='batch', output_activation=nn.Tanh, gpu_ids=[], init_type='normal'):
+def define_image_decoder_from_params(input_nc, output_nc, nf=64, num_ups=5, norm='batch', output_activation=nn.Tanh, gpu_ids=[], init_type='normal'):
     # Todo: from option
     norm_layer = get_norm_layer(norm)
     activation=nn.ReLU
@@ -1932,9 +1932,9 @@ def define_image_decoder_from_params(input_nc, output_nc, nf=512, num_ups=5, nor
 
 
 class ImageDecoder(nn.Module):
-    def __init__(self, input_nc, output_nc, nf=512, num_ups=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, output_activation=nn.Tanh, gpu_ids=[]):
+    def __init__(self, input_nc, output_nc, nf=64, num_ups=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, output_activation=nn.Tanh, gpu_ids=[]):
         super(ImageDecoder, self).__init__()
-        min_nf = 64
+        max_nf=512
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.nf = nf
@@ -1946,15 +1946,16 @@ class ImageDecoder(nn.Module):
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
+        c_out = min(max_nf, nf*2**num_ups)
         layers = [
-            nn.Conv2d(input_nc, nf, kernel_size=1, stride=1,padding=0),
-            norm_layer(nf),
+            nn.Conv2d(input_nc, c_out, kernel_size=1, stride=1,padding=0),
+            norm_layer(c_out),
             activation()
         ]
 
-        for n in range(num_ups):
-            c_in = max(nf//(2**n), min_nf)
-            c_out = max(c_in//2, min_nf)
+        for n in range(num_ups, 0, -1):
+            c_in = min(max_nf, nf*2**n)
+            c_out = min(max_nf, nf*2**(n-1))
             layers += [
                 nn.ConvTranspose2d(c_in, c_out, kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
                 norm_layer(c_out),
@@ -1962,7 +1963,7 @@ class ImageDecoder(nn.Module):
             ]
 
         layers += [nn.ReflectionPad2d(3)]
-        layers += [nn.Conv2d(c_out, output_nc, kernel_size=7)]
+        layers += [nn.Conv2d(nf, output_nc, kernel_size=7)]
         if output_activation is not None:
             layers += [output_activation()]
 
