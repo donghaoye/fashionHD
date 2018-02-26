@@ -136,7 +136,7 @@ class GANDataset(BaseDataset):
 
         color_map = mix[:,:,(nc_img+nc_lm+nc_edge):(nc_img+nc_lm+nc_edge+nc_color)]
         if self.opt.color_patch:
-            t_color_map_full = self.tensor_normalize_std(self.to_tensor(color_map))
+            t_color_map_full = self.tensor_normalize_std(self.to_tensor(color_map).clone())
             patches = get_color_patch(color_map, seg_map, self.opt.color_patch_mode)
             color_map = np.concatenate(patches, axis=2)
             t_color_map = [self.tensor_normalize_std(self.to_tensor(p)) for p in patches]

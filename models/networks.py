@@ -553,9 +553,7 @@ def get_scheduler(optimizer, opt):
 ###############################################################################
 # GAN
 ###############################################################################
-
 def define_G(opt):
-
     netG = None
     use_gpu = len(opt.gpu_ids) > 0
     norm_layer = get_norm_layer(norm_type=opt.norm)
@@ -1085,6 +1083,106 @@ class PixelDiscriminator(nn.Module):
             return nn.parallel.data_parallel(self.net, input)
         else:
             return self.net(input)
+
+###############################################################################
+# GAN V2
+###############################################################################
+class FeatureFusionNetwork(nn.Module):
+    def __init__(self, feat_nc, guide_nc, ndowns=3, norm='batch', gpu_ids=[]):
+        super(FeatureFusionNetwork, self).__init__()
+        self.gpu_ids = gpu_ids
+        norm_layer = get_norm_layer(norm)
+        use_bias = (norm_layer.func == nn.InstanceNorm2d)
+        activation = nn.ReLU
+
+        reduce_layer = []
+        for n in range(ndowns):
+            c_in = feat_nc + guide_nc if n == 0 else feat_nc*2**n
+            c_out = feat_nc*2**(n+1)
+            reduce_layer += [nn.Conv2d(c_in, c_out, 4, 2, 1, bias=use_bias)]
+            if n < ndowns-1:
+                reduce_layer += [norm_layer(c_out)]
+            reduce_layer += [activation()]
+        self.reduce = nn.Sequential(*reduce_layer)
+
+        recover_layer = []
+        for n in range(ndowns):
+            c_in = feat_nc*2**(ndowns-n) + guide_nc if n == 0 else feat_nc*2*(ndowns-n)
+            c_out = feat_nc*2**(ndowns-n-1)
+            recover_layer += [nn.Conv2d(c_in, c_out, 3, 1, 1, bias=use_bias)]
+            if n < ndowns-1:
+                reduce_layer += [norm_layer(c_out)]
+            reduce_layer += [activation()]
+        self.recover = nn.Sequential(*recover_layer)
+    
+    def forward(self, feat, input_guide, output_guide, single_device=False):
+        if not (feat.size()[2:4] == input_guide.size()(2:4)):
+            input_guide = F.upsample(input_guide, feat.size()[2:4], mode='bilinear')
+        if not (feat.size()[2:4] == output_guide.size()[2:4]):
+            output_guide = F.upsample(output_guide, feat.size()[2:4], mode='bilinear')
+
+        if len(self.gpu_ids) > 1 and not single_device:
+            return nn.parallel.data_parallel(self, (feat, input_guide, output_guide), module_kwargs={'single_device': True})
+        else:
+            feat_reduce = self.reduce(torch.cat((feat, input_guide), dim=1))
+            feat_recover = self.recover(torch.cat((feat_reduce, output_guide), dim=1))
+            return feat_recover
+
+class UpsampleGenerator(nn.Module):
+    def __init__(self, input_nc_1, input_nc_2=0, output_nc=3, nups_1=3, nblocks=5, nups_2=2, norm='batch', use_dropout=False, gpu_ids=[]):
+        super(UpsampleGenerator, self).__init__()
+        self.gpu_ids = gpu_ids
+        norm_layer = get_norm_layer(norm)
+        use_bias = (norm_layer.func == nn.InstanceNorm2d)
+        activation = nn.ReLU
+        padding_type = 'reflect'
+        
+        upsample_1_layers = []
+        c_in = input_nc_1
+        for n in range(nups_1):
+            c_in = input_nc_1 if n==0 else max(128, input_nc_1//2**n)
+            c_out = max(128, input_nc//2**(n+1))
+            upsample_1_layers += [
+                nn.ConvTranspose2d(c_in, c_out, kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
+                norm_layer(c_out),
+                activation()]
+        self.upsample_1 = nn.Sequential(*upsample_1_layers)
+
+        upsample_2_layers = []
+        c_in = c_out + input_nc_2
+        c_out = c_in//2
+        for n in range(nblocks):
+            upsample_2_layers += [ResnetBlock(c_in, padding_type, norm_layer, use_bias, activation, use_dropout)]
+        for n in range(nups_2):
+            upsample_2_layers += [
+                nn.ConvTranspose2d(c_in, c_out, kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
+                norm_layer(c_out),
+                activation()]
+            c_in = c_out
+            c_out = c_in//2
+        
+        upsample_2_layers += [
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(c_in, output_nc, kernel_size=7, padding=0),
+            nn.Tanh()
+            ]
+        self.upsample_2 = nn.Sequential(*upsample_2_layers)
+    
+    def forward(self, input_1, input_2=None, single_device=False):
+        if len(self.gpu_ids)>1 and not single_device:
+            if input_2 is not None:
+                return nn.parallel.data_parallel(self, (input_1, input_2), module_kwargs={'single_device': True})
+            else:
+                return nn.parallel.data_parallel(self, input_1, module_kwargs={'input_2': None, 'single_device': False})
+        else:
+            output_1 = self.upsample_1(input_1)
+            if input_2 is not None:
+                output_1 = torch.cat((output_1, input_2), dim=1)
+            return self.upsample_2(output_1)
+
+
+
+
 
 ###############################################################################
 # Attribute
