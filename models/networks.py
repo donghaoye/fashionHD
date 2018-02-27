@@ -1087,25 +1087,32 @@ class PixelDiscriminator(nn.Module):
 ###############################################################################
 # GAN V2
 ###############################################################################
-def define_feature_fusion_network(feat_nc, guide_nc, ndowns, norm, init_type, gpu_ids=[]):
-    model = FeatureFusionNetwork(feat_nc, guide_nc, ndowns, norm, gpu_ids)
+def define_feature_fusion_network(name ='FeatureFusionNetwork', feat_nc=128, guide_nc=128, output_nc=-1, ndowns=3, nblocks=3, norm='batch', init_type='normal', gpu_ids=[]):
+    if name == 'FeatureFusionNetwork':
+        model = FeatureFusionNetwork(feat_nc, guide_nc, output_nc, nblocks, norm, gpu_ids)
+    elif name == 'FeatureTransferNetwork':
+        model = FeatureTransferNetwork(feat_nc, )
+
     if len(gpu_ids) > 0:
         model.cuda()
     init_weights(model, init_type)
     return model
 
-class FeatureConcatNetwork(nn.Module):
-    def __init__(self, feat_nc, guide_nc, nblocks=3, norm='batch', gpu_ids=[]):
-        super(FeatureConcatNetwork, self).__init__()
+class FeatureFusionNetwork(nn.Module):
+    def __init__(self, feat_nc, guide_nc, output_nc=-1, nblocks=3, norm='batch', gpu_ids=[]):
+        super(FeatureFusionNetwork, self).__init__()
         self.gpu_ids = gpu_ids
         norm_layer = get_norm_layer(norm)
         use_bias = (norm_layer.func == nn.InstanceNorm2d)
         activation = nn.ReLU
 
+        if output_nc == -1:
+            output_nc = feat_nc
+
         blocks = []
         for n in range(nblocks):
-            c_in = feat_nc + guide_nc if n == 0 else feat_nc
-            c_out = feat_nc
+            c_in = feat_nc + guide_nc if n == 0 else output_nc
+            c_out = output_nc
             blocks += [ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=1)]
         self.model = nn.Sequential(*blocks)
 
@@ -1119,13 +1126,16 @@ class FeatureConcatNetwork(nn.Module):
         else:
             return self.model(feat)
 
-class FeatureFusionNetwork(nn.Module):
-    def __init__(self, feat_nc, guide_nc, ndowns=3, n_blocks=3, norm='batch', gpu_ids=[]):
-        super(FeatureFusionNetwork, self).__init__()
+class FeatureTransferNetwork(nn.Module):
+    def __init__(self, feat_nc, guide_nc, output_nc=-1, ndowns=3, n_blocks=3, norm='batch', gpu_ids=[]):
+        super(FeatureTransferNetwork, self).__init__()
         self.gpu_ids = gpu_ids
         norm_layer = get_norm_layer(norm)
         use_bias = (norm_layer.func == nn.InstanceNorm2d)
         activation = nn.ReLU
+
+        if output_nc=-1:
+            output_nc = feat_nc
 
         reduce_layer = []
         for n in range(ndowns):
@@ -1145,8 +1155,8 @@ class FeatureFusionNetwork(nn.Module):
             # if n < ndowns-1:
             #     reduce_layer += [norm_layer(c_out)]
             # reduce_layer += [activation()]
-            c_in = c_out + guide_nc if n == 0 else feat_nc
-            c_out = feat_nc
+            c_in = c_out + guide_nc if n == 0 else output_nc
+            c_out = output_nc
             recover_layer += [ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=1)]
         self.recover = nn.Sequential(*recover_layer)
     
@@ -1194,8 +1204,8 @@ class UpsampleGenerator(nn.Module):
         upsample_1_layers = []
         c_in = input_nc_1
         for n in range(nups_1):
-            c_in = input_nc_1 if n==0 else max(128, input_nc_1//2**n)
-            c_out = max(128, input_nc//2**(n+1))
+            c_in = input_nc_1 if n==0 else max(256, input_nc_1//2**n)
+            c_out = max(256, input_nc//2**(n+1))
             upsample_1_layers += [
                 nn.ConvTranspose2d(c_in, c_out, kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
                 norm_layer(c_out),

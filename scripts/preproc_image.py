@@ -73,7 +73,7 @@ def align_and_resize_image(benchmark):
         # this will not update landmark and bbox label
         input_dir = design_root + 'Img/seg_ca_org_syn'
         bbox_label = io.load_data(design_root + 'Label/ca_bbox_label.pkl')
-        output_dir = design_root + 'Img/seg_ca_syn_%d_new/' % img_size
+        output_dir = design_root + 'Img/seg_ca_syn_%d' % img_size
         lm_label = None
         fn_out_sample = fn_out_bbox_label = fn_out_lm_label = None
         interp_method = cv2.INTER_NEAREST
@@ -524,4 +524,4 @@ if __name__ == '__main__':
     #################################################
     # visualization and test
     #
-    # visualize_seg_map()
+    visualize_seg_map()

@@ -186,7 +186,8 @@ class BaseMMGANOptions(BaseOptions):
             if opt.fn_landmark == 'default':
                 opt.fn_landmark = 'Label/ca_landmark_label_256.pkl'
             if opt.fn_seg_path == 'default':
-                opt.fn_seg_path = 'Label/ca_seg_paths.json'
+                # opt.fn_seg_path = 'Label/ca_seg_paths.json'
+                opt.fn_seg_path = 'Label/ca_syn_seg_paths.json'
             if opt.fn_edge_path == 'default':
                 if opt.edge_outer:
                     opt.fn_edge_path = 'Label/ca_edge_paths.json'

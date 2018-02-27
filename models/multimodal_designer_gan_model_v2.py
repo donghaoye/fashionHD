@@ -38,30 +38,41 @@ class MultimodalDesignerGAN_V2(BaseModel):
         # shape branch
         self.shape_encoder = networks.define_image_encoder(opt, 'shape')
         self.modules['shape_encoder'] = self.shape_encoder
-
         # edge branch
         if self.use_edge:
             self.edge_encoder = networks.define_image_encoder(opt, 'edge')
             self.modules['edge_encoder'] = self.edge_encoder
-            if opt.edge_fusion:
-                self.edge_fusion_net = networks.define_feature_fusion_network(feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, ndowns=3, norm=opt.norm, gpu_ids=opt.gpu_ids)
-                self.modules['edge_fusion_net'] = self.edge_fusion_net
-            else:
-                self.edge_fusion_net = None
         else:
             self.encoder_edge = None
-        
         # color branch
         if self.use_color:
             self.color_encoder = networks.define_image_encoder(opt, 'color')
             self.modules['color_encoder'] = self.color_encoder
-            if opt.color_fusion:
-                self.color_fusion_net = networks.define_feature_fusion_network(feat_nc=opt.color_nof, guide_nc=opt.shape_nof, ndowns=3, norm=opt.norm, gpu_ids=opt.gpu_ids)
-                self.modules['color_fusion_net'] = self.color_fusion_net
-            else:
-                self.color_fusion_net = None
         else:
             self.color_encoder = None
+
+        # fusion model
+        if opt.fusion_model == 'concat':
+            # shape_feat, edge_feat and color_feat will be simply upmpled to same size (size of shape_feat) and concatenated
+            pass
+        elif opt.fusion_model == 'fusion':
+            # edge_feat & color_feat feature will be upsampled (if needed) to the size of shape_feat. They will be concatenated an fed into a stack of residual blocks
+            assert opt.use_edge or opt.use_color
+            feat_nc = (opt.edge_nof if opt.use_edge else 0) + (opt.color_nof if opt.use_color else 0)
+            guide_nc = opt.shape_nof
+            self.fusion_net = networks.define_feature_fusion_network(name='FeatureConcatNetwork', feat_nc=feat_nc, guide_nc=guide_nc, nblock=opt.mid_nblocks,
+                norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
+            self.modules['fusion_net'] = self.fusion_net
+
+            # if opt.edge_fusion:
+            #     self.edge_fusion_net = networks.define_feature_fusion_network(feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, ndowns=3, norm=opt.norm, gpu_ids=opt.gpu_ids)
+            #     self.modules['edge_fusion_net'] = self.edge_fusion_net
+            # else:
+            #     self.edge_fusion_net = None
+        elif opt.fusion_model == 'trans':
+            if self.use_edge:
+                self.edge_trans_net = networks.define_feature_fusion_network(feat_nc)
+
 
         # netG
         self.netG = networks.define_upsample_generator(opt)
@@ -127,12 +138,12 @@ class MultimodalDesignerGAN_V2(BaseModel):
             # D optimizer
             self.optim_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr_D, betas=(opt.beta1, opt.beta2))
             self.optimizers.append(self.optim_D)
-            # feature fusion network optimizer
-            FFN_module_list = ['edge_fusion_net', 'color_fusion_net']
-            FFN_param_groups = [{'params': net.parameters()} for m in FFN_module_list if m in self.modules]
-            if len(FFN_param_groups) > 0:
-                self.optim_FFN = torch.optim.Adam(FFN_param_groups, lr=opt.lr, betas(opt.beta1, opt.beta2))
-                self.optimizers.append(self.optim_FFN)
+            # feature transfer network optimizer
+            FTN_module_list = ['edge_trans_net', 'color_trans_net']
+            FTN_param_groups = [{'params': net.parameters()} for m in FTN_module_list if m in self.modules]
+            if len(FTN_param_groups) > 0:
+                self.optim_FTN = torch.optim.Adam(FTN_param_groups, lr=opt.lr, betas(opt.beta1, opt.beta2))
+                self.optimizers.append(self.optim_FTN)
             else:
                 self.optim_FFN = None
             # schedulers
@@ -200,9 +211,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         # edge feat
         if self.use_edge:
             self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
-            feat.append(self.output['shape_feat'])
-            if self.edge_fusion:
-                self.output['edge_feat_fuse'] = self.edge_fusion_net()
+            feat.append(self.output['edge_feat'])
 
     def test(self):
         if float(torch.__version__[0:3]) >= 0.4:
