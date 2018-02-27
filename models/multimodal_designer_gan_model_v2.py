@@ -42,22 +42,26 @@ class MultimodalDesignerGAN_V2(BaseModel):
         # edge branch
         if self.use_edge:
             self.edge_encoder = networks.define_image_encoder(opt, 'edge')
-            self.edge_fusion_net = networks.define_feature_fusion_network(feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, ndowns=3, norm=opt.norm, gpu_ids=opt.gpu_ids)
             self.modules['edge_encoder'] = self.edge_encoder
-            self.modules['edge_fusion_net'] = self.edge_fusion_net
+            if opt.edge_fusion:
+                self.edge_fusion_net = networks.define_feature_fusion_network(feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, ndowns=3, norm=opt.norm, gpu_ids=opt.gpu_ids)
+                self.modules['edge_fusion_net'] = self.edge_fusion_net
+            else:
+                self.edge_fusion_net = None
         else:
             self.encoder_edge = None
-            self.edge_fusion_net = None
         
         # color branch
         if self.use_color:
             self.color_encoder = networks.define_image_encoder(opt, 'color')
-            self.color_fusion_net = networks.define_feature_fusion_network(feat_nc=opt.color_nof, guide_nc=opt.shape_nof, ndowns=3, norm=opt.norm, gpu_ids=opt.gpu_ids)
             self.modules['color_encoder'] = self.color_encoder
-            self.modules['color_fusion_net'] = self.color_fusion_net
+            if opt.color_fusion:
+                self.color_fusion_net = networks.define_feature_fusion_network(feat_nc=opt.color_nof, guide_nc=opt.shape_nof, ndowns=3, norm=opt.norm, gpu_ids=opt.gpu_ids)
+                self.modules['color_fusion_net'] = self.color_fusion_net
+            else:
+                self.color_fusion_net = None
         else:
             self.color_encoder = None
-            self.color_fusion_net = None
 
         # netG
         self.netG = networks.define_upsample_generator(opt)
@@ -126,8 +130,11 @@ class MultimodalDesignerGAN_V2(BaseModel):
             # feature fusion network optimizer
             FFN_module_list = ['edge_fusion_net', 'color_fusion_net']
             FFN_param_groups = [{'params': net.parameters()} for m in FFN_module_list if m in self.modules]
-            self.optim_FFN = torch.optim.Adam(FFN_param_groups, lr=opt.lr, betas(opt.beta1, opt.beta2))
-            self.optimizers.append(self.optim_FFN)
+            if len(FFN_param_groups) > 0:
+                self.optim_FFN = torch.optim.Adam(FFN_param_groups, lr=opt.lr, betas(opt.beta1, opt.beta2))
+                self.optimizers.append(self.optim_FFN)
+            else:
+                self.optim_FFN = None
             # schedulers
             for optim in self.optimizers:
                 self.schedulers.append(networks.get_scheduler(optim, opt))
@@ -180,10 +187,22 @@ class MultimodalDesignerGAN_V2(BaseModel):
         if self.opt.color_shape_guided:
             input = torch.cat((input, shape_repr))
         return self.color_encoder(input)
-    
 
     def forward(self, check_grad=False):
-        raise NotImplementedError()
+        ###################################
+        # encode shape, edge and color
+        ###################################
+        feat = []
+        # shape repr and shape feat
+        self.output['shape_repr'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'])
+        self.output['shape_feat'] = self.encode_shape(self.output['shape_repr'])
+        feat.append(self.output['shape_feat'])
+        # edge feat
+        if self.use_edge:
+            self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
+            feat.append(self.output['shape_feat'])
+            if self.edge_fusion:
+                self.output['edge_feat_fuse'] = self.edge_fusion_net()
 
     def test(self):
         if float(torch.__version__[0:3]) >= 0.4:

@@ -1094,8 +1094,33 @@ def define_feature_fusion_network(feat_nc, guide_nc, ndowns, norm, init_type, gp
     init_weights(model, init_type)
     return model
 
+class FeatureConcatNetwork(nn.Module):
+    def __init__(self, feat_nc, guide_nc, nblocks=3, norm='batch', gpu_ids=[]):
+        super(FeatureConcatNetwork, self).__init__()
+        self.gpu_ids = gpu_ids
+        norm_layer = get_norm_layer(norm)
+        use_bias = (norm_layer.func == nn.InstanceNorm2d)
+        activation = nn.ReLU
+
+        blocks = []
+        for n in range(nblocks):
+            c_in = feat_nc + guide_nc if n == 0 else feat_nc
+            c_out = feat_nc
+            blocks += [ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=1)]
+        self.model = nn.Sequential(*blocks)
+
+    def forward(self, feat, guide):
+        feat_size = guide.size()[2:4] # the size of guide signal is the target feature map size
+        if not(feat.size()[2:4] == feat_size):
+            feat = F.upsample(feat, feat_size, mode='bilinear')
+        feat = torch.cat((feat, guide), dim=1)
+        if len(self.gpu_ids)>1:
+            return nn.parallel.data_parallel(self.model, feat)
+        else:
+            return self.model(feat)
+
 class FeatureFusionNetwork(nn.Module):
-    def __init__(self, feat_nc, guide_nc, ndowns=3, norm='batch', gpu_ids=[]):
+    def __init__(self, feat_nc, guide_nc, ndowns=3, n_blocks=3, norm='batch', gpu_ids=[]):
         super(FeatureFusionNetwork, self).__init__()
         self.gpu_ids = gpu_ids
         norm_layer = get_norm_layer(norm)
@@ -1113,26 +1138,31 @@ class FeatureFusionNetwork(nn.Module):
         self.reduce = nn.Sequential(*reduce_layer)
 
         recover_layer = []
-        for n in range(ndowns):
-            c_in = feat_nc*2**(ndowns-n) + guide_nc if n == 0 else feat_nc*2*(ndowns-n)
-            c_out = feat_nc*2**(ndowns-n-1)
-            recover_layer += [nn.Conv2d(c_in, c_out, 3, 1, 1, bias=use_bias)]
-            if n < ndowns-1:
-                reduce_layer += [norm_layer(c_out)]
-            reduce_layer += [activation()]
+        for n in range(n_blocks):
+            # c_in = feat_nc*2**(ndowns-n) + guide_nc if n == 0 else feat_nc*2*(ndowns-n)
+            # c_out = feat_nc*2**(ndowns-n-1)
+            # recover_layer += [nn.Conv2d(c_in, c_out, 3, 1, 1, bias=use_bias)]
+            # if n < ndowns-1:
+            #     reduce_layer += [norm_layer(c_out)]
+            # reduce_layer += [activation()]
+            c_in = c_out + guide_nc if n == 0 else feat_nc
+            c_out = feat_nc
+            recover_layer += [ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=1)]
         self.recover = nn.Sequential(*recover_layer)
     
     def forward(self, feat, input_guide, output_guide, single_device=False):
-        if not (feat.size()[2:4] == input_guide.size()[2:4]):
-            input_guide = F.upsample(input_guide, feat.size()[2:4], mode='bilinear')
-        if not (feat.size()[2:4] == output_guide.size()[2:4]):
-            output_guide = F.upsample(output_guide, feat.size()[2:4], mode='bilinear')
+        feat_size = feat.size()[2:4]
+        if not (input_guide.size()[2:4] == feat_size):
+            input_guide = F.upsample(input_guide, feat_size, mode='bilinear')
+        if not (output_guide.size()[2:4] == feat_size):
+            output_guide = F.upsample(output_guide, feat_size, mode='bilinear')
 
         if len(self.gpu_ids) > 1 and not single_device:
             return nn.parallel.data_parallel(self, (feat, input_guide, output_guide), module_kwargs={'single_device': True})
         else:
             feat_reduce = self.reduce(torch.cat((feat, input_guide), dim=1))
-            feat_recover = self.recover(torch.cat((feat_reduce, output_guide), dim=1))
+            feat_reduce_tile = F.upsample(feat_reduce, feat_size, mode='bilinear')
+            feat_recover = self.recover(torch.cat((feat_reduce_tile, output_guide), dim=1))
             return feat_recover
 
 def define_upsample_generator(opt):
@@ -1809,7 +1839,7 @@ class ResidualEncoderBlock(nn.Module):
             nn.Conv2d(output_nc, output_nc, kernel_size=3, stride=1, padding=1, bias=use_bias),
             norm_layer(output_nc))
         if input_nc == output_nc and stride == 1:
-            self.donwsample = None
+            self.downsample = None
         else:
             self.downsample = nn.Sequential(
                 nn.Conv2d(input_nc, output_nc, kernel_size=1, stride=stride, bias=use_bias),
@@ -2055,7 +2085,6 @@ def define_image_decoder_from_params(input_nc, output_nc, nf=64, num_ups=5, norm
         image_decoder.cuda()
     init_weights(image_decoder, init_type)
     return image_decoder
-
 
 class ImageDecoder(nn.Module):
     def __init__(self, input_nc, output_nc, nf=64, num_ups=5, norm_layer=nn.BatchNorm2d, activation=nn.ReLU, output_activation=nn.Tanh, gpu_ids=[]):

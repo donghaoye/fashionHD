@@ -43,17 +43,46 @@ class EncoderDecoderFramework(BaseModel):
 
         # decoder
         if self.encoder_type == 'edge':
-            input_nc = opt.edge_nof+opt.shape_nc if opt.decode_guided else opt.edge_nof
-            num_ups = opt.edge_ndowns if opt.encoder_type in {'normal', 'st'} else 8
-            self.decoder = networks.define_image_decoder_from_params(input_nc = input_nc, output_nc=1, nf = opt.edge_nf, num_ups=num_ups, norm=opt.norm, output_activation=None, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+            ndowns = opt.edge_ndowns
+            nf = opt.edge_nf
+            nof = opt.edge_nof
+            output_nc = 1
+            output_activation = None
         elif self.encoder_type == 'color':
-            input_nc = opt.color_nof+opt.shape_nc if opt.decode_guided else opt.color_nof
-            num_ups = opt.color_ndowns if opt.encoder_type in {'normal', 'st'} else 8
-            self.decoder = networks.define_image_decoder_from_params(input_nc = input_nc, output_nc=3, nf = opt.color_nf, num_ups=num_ups, norm=opt.norm, output_activation=nn.Tanh, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+            ndowns = opt.color_ndowns
+            nf = opt.color_nf
+            nof = opt.color_nof
+            output_nc = 3
+            output_activation = nn.Tanh
+
+        if opt.encoder_type in {'normal', 'st'}:
+                self.feat_size = 256 // 2**(opt.edge_ndowns)
+                self.mid_feat_size = self.feat_size
+        else:
+            self.feat_size = 1
+            self.mid_feat_size = 8
+
+        self.use_concat_net = False
+        if opt.decode_guided:
+            if self.feat_size > 1:
+                self.decoder = networks.define_image_decoder_from_params(input_nc=nof+opt.shape_nc, output_nc=output_nc, nf=nf, num_ups=ndowns, norm=opt.norm, output_activation=output_activation, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+            else:
+                self.decoder = networks.define_image_decoder_from_params(input_nc=nof, output_nc=output_nc, nf=nf, num_ups=5, norm=opt.norm, output_activation=output_activation, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+                self.concat_net = networks.FeatureConcatNetwork(feat_nc=nof, guide_nc=opt.shape_nc, nblocks=3, norm=opt.norm, gpu_ids=opt.gpu_ids)
+                if len(self.gpu_ids) > 0:
+                    self.concat_net.cuda()
+                networks.init_weights(self.concat_net, opt.init_type)
+                self.use_concat_net = True
+                print('encoder_decoder contains a feature_concat_network!')
+        else:
+            self.decoder = networks.define_image_decoder_from_params(input_nc=nof, output_nc=output_nc, nf=nf, num_ups=ndowns, norm=opt.norm, output_activation=output_activation, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+        
 
         if not self.is_train or (self.is_train and self.opt.continue_train):
             self.load_network(self.encoder, self.encoder_name, opt.which_opoch)
             self.load_network(self.decoder, self.decoder_name, opt.which_opoch)
+            if self.use_concat_net:
+                self.load_network(self.concat_net, 'concat_net', opt.which_opoch)
 
         # loss functions
         self.loss_functions = []
@@ -100,14 +129,15 @@ class EncoderDecoderFramework(BaseModel):
             return self.encoder(input)
     
     def decode(self, feat, guide):
+        if not (guide.size(2)==self.mid_feat_size and guide.size(3) == mid_feat_size):
+            guide = F.upsample(guide, (self.mid_feat_size, self.mid_feat_size), mode='bilinear')
+
         if self.opt.decode_guided:
-            if not (guide.size(2)==feat.size(2) and guide.size(3)==feat.size(3)):
-                guide = F.upsample(guide, feat.size()[2:4], mode = 'bilinear')
-            input = torch.cat((feat, guide), 1)
-        else:
-            input = feat
-        return self.decoder(input)
-        
+            if self.use_concat_net:
+                feat = self.concat_net(feat, guide)
+            else:
+                feat = torch.cat((feat, guide), dim=1)
+        return self.decoder(feat)
 
     def encode_shape(self, lm_map, seg_mask, edge_map):
         if self.opt.shape_encode == 'lm':
@@ -184,6 +214,8 @@ class EncoderDecoderFramework(BaseModel):
     def save(self, label):
         self.save_network(self.encoder, self.encoder_name, label, self.gpu_ids)
         self.save_network(self.decoder, self.decoder_name, label, self.gpu_ids)
+        if self.use_concat_net:
+            self.save_network(self.concat_net, 'concat_net', label, self.gpu_ids)
 
     def get_current_errors(self, clear=True):
         errors = OrderedDict([

@@ -4,7 +4,6 @@ class EncoderDecoderOptions(BaseMMGANOptions):
     def initialize(self):
         super(EncoderDecoderOptions, self).initialize()
         parser = self.parser
-
         parser.add_argument('--decode_guided', action = 'store_true', help='use shape to guide decode')
 
 
