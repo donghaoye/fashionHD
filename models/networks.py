@@ -1087,6 +1087,13 @@ class PixelDiscriminator(nn.Module):
 ###############################################################################
 # GAN V2
 ###############################################################################
+def define_feature_fusion_network(feat_nc, guide_nc, ndowns, norm, init_type, gpu_ids=[]):
+    model = FeatureFusionNetwork(feat_nc, guide_nc, ndowns, norm, gpu_ids)
+    if len(gpu_ids) > 0:
+        model.cuda()
+    init_weights(model, init_type)
+    return model
+
 class FeatureFusionNetwork(nn.Module):
     def __init__(self, feat_nc, guide_nc, ndowns=3, norm='batch', gpu_ids=[]):
         super(FeatureFusionNetwork, self).__init__()
@@ -1127,6 +1134,23 @@ class FeatureFusionNetwork(nn.Module):
             feat_reduce = self.reduce(torch.cat((feat, input_guide), dim=1))
             feat_recover = self.recover(torch.cat((feat_reduce, output_guide), dim=1))
             return feat_recover
+
+def define_upsample_generator(opt):
+    input_nc_1 = opt.shape_nof + (opt.edge_nof if opt.use_edge else 0) + (opt.color_nof if opt.use_color else 0)
+    input_nc_2 = opt.shape_nc if opt.G_shape_guided else 0
+    output_nc = opt.G_output_nc
+    nups_1 = opt.G_nups_1
+    nups_2 = opt.G_nups_2
+    nblocks = opt.G_nblocks
+    norm = opt.norm
+    use_dropout = not opt.no_dropout
+    gpu_ids = opt.gpu_ids
+
+    model = UpsampleGenerator(input_nc_1, input_nc_2, output_nc, nups_1, nblocks, nups_2, norm, use_dropout, gpu_ids)
+    if len(gpu_ids) > 0:
+        model.cuda()
+    init_weights(model, init_type)
+    return model
 
 class UpsampleGenerator(nn.Module):
     def __init__(self, input_nc_1, input_nc_2=0, output_nc=3, nups_1=3, nblocks=5, nups_2=2, norm='batch', use_dropout=False, gpu_ids=[]):
@@ -1179,9 +1203,6 @@ class UpsampleGenerator(nn.Module):
             if input_2 is not None:
                 output_1 = torch.cat((output_1, input_2), dim=1)
             return self.upsample_2(output_1)
-
-
-
 
 
 ###############################################################################
@@ -1712,11 +1733,11 @@ class EncoderDecoderFeatureSpatialTransformNet(nn.Module):
 ###############################################################################
 # General Image Encoder
 ###############################################################################
-def define_image_encoder(opt, encoder_type='edge'):
+def define_image_encoder(opt, which_encoder='edge'):
     norm_layer = get_norm_layer(opt.norm)
     activation = nn.ReLU
     
-    if encoder_type == 'edge':
+    if which_encoder == 'edge':
         if opt.edge_shape_guided:
             input_nc = 1 + opt.shape_nc
         else:
@@ -1726,7 +1747,7 @@ def define_image_encoder(opt, encoder_type='edge'):
         num_downs = opt.edge_ndowns
         encoder_type = opt.encoder_type if opt.edge_encoder_type == 'default' else opt.edge_encoder_type
         encoder_block = opt.encoder_block if opt.edge_encoder_block == 'default' else opt.edge_encoder_block
-    elif encoder_type == 'color':
+    elif which_encoder == 'color':
         if opt.color_patch and opt.color_patch!='single':
             input_nc = 6
         else:
@@ -1738,8 +1759,15 @@ def define_image_encoder(opt, encoder_type='edge'):
         num_downs = opt.color_ndowns
         encoder_type = opt.encoder_type if opt.color_encoder_type == 'default' else opt.color_encoder_type
         encoder_block = opt.encoder_block if opt.color_encoder_block == 'default' else opt.color_encoder_block
+    elif which_encoder == 'shape':
+        input_nc = opt.shape_nc
+        nf = opt.shape_nf
+        output_nc = opt.shape_nof
+        num_downs = opt.edge_ndowns
+        encoder_type = opt.encoder_type if opt.shape_encoder_type == 'default' else opt.shape_encoder_type
+        encoder_block = opt.encoder_block if opt.shape_encoder_block =='default' else opt.shape_encoder_block
     else:
-        raise NotImplementedError('invalid encoder type %s'%encoder_type)
+        raise NotImplementedError('invalid encoder type %s'%which_encoder)
     
     if encoder_type == 'normal':
         image_encoder = ImageEncoder(block=encoder_block, input_nc=input_nc, output_nc=output_nc, nf=nf, num_downs=num_downs, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)

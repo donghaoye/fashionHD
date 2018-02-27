@@ -44,10 +44,12 @@ class EncoderDecoderFramework(BaseModel):
         # decoder
         if self.encoder_type == 'edge':
             input_nc = opt.edge_nof+opt.shape_nc if opt.decode_guided else opt.edge_nof
-            self.decoder = networks.define_image_decoder_from_params(input_nc = input_nc, output_nc=1, nf = opt.edge_nf, num_ups=opt.edge_ndowns, norm=opt.norm, output_activation=None, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+            num_ups = opt.edge_ndowns if opt.encoder_type in {'normal', 'st'} else 8
+            self.decoder = networks.define_image_decoder_from_params(input_nc = input_nc, output_nc=1, nf = opt.edge_nf, num_ups=num_ups, norm=opt.norm, output_activation=None, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
         elif self.encoder_type == 'color':
             input_nc = opt.color_nof+opt.shape_nc if opt.decode_guided else opt.color_nof
-            self.decoder = networks.define_image_decoder_from_params(input_nc = input_nc, output_nc=3, nf = opt.color_nf, num_ups=opt.color_ndowns, norm=opt.norm, output_activation=nn.Tanh, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+            num_ups = opt.color_ndowns if opt.encoder_type in {'normal', 'st'} else 8
+            self.decoder = networks.define_image_decoder_from_params(input_nc = input_nc, output_nc=3, nf = opt.color_nf, num_ups=num_ups, norm=opt.norm, output_activation=nn.Tanh, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
 
         if not self.is_train or (self.is_train and self.opt.continue_train):
             self.load_network(self.encoder, self.encoder_name, opt.which_opoch)

@@ -57,7 +57,7 @@ class BaseModel(object):
             network.cuda(gpu_ids[0])
 
     # helper loading function that can be used by subclasses
-    def load_network(self, network, network_label, epoch_label, model_id = None):
+    def load_network(self, network, network_label, epoch_label, model_id = None, forced = True):
         save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
         if model_id is None:
             # for continue training
@@ -65,10 +65,12 @@ class BaseModel(object):
         else:
             # for initialize weight
             save_dir = os.path.join('checkpoints', model_id)
-
         save_path = os.path.join(save_dir, save_filename)
-        network.load_state_dict(torch.load(save_path))
-        print('load [%s] [%s] parameters from %s' % (self.name(), network_label, save_path))
+        if (not forced) and (not os.path.isfile(save_path)):
+            print('[%s] FAIL to load [%s] parameters from %s' % (self.name(), network_label, save_path))
+        else:
+            network.load_state_dict(torch.load(save_path))
+            print('[%s] load [%s] parameters from %s' % (self.name(), network_label, save_path))
 
     # update learning rate (called once every epoch)
     def update_learning_rate(self):
