@@ -282,7 +282,7 @@ class MultimodalDesignerGAN(BaseModel):
         self.output['loss_D_real'] = self.crit_GAN(pred_real, True)
 
         # combined loss
-        self.output['loss_D'] = (self.output['loss_D_real'] + self.output['loss_D_fake']) * 0.5
+        self.output['loss_D'] = (self.output['loss_D_real'] + self.output['loss_D_fake']) * 0.5 * self.opt.loss_weight_GAN
         self.output['loss_D'].backward()
     
     def backward_auxiliary_D(self):

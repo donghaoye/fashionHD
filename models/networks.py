@@ -100,6 +100,34 @@ def init_weights(net, init_type='normal'):
     else:
         raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
 
+def seg_to_rgb(seg_map):
+    if isinstance(seg_map, np.ndarray):
+        if seg_map.ndim == 3:
+            seg_map = seg_map[np.newaxis,:]
+        seg_map = torch.from_numpy(seg_map.transpose([0,3,1,2]))
+    elif isinstance(seg_map, torch._TensorBase):
+        seg_map = seg_map.cpu()
+        if seg_map.dim() == 3:
+            seg_map = seg_map.unsqueeze(0)
+
+    if seg_map.size(1) > 1:
+        seg_map = seg_map.max(dim=1, keepdim=True)[1]
+    else:
+        seg_map = seg_map.long()
+
+    b,c,h,w = seg_map.size()
+    assert c == 1
+
+    cmap = torch.Tensor([[73,0,255], [255,0,0], [255,0,219], [255, 219,0], [0,255,146], [0,146,255], [0,146,255]])/255.
+
+    rgb_map = cmap[seg_map.view(-1)]
+    rgb_map = rgb_map.view(b, h, w, 3)
+    rgb_map = rgb_map.transpose(1,3).transpose(2,3)
+
+    rgb_map.sub_(0.5).div_(0.5)
+    return rgb_map
+
+
 ###############################################################################
 # Loss Functions
 ###############################################################################
@@ -819,7 +847,7 @@ class ConditionedResnetBlock(nn.Module):
 
     def print(self):
         out_dim = self.x_dim + self.c_dim if self.output_c else self.x_dim
-        print('ConditionResnetBlock: x_dim=%d, c_dim=%d, out_dim=%d'% (self.x_dim, self.c_dim, out_dim))
+        print('ConditionedResnetBlock: x_dim=%d, c_dim=%d, out_dim=%d'% (self.x_dim, self.c_dim, out_dim))
 
 class ConditionedResnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, cond_nc, cond_layer = 'first', ngf=64, norm_layer=nn.BatchNorm2d, activation = nn.ReLU, use_dropout=False, n_blocks=6, gpu_ids=[], padding_type='reflect', cond_interp='bilinear'):
@@ -1087,18 +1115,18 @@ class PixelDiscriminator(nn.Module):
 ###############################################################################
 # GAN V2
 ###############################################################################
-def define_feature_fusion_network(name ='FeatureFusionNetwork', feat_nc=128, guide_nc=128, output_nc=-1, ndowns=3, nblocks=3, norm='batch', init_type='normal', gpu_ids=[]):
-    if name == 'FeatureFusionNetwork':
-        model = FeatureFusionNetwork(feat_nc, guide_nc, output_nc, nblocks, norm, gpu_ids)
+def define_feature_fusion_network(name ='FeatureConcatNetwork', feat_nc=128, guide_nc=128, output_nc=-1, ndowns=3, nblocks=3, norm='batch', init_type='normal', gpu_ids=[]):
+    if name == 'FeatureConcatNetwork':
+        model = FeatureConcatNetwork(feat_nc, guide_nc, output_nc, nblocks, norm, gpu_ids)
     elif name == 'FeatureTransferNetwork':
-        model = FeatureTransferNetwork(feat_nc, )
+        model = FeatureTransferNetwork(feat_nc, guide_nc, output_nc, ndowns, nblocks, norm, gpu_ids)
 
     if len(gpu_ids) > 0:
         model.cuda()
     init_weights(model, init_type)
     return model
 
-class FeatureFusionNetwork(nn.Module):
+class FeatureConcatNetwork(nn.Module):
     def __init__(self, feat_nc, guide_nc, output_nc=-1, nblocks=3, norm='batch', gpu_ids=[]):
         super(FeatureFusionNetwork, self).__init__()
         self.gpu_ids = gpu_ids
@@ -1116,7 +1144,8 @@ class FeatureFusionNetwork(nn.Module):
             blocks += [ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=1)]
         self.model = nn.Sequential(*blocks)
 
-    def forward(self, feat, guide):
+    def forward(self, feat, output_guide, input_guide=None):
+        # input_guide is just for unified parameter format
         feat_size = guide.size()[2:4] # the size of guide signal is the target feature map size
         if not(feat.size()[2:4] == feat_size):
             feat = F.upsample(feat, feat_size, mode='bilinear')
@@ -1134,7 +1163,7 @@ class FeatureTransferNetwork(nn.Module):
         use_bias = (norm_layer.func == nn.InstanceNorm2d)
         activation = nn.ReLU
 
-        if output_nc=-1:
+        if output_nc==-1:
             output_nc = feat_nc
 
         reduce_layer = []
@@ -1149,12 +1178,6 @@ class FeatureTransferNetwork(nn.Module):
 
         recover_layer = []
         for n in range(n_blocks):
-            # c_in = feat_nc*2**(ndowns-n) + guide_nc if n == 0 else feat_nc*2*(ndowns-n)
-            # c_out = feat_nc*2**(ndowns-n-1)
-            # recover_layer += [nn.Conv2d(c_in, c_out, 3, 1, 1, bias=use_bias)]
-            # if n < ndowns-1:
-            #     reduce_layer += [norm_layer(c_out)]
-            # reduce_layer += [activation()]
             c_in = c_out + guide_nc if n == 0 else output_nc
             c_out = output_nc
             recover_layer += [ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=1)]
@@ -1179,21 +1202,22 @@ def define_upsample_generator(opt):
     input_nc_1 = opt.shape_nof + (opt.edge_nof if opt.use_edge else 0) + (opt.color_nof if opt.use_color else 0)
     input_nc_2 = opt.shape_nc if opt.G_shape_guided else 0
     output_nc = opt.G_output_nc
+    nblocks_1 = opt.G_nblocks_1
     nups_1 = opt.G_nups_1
+    nblocks_2 = opt.G_nblocks_2
     nups_2 = opt.G_nups_2
-    nblocks = opt.G_nblocks
     norm = opt.norm
     use_dropout = not opt.no_dropout
     gpu_ids = opt.gpu_ids
 
-    model = UpsampleGenerator(input_nc_1, input_nc_2, output_nc, nups_1, nblocks, nups_2, norm, use_dropout, gpu_ids)
+    model = UpsampleGenerator(input_nc_1, input_nc_2, output_nc, nblocks_1, nups_1, nblocks_2, nups_2, norm, use_dropout, gpu_ids)
     if len(gpu_ids) > 0:
         model.cuda()
     init_weights(model, init_type)
     return model
 
 class UpsampleGenerator(nn.Module):
-    def __init__(self, input_nc_1, input_nc_2=0, output_nc=3, nups_1=3, nblocks=5, nups_2=2, norm='batch', use_dropout=False, gpu_ids=[]):
+    def __init__(self, input_nc_1, input_nc_2=0, output_nc=3, nblocks_1=1, nups_1=3, nblocks_2=5, nups_2=2, norm='batch', use_dropout=False, gpu_ids=[]):
         super(UpsampleGenerator, self).__init__()
         self.gpu_ids = gpu_ids
         norm_layer = get_norm_layer(norm)
@@ -1203,9 +1227,11 @@ class UpsampleGenerator(nn.Module):
         
         upsample_1_layers = []
         c_in = input_nc_1
+        for n in range(nblocks_1):
+            upsample_1_layers += [ResnetBlock(c_in, padding_type, norm_layer, use_bias, activation(True), use_dropout)]
         for n in range(nups_1):
             c_in = input_nc_1 if n==0 else max(256, input_nc_1//2**n)
-            c_out = max(256, input_nc//2**(n+1))
+            c_out = max(256, input_nc_1//2**(n+1))
             upsample_1_layers += [
                 nn.ConvTranspose2d(c_in, c_out, kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
                 norm_layer(c_out),
@@ -1213,10 +1239,13 @@ class UpsampleGenerator(nn.Module):
         self.upsample_1 = nn.Sequential(*upsample_1_layers)
 
         upsample_2_layers = []
-        c_in = c_out + input_nc_2
+        c_in = c_out
         c_out = c_in//2
-        for n in range(nblocks):
-            upsample_2_layers += [ResnetBlock(c_in, padding_type, norm_layer, use_bias, activation, use_dropout)]
+        for n in range(nblocks_2):
+            if n == 0 and input_nc_2>0:
+                upsample_2_layers += [ConditionedResnetBlock(c_in, input_nc_2, padding_type, norm_layer, use_bias, activation(True), use_dropout, output_c=False)]
+            else:
+                upsample_2_layers += [ResnetBlock(c_in, padding_type, norm_layer, use_bias, activation(True), use_dropout)]
         for n in range(nups_2):
             upsample_2_layers += [
                 nn.ConvTranspose2d(c_in, c_out, kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
@@ -1803,7 +1832,7 @@ def define_image_encoder(opt, which_encoder='edge'):
         input_nc = opt.shape_nc
         nf = opt.shape_nf
         output_nc = opt.shape_nof
-        num_downs = opt.edge_ndowns
+        num_downs = opt.shape_ndowns
         encoder_type = opt.encoder_type if opt.shape_encoder_type == 'default' else opt.shape_encoder_type
         encoder_block = opt.encoder_block if opt.shape_encoder_block =='default' else opt.shape_encoder_block
     else:

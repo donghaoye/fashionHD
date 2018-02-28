@@ -26,8 +26,11 @@ class EncoderDecoderFramework(BaseModel):
         ###################################
         # load/define networks
         ###################################
-
-        if opt.use_edge:
+        if opt.use_shape:
+            self.encoder_type = 'shape'
+            self.encoder_name = 'shape_encoder'
+            self.decoder_name = 'decoder'
+        elif opt.use_edge:
             self.encoder_type = 'edge'
             self.encoder_name = 'edge_encoder'
             self.decoder_name = 'decoder'
@@ -36,13 +39,20 @@ class EncoderDecoderFramework(BaseModel):
             self.encoder_name = 'color_encoder'
             self.decoder_name = 'decoder'
         else:
-            raise ValueError('either use_edge, use_color should be set')
+            raise ValueError('either use_shape, use_edge, use_color should be set')
 
         # encoder
         self.encoder = networks.define_image_encoder(opt, self.encoder_type)
 
         # decoder
-        if self.encoder_type == 'edge':
+        if self.encoder_type == 'shape':
+            ndowns = opt.shape_ndowns
+            nf = opt.shape_nf
+            nof = opt.shape_nof
+            output_nc = 7
+            output_activation = None
+            assert opt.decode_guided == False
+        elif self.encoder_type == 'edge':
             ndowns = opt.edge_ndowns
             nf = opt.edge_nf
             nof = opt.edge_nof
@@ -88,7 +98,8 @@ class EncoderDecoderFramework(BaseModel):
         self.loss_functions = []
         self.schedulers = []
         self.crit_L1 = networks.SmoothLoss(nn.L1Loss())
-        self.loss_functions.append(self.crit_L1)
+        self.crit_CE = networks.SmoothLoss(nn.CrossEntropyLoss())
+        self.loss_functions += [self.crit_L1, self.crit_CE]
 
         self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
         self.optimizers = [self.optim]
@@ -179,20 +190,31 @@ class EncoderDecoderFramework(BaseModel):
             color_map = self.input['color_map']
             seg_mask = self.input['seg_mask']
 
+        shape_repr = self.encode_shape(lm_map, seg_mask, edge_map)
+        shape_repr_tar = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'])
+
         if self.encoder_type == 'edge':
             input = edge_map
             self.output['tar'] = self.input['edge_map']
         elif self.encoder_type == 'color':
             input = color_map
             self.output['tar'] = self.input['color_map_full']
-        
-        shape_repr = self.encode_shape(lm_map, seg_mask, edge_map)
-        shape_repr_tar = self.encode_shape(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'])
+        elif self.encoder_type == 'shape':
+            input = shape_repr
+            self.output['tar'] = self.input['seg_map']
         
         self.output['feat'] = self.encode(input, shape_repr, shape_repr_tar)
         self.output['img_raw'] = self.decode(self.output['feat'], shape_repr_tar)
-        self.output['img'] = self.mask_image(self.output['img_raw'], self.input['seg_map'], self.output['tar'])
-        self.output['loss'] = self.crit_L1(self.output['img'], self.output['tar'])
+
+        if self.encoder_type == 'shape':
+            self.output['img'] = self.output['img_raw']
+            img_flatten = self.output['img'].transpose(1,3).contiguous().view(-1, 7)
+            tar_flatten = self.output['tar'].transpose(1,3).contiguous().view(-1).long()
+            self.output['loss'] = self.crit_CE(img_flatten, tar_flatten)
+
+        else:
+            self.output['img'] = self.mask_image(self.output['img_raw'], self.input['seg_map'], self.output['tar'])
+            self.output['loss'] = self.crit_L1(self.output['img'], self.output['tar'])
 
     def test(self):
         if float(torch.__version__[0:3]) >= 0.4:
@@ -219,11 +241,13 @@ class EncoderDecoderFramework(BaseModel):
 
     def get_current_errors(self, clear=True):
         errors = OrderedDict([
-            ('loss_L1', self.crit_L1.smooth_loss(clear))
+            ('loss_L1', self.crit_L1.smooth_loss(clear)),
+            ('loss_CE', self.crit_CE.smooth_loss(clear))
             ])
         return errors
 
     def get_current_visuals(self):
+
         visuals = OrderedDict([
             ('img_real', self.input['img'].data.clone()),
             ('img_fake', self.output['img'].data.clone()),
@@ -235,11 +259,17 @@ class EncoderDecoderFramework(BaseModel):
             visuals['edge_map'] = self.input['edge_map'].data.clone()
         elif self.encoder_type == 'color':
             visuals['color_map'] = self.input['color_map'].data.clone()
-
+        elif self.encoder_type == 'shape':
+            visuals['img_fake'] = networks.seg_to_rgb(self.output['img'].data.clone())
+            visuals['img_fake_raw'] = networks.seg_to_rgb(self.output['img_raw'].data.clone())
+            visuals['img_real_raw'] = networks.seg_to_rgb(self.output['tar'].data.clone())
 
         for k, v in visuals.iteritems():
+            v = v.cpu()
             if v.size(1)==1:
-                visuals[k] = v.expand(v.size(0), 3, v.size(2), v.size(3))
+                v = v.expand(v.size(0), 3, v.size(2), v.size(3))
+            visuals[k] = v
         return visuals
+
 
 

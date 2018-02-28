@@ -5,7 +5,13 @@ class EncoderDecoderOptions(BaseMMGANOptions):
         super(EncoderDecoderOptions, self).initialize()
         parser = self.parser
         parser.add_argument('--decode_guided', action = 'store_true', help='use shape to guide decode')
-
+        
+        parser.add_argument('--use_shape', action='store_true', help='shape encoder')
+        parser.add_argument('--shape_nf', type=int, default=64, help='feature dimension of first conv layer in shape encoder')
+        parser.add_argument('--shape_nof', type=int, default=128, help='output feature dimension, set -1  to use default setting')
+        parser.add_argument('--shape_ndowns',type=int, default=5, help='number of downsample layers in shape encoder')
+        parser.add_argument('--shape_encoder_type', type=str, default='default')
+        parser.add_argument('--shape_encoder_block', type=str, default='default')
 
     def auto_set(self):
         super(EncoderDecoderOptions, self).auto_set()
@@ -16,6 +22,8 @@ class EncoderDecoderOptions(BaseMMGANOptions):
             opt.id = 'ED_' + opt.id
         ###########################################
         opt.edge_threshold = 0
+        if opt.use_shape:
+            opt.decode_guided = False
         ###########################################
 
 class TrainEncoderDecoderOptions(EncoderDecoderOptions):

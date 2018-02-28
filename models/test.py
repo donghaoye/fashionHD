@@ -122,6 +122,14 @@ def test_MultiModalDesignerGAN():
     for k, v in visuals.iteritems():
         print('%s: (%s) %s' % (k, type(v), v.size()))
 
+def test_upsample_generator():
+    import networks
+    model = networks.UpsampleGenerator(input_nc_1=512, input_nc_2=128, output_nc=3, nblocks_1=1, nups_1=3, nblocks_2=1, nups_2=2, norm='instance', use_dropout=True, gpu_ids=[0])
+    x = Variable(torch.rand(1,512,8,8))
+    x2 = Variable(torch.rand(1,128,64,64))
+    y = model(x, x2)
+    print(model)
+    print(y.size())
 
 if __name__ == '__main__':
     # test_AttributeEncoder()
@@ -130,4 +138,5 @@ if __name__ == '__main__':
     # test_scheduler()
     # test_Unet_size()
     # test_feature_spatial_transformer()
-    test_MultiModalDesignerGAN()
+    # test_MultiModalDesignerGAN()
+    test_upsample_generator()
