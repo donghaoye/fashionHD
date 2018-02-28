@@ -1128,7 +1128,7 @@ def define_feature_fusion_network(name ='FeatureConcatNetwork', feat_nc=128, gui
 
 class FeatureConcatNetwork(nn.Module):
     def __init__(self, feat_nc, guide_nc, output_nc=-1, nblocks=3, norm='batch', gpu_ids=[]):
-        super(FeatureFusionNetwork, self).__init__()
+        super(FeatureConcatNetwork, self).__init__()
         self.gpu_ids = gpu_ids
         norm_layer = get_norm_layer(norm)
         use_bias = (norm_layer.func == nn.InstanceNorm2d)
