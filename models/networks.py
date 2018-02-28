@@ -1146,10 +1146,10 @@ class FeatureConcatNetwork(nn.Module):
 
     def forward(self, feat, output_guide, input_guide=None):
         # input_guide is just for unified parameter format
-        feat_size = guide.size()[2:4] # the size of guide signal is the target feature map size
+        feat_size = output_guide.size()[2:4] # the size of guide signal is the target feature map size
         if not(feat.size()[2:4] == feat_size):
             feat = F.upsample(feat, feat_size, mode='bilinear')
-        feat = torch.cat((feat, guide), dim=1)
+        feat = torch.cat((feat, output_guide), dim=1)
         if len(self.gpu_ids)>1:
             return nn.parallel.data_parallel(self.model, feat)
         else:
