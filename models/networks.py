@@ -1224,11 +1224,12 @@ class UpsampleGenerator(nn.Module):
         use_bias = (norm_layer.func == nn.InstanceNorm2d)
         activation = nn.ReLU
         padding_type = 'reflect'
-        
+        # upsample_1 network
         upsample_1_layers = []
         c_in = input_nc_1
         for n in range(nblocks_1):
             upsample_1_layers += [ResnetBlock(c_in, padding_type, norm_layer, use_bias, activation(True), use_dropout)]
+            
         for n in range(nups_1):
             c_in = input_nc_1 if n==0 else max(256, input_nc_1//2**n)
             c_out = max(256, input_nc_1//2**(n+1))
@@ -1237,15 +1238,20 @@ class UpsampleGenerator(nn.Module):
                 norm_layer(c_out),
                 activation()]
         self.upsample_1 = nn.Sequential(*upsample_1_layers)
-
+        # upsample_2 network
         upsample_2_layers = []
-        c_in = c_out
-        c_out = c_in//2
-        for n in range(nblocks_2):
-            if n == 0 and input_nc_2>0:
-                upsample_2_layers += [ConditionedResnetBlock(c_in, input_nc_2, padding_type, norm_layer, use_bias, activation(True), use_dropout, output_c=False)]
-            else:
-                upsample_2_layers += [ResnetBlock(c_in, padding_type, norm_layer, use_bias, activation(True), use_dropout)]
+        if nblocks_2 > 0:
+            c_in = c_out
+            c_out = c_out//2
+            for n in range(nblocks_2):
+                if n == 0 and input_nc_2>0:
+                    upsample_2_layers += [ConditionedResnetBlock(c_in, input_nc_2, padding_type, norm_layer, use_bias, activation(True), use_dropout, output_c=False)]
+                else:
+                    upsample_2_layers += [ResnetBlock(c_in, padding_type, norm_layer, use_bias, activation(True), use_dropout)]
+        else:
+            c_in = c_out + input_nc_2
+            c_out = c_out//2
+
         for n in range(nups_2):
             upsample_2_layers += [
                 nn.ConvTranspose2d(c_in, c_out, kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),

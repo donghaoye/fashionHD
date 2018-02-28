@@ -131,6 +131,23 @@ def test_upsample_generator():
     print(model)
     print(y.size())
 
+def test_MultiModalDesignerGAN_V2():
+    from multimodal_designer_gan_model_v2 import MultimodalDesignerGAN_V2
+    from options.multimodal_gan_options_v2 import TrainMMGANOptions_V2
+    from data.data_loader import CreateDataLoader
+
+    opt = TrainMMGANOptions_V2().parse('--benchmark debug --batch_size 4 --gpu_ids 0 --ftn_model none')
+    loader = CreateDataLoader(opt)
+    loader_iter = iter(loader)
+    data = loader_iter.next()
+
+    model = MultimodalDesignerGAN_V2()
+    model.initialize(opt)
+
+    model.set_input(data)
+    model.forward()
+    model.optimize_parameters()
+
 if __name__ == '__main__':
     # test_AttributeEncoder()
     # test_patchGAN_output_size()
@@ -139,4 +156,5 @@ if __name__ == '__main__':
     # test_Unet_size()
     # test_feature_spatial_transformer()
     # test_MultiModalDesignerGAN()
-    test_upsample_generator()
+    # test_upsample_generator()
+    test_MultiModalDesignerGAN_V2()

@@ -21,8 +21,8 @@ class MultimodalDesignerGAN_V2(BaseModel):
     '''
     modules:
         encoders: Es, Ee and Ec
-        netG_LR: low resolution generator for feature fusion
-        netG_HR: high resolution generator for image generation
+        feat_transfer_networks
+        netG: generator (decoder)
         netD: discriminator
         netD_feat: feature level discriminator?
     '''
@@ -52,10 +52,10 @@ class MultimodalDesignerGAN_V2(BaseModel):
             self.color_encoder = None
 
         # fusion model
-        if opt.trans_model == 'none':
+        if opt.ftn_model == 'none':
             # shape_feat, edge_feat and color_feat will be simply upmpled to same size (size of shape_feat) and concatenated
             pass
-        elif opt.trans_model == 'concat':
+        elif opt.ftn_model == 'concat':
             assert opt.use_edge or opt.use_color
             if self.use_edge:
                 self.edge_trans_net = networks.define_feature_fusion_network(name='FeatureConcatNetwork', feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, nblocks=opt.ftn_nblocks, 
@@ -65,8 +65,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
                 self.color_trans_net = networks.define_feature_fusion_network(name='FeatureConcatNetwork', feat_nc=opt.color_nof, guide_nc=opt.shape_nof, nblocks=opt.ftn_nblocks, 
                     norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
                 self.modules['color_trans_net'] = self.color_trans_net
-
-        elif opt.trans_model == 'trans':
+        elif opt.ftn_model == 'trans':
             assert opt.use_edge or opt.use_color
             if self.use_edge:
                 self.edge_trans_net = networks.define_feature_fusion_network(name='FeatureTransNetwork', feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, nblocks=opt.ftn_nblocks, 
@@ -95,8 +94,17 @@ class MultimodalDesignerGAN_V2(BaseModel):
                     self.load_network(net, label, opt.which_epoch)
             else:
                 if opt.which_model_init != 'none':
+                    # load pretrained entire model
                     for label, net in self.modules.iteritems():
                         self.load_network(net, label, 'latest', opt.which_model_init, forced=False)
+                else:
+                    # load pretrained encoder
+                    if opt.pretrain_shape:
+                        self.load_network(self.shape_encoder, 'shape_encoder', opt.which_model_init_shape_encoder)
+                    if opt.use_edge and opt.pretrain_edge:
+                        self.load_network(self.edge_encoder, 'edge_encoder', opt.which_model_init_edge_encoder)
+                    if opt.use_color and opt.pretrain_color:
+                        self.load_network(self.color_encoder, 'color_encoder', opt.which_model_init_color_encoder)
         else:
             for label, net in self.modules.iteritems():
                 if label != 'netD':
@@ -145,7 +153,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
             FTN_module_list = ['edge_trans_net', 'color_trans_net']
             FTN_param_groups = [{'params': net.parameters()} for m in FTN_module_list if m in self.modules]
             if len(FTN_param_groups) > 0:
-                self.optim_FTN = torch.optim.Adam(FTN_param_groups, lr=opt.lr, betas(opt.beta1, opt.beta2))
+                self.optim_FTN = torch.optim.Adam(FTN_param_groups, lr=opt.lr_FTN, betas=(0.9, 0.999))
                 self.optimizers.append(self.optim_FTN)
             else:
                 self.optim_FTN = None
@@ -208,7 +216,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         ###################################
         # feature fusion
         ###################################
-        if self.opt.trans_model != 'none':
+        if self.opt.ftn_model != 'none':
             self.transfer_feature()
             feat_trans = [self.output[k] for k in ['shape_feat_trans', 'edge_feat_trans', 'color_feat_trans'] if k in self.output]
             self.output['feat_trans'] = self.align_and_concat(feat_trans, self.opt.feat_size_lr)
@@ -338,7 +346,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
 
     def optimize_parameters(self, train_D = True, train_G = True, check_grad = False):
         # forward
-        if opt.trans_model == 'none':
+        if opt.ftn_model == 'none':
             fwd_mode = 'normal'
         else:
             fwd_mode = 'dual'
@@ -358,7 +366,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         if train_G:
             self.optim_G.step()
         # optimize feature transfer network
-        if opt.trans_model != 'none':
+        if opt.ftn_model != 'none':
             self.optim_FTN.zero_grad()
             self.backward_trans()
             self.optim_FTN.step()
