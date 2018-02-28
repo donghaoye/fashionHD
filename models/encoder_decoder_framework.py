@@ -85,8 +85,10 @@ class EncoderDecoderFramework(BaseModel):
                 self.use_concat_net = True
                 print('encoder_decoder contains a feature_concat_network!')
         else:
-            self.decoder = networks.define_image_decoder_from_params(input_nc=nof, output_nc=output_nc, nf=nf, num_ups=ndowns, norm=opt.norm, output_activation=output_activation, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
-        
+            if self.feat_size > 1:
+                self.decoder = networks.define_image_decoder_from_params(input_nc=nof, output_nc=output_nc, nf=nf, num_ups=ndowns, norm=opt.norm, output_activation=output_activation, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+            else:
+                self.decoder = networks.define_image_decoder_from_params(input_nc=nof, output_nc=output_nc, nf=nf, num_ups=8, norm=opt.norm, output_activation=output_activation, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
 
         if not self.is_train or (self.is_train and self.opt.continue_train):
             self.load_network(self.encoder, self.encoder_name, opt.which_opoch)
