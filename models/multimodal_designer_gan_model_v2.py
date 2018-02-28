@@ -60,19 +60,20 @@ class MultimodalDesignerGAN_V2(BaseModel):
             assert opt.use_edge or opt.use_color
             feat_nc = (opt.edge_nof if opt.use_edge else 0) + (opt.color_nof if opt.use_color else 0)
             guide_nc = opt.shape_nof
-            self.fusion_net = networks.define_feature_fusion_network(name='FeatureConcatNetwork', feat_nc=feat_nc, guide_nc=guide_nc, nblock=opt.mid_nblocks,
+            output_nc = feat_nc + guide_nc
+            self.fusion_net = networks.define_feature_fusion_network(name='FeatureFusionNetwork', feat_nc=feat_nc, guide_nc=guide_nc, output_nc=output_nc, nblocks=opt.mid_nblocks,
                 norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
             self.modules['fusion_net'] = self.fusion_net
-
-            # if opt.edge_fusion:
-            #     self.edge_fusion_net = networks.define_feature_fusion_network(feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, ndowns=3, norm=opt.norm, gpu_ids=opt.gpu_ids)
-            #     self.modules['edge_fusion_net'] = self.edge_fusion_net
-            # else:
-            #     self.edge_fusion_net = None
         elif opt.fusion_model == 'trans':
+            # edge_feat/color_feat will be separately transfered, guided by input shape_feat and target_shape_feat
             if self.use_edge:
-                self.edge_trans_net = networks.define_feature_fusion_network(feat_nc)
-
+                self.edge_trans_net = networks.define_feature_fusion_network(name='FeatureTransNetwork', feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, nblocks=opt.mid_nblocks, 
+                    ndowns=opt.mid_ndowns, norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
+                self.modules['edge_trans_net'] = self.edge_trans_net
+            if self.use_color:
+                self.color_trans_net = networks.define_feature_fusion_network(name='FeatureTransNetwork', feat_nc=opt.color_nof, guide_nc=opt.shape_nof, nblocks=opt.mid_nblocks,
+                    ndowns=opt.mid_nblocks, norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
+                self.modules['color_trans_net'] = self.color_trans_net
 
         # netG
         self.netG = networks.define_upsample_generator(opt)
@@ -131,7 +132,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
             self.optimizers = []
 
             # G optimizer
-            G_module_list = ['shape_encoder', 'edge_encoder', 'color_encoder', 'netG']
+            G_module_list = ['shape_encoder', 'edge_encoder', 'color_encoder', 'netG', 'fusion_net']
             G_param_groups = [{'params': net.parameters()} for m in G_module_list if m in self.modules]
             self.optim_G = torch.optim.Adam(G_param_groups, lr=opt.lr, betas=(opt.beta1, opt.beta2))
             self.optimizers.append(self.optim_G)
@@ -198,20 +199,68 @@ class MultimodalDesignerGAN_V2(BaseModel):
         if self.opt.color_shape_guided:
             input = torch.cat((input, shape_repr))
         return self.color_encoder(input)
+    
+    def align_and_concat(self, inputs, size):
+        for i, x in enumerate(inputs):
+            if not (self.size(2)==size[0] and self.size(3)==size[1]):
+                inputs[i] = F.upsample(x, size, mode='bilinear')
+        output = torch.cat(inputs, dim=1)
+        return output
 
     def forward(self, check_grad=False):
         ###################################
         # encode shape, edge and color
         ###################################
-        feat = []
         # shape repr and shape feat
         self.output['shape_repr'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'])
         self.output['shape_feat'] = self.encode_shape(self.output['shape_repr'])
-        feat.append(self.output['shape_feat'])
         # edge feat
         if self.use_edge:
             self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
-            feat.append(self.output['edge_feat'])
+        # color feat
+        if self.use_color:
+            self.output['color_feat'] = self.encode_color(self.input['color_map'], self.output['shape_repr'])
+        ###################################
+        # feature fusion
+        ###################################
+        if self.opt.fusion_model == 'concat':
+            feat = [self.output[k] for k in ['shape_feat', 'edge_feat', 'color_feat'] if k in self.output]
+            self.output['feat'] = self.align_and_concat(feat, self.output['shape_feat'].size()[2:4])
+        
+        elif self.opt.fusion_model == 'fusion':
+            feat = [self.output[k] for k in ['edge_feat', 'color_feat'] if k in self.output]
+            feat = self.align_and_concat(feat, self.output['shape_feat'].size()[2:4])
+            self.output['feat'] = self.fusion_net(feat, self.output['shape_feat'])
+        
+        elif self.opt.fusion_model == 'trans':
+            feat = [self.output[k] for k in ['shape_feat', 'edge_feat', 'color_feat'] if k in self.output]
+            self.output['feat'] = self.align_and_concat(feat, self.output['shape_feat'].size()[2:4])
+            # feature transfer
+            self.transfer_feature()
+            feat_trans = [self.output[k] for k in ['shape_feat_trans', 'edge_feat_trans', 'color_feat_trans'] if k in self.output]
+            self.output['feat_trans'] = self.align_and_concat(feat_trans, self.output['shape_feat'].size()[2:4])
+        ###################################
+        # netG
+        ###################################
+
+
+
+    def transfer_feature(self):
+        # tansfer edge / color feature
+        if self.is_train and self.opt.affine_aug:
+            self.output['shape_repr_aug'] = self.get_shape_repr(self.input['lm_map_aug'], self.input['seg_mask_aug'], self.input['edge_map_aug'])
+            self.output['shape_feat_aug'] = self.encode_shape(self.output['shape_repr_aug'])
+            if self.opt.use_edge:
+                self.output['edge_feat_aug'] = self.encode_edge(self.input['edge_map_aug'], self.output['shape_repr_aug'])
+                self.output['edge_feat_trans'] = self.edge_trans_net(feat=self.output['edge_feat_aug'], input_guide=self.output['shape_feat_aug'], output_guide=self.output['shape_feat'])
+            if self.opt.use_color:
+                self.output['color_feat_aug'] = self.encode_color(self.input['color_map_aug'], self.output['shape_repr_aug'])
+                self.output['color_feat_trans'] = self.color_trans_net(feat=self.output['color_feat_aug'], input_guide=self.output['shape_feat_aug'], output_guide=self.output['shape_feat'])
+        else:
+            if self.use_edge:
+                self.output['edge_feat_trans'] = self.edge_trans_net(feat=self.output['edge_feat'], input_guide=self.output['shape_feat'], output_guide=self.output['shape_feat'])
+            if self.use_color:
+                self.output['color_feat_trans'] = self.color_trans_net(feat=self.output['color_feat'], input_guide=self.output['shape_feat'], output_guide=self.output['shape_feat'])
 
     def test(self):
         if float(torch.__version__[0:3]) >= 0.4:
