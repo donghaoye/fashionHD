@@ -37,7 +37,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--shape_ndowns',type=int, default=5, help='number of downsample layers in shape encoder')
         parser.add_argument('--shape_encoder_type', type=str, default='default')
         parser.add_argument('--shape_encoder_block', type=str, default='default')
-        parser.add_argument('--pretrain_shape', action='store_true', help='load pretrained shape_encoder')
+        parser.add_argument('--pretrain_shape', type=int, default=1, choices=[0,1], help='load pretrained shape_encoder')
         parser.add_argument('--which_model_init_shape_encoder', type=str, default='default', help='id of pretrained shape encoder')
         ##############################
         # Edge Encoder
@@ -51,7 +51,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--edge_threshold', type=int, default=0, help='edge threshold to filter small edge [0-255]')
         parser.add_argument('--edge_encoder_type', type=str, default='default')
         parser.add_argument('--edge_encoder_block', type=str, default='default')
-        parser.add_argument('--pretrain_edge', action='store_true', help='load pretrained edge encoder')
+        parser.add_argument('--pretrain_edge', type=int, default=1, choices=[0,1], help='load pretrained edge encoder')
         parser.add_argument('--which_model_init_edge_encoder', type=str, default='default', help='id of pretrained edge encoder')
         ##############################
         # Color Encoder
@@ -67,7 +67,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--color_patch_mode', type=str, default='crop5', choices=['center', 'crop5', 'single'], help='method to extract patch')
         parser.add_argument('--color_encoder_type', type=str, default='default')
         parser.add_argument('--color_encoder_block', type=str, default='default')
-        parser.add_argument('--pretrain_color', action='store_true', help='load pretrained color encoder')
+        parser.add_argument('--pretrain_color', type=int, default=1, choices=[0,1], help='load pretrained color encoder')
         parser.add_argument('--which_model_init_color_encoder', type=str, default='default', help='id of pretrained color encoder')
         ##############################
         # Feature Transfer and Fusion
