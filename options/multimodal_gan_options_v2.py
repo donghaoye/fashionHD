@@ -83,7 +83,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--which_model_netG', type = str, default = 'upsample_generator', help='select model to use for netG')
         parser.add_argument('--G_output_nc', type=int, default=3, help='# output channels of netG')
         parser.add_argument('--G_shape_guided', action='store_true', help='add shape guide at LR level')
-        parser.add_argument('--G_nblocks_1', type=int, default=3, help='number of LR residual blocks')
+        parser.add_argument('--G_nblocks_1', type=int, default=2, help='number of LR residual blocks')
         parser.add_argument('--G_nups_1', type=int, default=3, help='number of LR upsample layers')
         parser.add_argument('--G_nblocks_2', type=int, default=6, help='number of HR residual blocks')
         parser.add_argument('--G_nups_2', type=int, default=2, help='number of HR upsample layers')
@@ -153,6 +153,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         # shape
         if opt.shape_encoder_type == 'default':
             opt.shape_encoder_type = opt.encoder_type
+        if opt.shape_encoder_block == 'default':
             opt.shape_encoder_block = opt.encoder_block
         if opt.which_model_init_shape_encoder == 'default':
             if opt.shape_encoder_type == 'normal' and opt.shape_encoder_block == 'residual' and opt.shape_ndowns == 5 and opt.shape_nof == 128 and opt.shape_nf == 64:
