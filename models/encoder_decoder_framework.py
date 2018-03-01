@@ -17,6 +17,8 @@ import time
 from collections import OrderedDict
 import util.io as io
 
+from misc.visualizer import seg_to_rgb
+
 class EncoderDecoderFramework(BaseModel):
     def name(self):
         return 'EncoderDecoderFramework'
@@ -262,9 +264,9 @@ class EncoderDecoderFramework(BaseModel):
         elif self.encoder_type == 'color':
             visuals['color_map'] = self.input['color_map'].data.clone()
         elif self.encoder_type == 'shape':
-            visuals['img_fake'] = networks.seg_to_rgb(self.output['img'].data.clone())
-            visuals['img_fake_raw'] = networks.seg_to_rgb(self.output['img_raw'].data.clone())
-            visuals['img_real_raw'] = networks.seg_to_rgb(self.output['tar'].data.clone())
+            visuals['img_fake'] = seg_to_rgb(self.output['img'].data.clone())
+            visuals['img_fake_raw'] = seg_to_rgb(self.output['img_raw'].data.clone())
+            visuals['img_real_raw'] = seg_to_rgb(self.output['tar'].data.clone())
 
         for k, v in visuals.iteritems():
             v = v.cpu()

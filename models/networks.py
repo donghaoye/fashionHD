@@ -100,33 +100,6 @@ def init_weights(net, init_type='normal'):
     else:
         raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
 
-def seg_to_rgb(seg_map):
-    if isinstance(seg_map, np.ndarray):
-        if seg_map.ndim == 3:
-            seg_map = seg_map[np.newaxis,:]
-        seg_map = torch.from_numpy(seg_map.transpose([0,3,1,2]))
-    elif isinstance(seg_map, torch._TensorBase):
-        seg_map = seg_map.cpu()
-        if seg_map.dim() == 3:
-            seg_map = seg_map.unsqueeze(0)
-
-    if seg_map.size(1) > 1:
-        seg_map = seg_map.max(dim=1, keepdim=True)[1]
-    else:
-        seg_map = seg_map.long()
-
-    b,c,h,w = seg_map.size()
-    assert c == 1
-
-    cmap = torch.Tensor([[73,0,255], [255,0,0], [255,0,219], [255, 219,0], [0,255,146], [0,146,255], [0,146,255]])/255.
-
-    rgb_map = cmap[seg_map.view(-1)]
-    rgb_map = rgb_map.view(b, h, w, 3)
-    rgb_map = rgb_map.transpose(1,3).transpose(2,3)
-
-    rgb_map.sub_(0.5).div_(0.5)
-    return rgb_map
-
 
 ###############################################################################
 # Loss Functions
@@ -1118,8 +1091,8 @@ class PixelDiscriminator(nn.Module):
 def define_feature_fusion_network(name ='FeatureConcatNetwork', feat_nc=128, guide_nc=128, output_nc=-1, ndowns=3, nblocks=3, norm='batch', init_type='normal', gpu_ids=[]):
     if name == 'FeatureConcatNetwork':
         model = FeatureConcatNetwork(feat_nc, guide_nc, output_nc, nblocks, norm, gpu_ids)
-    elif name == 'FeatureTransferNetwork':
-        model = FeatureTransferNetwork(feat_nc, guide_nc, output_nc, ndowns, nblocks, norm, gpu_ids)
+    elif name == 'FeatureReduceNetwork':
+        model = FeatureReduceNetwork(feat_nc, guide_nc, output_nc, ndowns, nblocks, norm, gpu_ids)
 
     if len(gpu_ids) > 0:
         model.cuda()
@@ -1155,9 +1128,9 @@ class FeatureConcatNetwork(nn.Module):
         else:
             return self.model(feat)
 
-class FeatureTransferNetwork(nn.Module):
+class FeatureReduceNetwork(nn.Module):
     def __init__(self, feat_nc, guide_nc, output_nc=-1, ndowns=3, n_blocks=3, norm='batch', gpu_ids=[]):
-        super(FeatureTransferNetwork, self).__init__()
+        super(FeatureReduceNetwork, self).__init__()
         self.gpu_ids = gpu_ids
         norm_layer = get_norm_layer(norm)
         use_bias = (norm_layer.func == nn.InstanceNorm2d)
@@ -1213,7 +1186,7 @@ def define_upsample_generator(opt):
     model = UpsampleGenerator(input_nc_1, input_nc_2, output_nc, nblocks_1, nups_1, nblocks_2, nups_2, norm, use_dropout, gpu_ids)
     if len(gpu_ids) > 0:
         model.cuda()
-    init_weights(model, init_type)
+    init_weights(model, opt.init_type)
     return model
 
 class UpsampleGenerator(nn.Module):
@@ -1272,7 +1245,7 @@ class UpsampleGenerator(nn.Module):
             if input_2 is not None:
                 return nn.parallel.data_parallel(self, (input_1, input_2), module_kwargs={'single_device': True})
             else:
-                return nn.parallel.data_parallel(self, input_1, module_kwargs={'input_2': None, 'single_device': False})
+                return nn.parallel.data_parallel(self, input_1, module_kwargs={'input_2': None, 'single_device': True})
         else:
             output_1 = self.upsample_1(input_1)
             if input_2 is not None:

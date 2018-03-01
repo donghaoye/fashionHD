@@ -136,7 +136,20 @@ def test_MultiModalDesignerGAN_V2():
     from options.multimodal_gan_options_v2 import TrainMMGANOptions_V2
     from data.data_loader import CreateDataLoader
 
-    opt = TrainMMGANOptions_V2().parse('--benchmark debug --batch_size 4 --gpu_ids 0 --ftn_model none')
+    # 8x8 feature map, without FTN
+    # args = '--benchmark debug --batch_size 8 --G_nblocks_1 3 --gpu_ids 0 --ftn_model none'
+
+    # 1x1 feature, without FTN
+    # args = '--benchmark debug --batch_size 8 --gpu_ids 0 --encoder_type fc --feat_size_lr 1 --G_nblocks_1 0 --G_nups_1 6  --G_nblocks_2 0 --G_nups_2 2'
+
+    # 8x8 shape feature, 1x1 edge/color feature, without FTN
+    # args = '--benchmark debug --batch_size 8 --gpu_ids 0 --encoder_type fc --shape_encoder_type normal --feat_size_lr 8 --G_nblocks_1 0 --G_nups_1 3 --G_nblocks_2 0 --G_nups_2 2'
+    
+    # 8x8 feature map, with FTN
+    args = '--benchmark debug --batch_size 8 --gpu_ids 0 --encoder_type normal --feat_size_lr 8 --ftn_model reduce --G_nblocks_1 3 --G_nups_1 3 --G_nblocks_2 6 --G_nups_2 2'
+
+
+    opt = TrainMMGANOptions_V2().parse(args)
     loader = CreateDataLoader(opt)
     loader_iter = iter(loader)
     data = loader_iter.next()
@@ -147,6 +160,9 @@ def test_MultiModalDesignerGAN_V2():
     model.set_input(data)
     model.forward()
     model.optimize_parameters()
+
+    for k, v in model.output.iteritems():
+        print('%s: %s' % (k, v.size()))
 
 if __name__ == '__main__':
     # test_AttributeEncoder()

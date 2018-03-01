@@ -39,13 +39,13 @@ class MultimodalDesignerGAN_V2(BaseModel):
         self.shape_encoder = networks.define_image_encoder(opt, 'shape')
         self.modules['shape_encoder'] = self.shape_encoder
         # edge branch
-        if self.use_edge:
+        if opt.use_edge:
             self.edge_encoder = networks.define_image_encoder(opt, 'edge')
             self.modules['edge_encoder'] = self.edge_encoder
         else:
             self.encoder_edge = None
         # color branch
-        if self.use_color:
+        if opt.use_color:
             self.color_encoder = networks.define_image_encoder(opt, 'color')
             self.modules['color_encoder'] = self.color_encoder
         else:
@@ -57,22 +57,22 @@ class MultimodalDesignerGAN_V2(BaseModel):
             pass
         elif opt.ftn_model == 'concat':
             assert opt.use_edge or opt.use_color
-            if self.use_edge:
+            if opt.use_edge:
                 self.edge_trans_net = networks.define_feature_fusion_network(name='FeatureConcatNetwork', feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, nblocks=opt.ftn_nblocks, 
                     norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
                 self.modules['edge_trans_net'] = self.edge_trans_net
-            if self.use_color:
+            if opt.use_color:
                 self.color_trans_net = networks.define_feature_fusion_network(name='FeatureConcatNetwork', feat_nc=opt.color_nof, guide_nc=opt.shape_nof, nblocks=opt.ftn_nblocks, 
                     norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
                 self.modules['color_trans_net'] = self.color_trans_net
-        elif opt.ftn_model == 'trans':
+        elif opt.ftn_model == 'reduce':
             assert opt.use_edge or opt.use_color
-            if self.use_edge:
-                self.edge_trans_net = networks.define_feature_fusion_network(name='FeatureTransNetwork', feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, nblocks=opt.ftn_nblocks, 
+            if opt.use_edge:
+                self.edge_trans_net = networks.define_feature_fusion_network(name='FeatureReduceNetwork', feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, nblocks=opt.ftn_nblocks, 
                     ndowns=opt.ftn_ndowns, norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
                 self.modules['edge_trans_net'] = self.edge_trans_net
-            if self.use_color:
-                self.color_trans_net = networks.define_feature_fusion_network(name='FeatureTransNetwork', feat_nc=opt.color_nof, guide_nc=opt.shape_nof, nblocks=opt.ftn_nblocks,
+            if opt.use_color:
+                self.color_trans_net = networks.define_feature_fusion_network(name='FeatureReduceNetwork', feat_nc=opt.color_nof, guide_nc=opt.shape_nof, nblocks=opt.ftn_nblocks,
                     ndowns=opt.ftn_ndowns, norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
                 self.modules['color_trans_net'] = self.color_trans_net
 
@@ -100,11 +100,11 @@ class MultimodalDesignerGAN_V2(BaseModel):
                 else:
                     # load pretrained encoder
                     if opt.pretrain_shape:
-                        self.load_network(self.shape_encoder, 'shape_encoder', opt.which_model_init_shape_encoder)
+                        self.load_network(self.shape_encoder, 'shape_encoder', 'latest', opt.which_model_init_shape_encoder)
                     if opt.use_edge and opt.pretrain_edge:
-                        self.load_network(self.edge_encoder, 'edge_encoder', opt.which_model_init_edge_encoder)
+                        self.load_network(self.edge_encoder, 'edge_encoder', 'latest', opt.which_model_init_edge_encoder)
                     if opt.use_color and opt.pretrain_color:
-                        self.load_network(self.color_encoder, 'color_encoder', opt.which_model_init_color_encoder)
+                        self.load_network(self.color_encoder, 'color_encoder', 'latest', opt.which_model_init_color_encoder)
         else:
             for label, net in self.modules.iteritems():
                 if label != 'netD':
@@ -143,7 +143,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
 
             # G optimizer
             G_module_list = ['shape_encoder', 'edge_encoder', 'color_encoder', 'netG']
-            G_param_groups = [{'params': net.parameters()} for m in G_module_list if m in self.modules]
+            G_param_groups = [{'params': self.modules[m].parameters()} for m in G_module_list if m in self.modules]
             self.optim_G = torch.optim.Adam(G_param_groups, lr=opt.lr, betas=(opt.beta1, opt.beta2))
             self.optimizers.append(self.optim_G)
             # D optimizer
@@ -151,7 +151,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
             self.optimizers.append(self.optim_D)
             # feature transfer network optimizer
             FTN_module_list = ['edge_trans_net', 'color_trans_net']
-            FTN_param_groups = [{'params': net.parameters()} for m in FTN_module_list if m in self.modules]
+            FTN_param_groups = [{'params': self.modules[m].parameters()} for m in FTN_module_list if m in self.modules]
             if len(FTN_param_groups) > 0:
                 self.optim_FTN = torch.optim.Adam(FTN_param_groups, lr=opt.lr_FTN, betas=(0.9, 0.999))
                 self.optimizers.append(self.optim_FTN)
@@ -204,10 +204,10 @@ class MultimodalDesignerGAN_V2(BaseModel):
         self.output['shape_repr'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'])
         self.output['shape_feat'] = self.encode_shape(self.output['shape_repr'])
         # edge feat
-        if self.use_edge:
+        if self.opt.use_edge:
             self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
         # color feat
-        if self.use_color:
+        if self.opt.use_color:
             self.output['color_feat'] = self.encode_color(self.input['color_map'], self.output['shape_repr'])
 
         feat = [self.output[k] for k in ['shape_feat', 'edge_feat', 'color_feat'] if k in self.output]
@@ -217,7 +217,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         # feature fusion
         ###################################
         if self.opt.ftn_model != 'none':
-            self.transfer_feature()
+            self.transfer_feature(detach=True)
             feat_trans = [self.output[k] for k in ['shape_feat_trans', 'edge_feat_trans', 'color_feat_trans'] if k in self.output]
             self.output['feat_trans'] = self.align_and_concat(feat_trans, self.opt.feat_size_lr)
         ###################################
@@ -237,19 +237,17 @@ class MultimodalDesignerGAN_V2(BaseModel):
             else:
                 self.output['img_fake_trans_raw'] = self.netG(self.output['feat_trans'])
             self.output['img_fake_trans'] = self.mask_image(self.output['img_fake_trans_raw'], self.input['seg_map'], self.input['img'])
-
         self.output['img_real'] = self.output['img_real_raw'] = self.input['img']
-
 
     def test(self, mode='normal'):
         if float(torch.__version__[0:3]) >= 0.4:
             with torch.no_grad():
-                self.forward()
+                self.forward(mode=mode, check_grad=False)
         else:
             for k,v in self.input.iteritems():
                 if isinstance(v, Variable):
                     v.volatile = True
-            self.forward(mode, check_grad=False)
+            self.forward(mode=mode, check_grad=False)
 
     def backward_D(self):
         # PSNR
@@ -258,13 +256,13 @@ class MultimodalDesignerGAN_V2(BaseModel):
         repr_fake = self.get_sample_repr_for_D('fake', detach_image=True)
         repr_fake = self.fake_pool.query(repr_fake.data)
         pred_fake = self.netD(repr_fake)
-        self.output['loss_D_fake'] = self.crit_GAN(pred_fake)
+        self.output['loss_D_fake'] = self.crit_GAN(pred_fake, False)
         # real
         repr_real = self.get_sample_repr_for_D('real')
         pred_real = self.netD(repr_real)
-        self.output['loss_D_real'] = self.crit_GAN(pred_real)
+        self.output['loss_D_real'] = self.crit_GAN(pred_real, True)
         # combine loss
-        self.output['loss_D'] = (self.output['loss_D_real' + self.output['loss_D_fake']]) * 0.5 * self.opt.loss_weight_GAN
+        self.output['loss_D'] = (self.output['loss_D_real'] + self.output['loss_D_fake']) * 0.5 * self.opt.loss_weight_GAN
         self.output['loss_D'].backward()
 
     def backward_D_wgangp(self):
@@ -272,7 +270,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
 
     def backward_G(self, mode='normal'):
         # check forward mode
-        if mode == 'normal':
+        if mode in {'normal', 'dual'}:
             repr_fake = self.get_sample_repr_for_D('fake', detach_image=False)
             img_fake = self.output['img_fake']
         elif mode == 'trans':
@@ -295,7 +293,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
 
     def backward_G_grad_check(self, mode='normal'):
         # check forward mode
-        if mode == 'normal':
+        if mode in {'normal', 'dual'}:
             repr_fake = self.get_sample_repr_for_D('fake', detach_image=False)
             img_fake = self.output['img_fake']
         elif mode == 'trans':
@@ -306,6 +304,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         self.output['loss_G'] = 0
         # GAN loss
         pred_fake = self.netD(repr_fake)
+        self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
         (self.output['loss_G_GAN'] * self.opt.loss_weight_GAN).backward(retain_graph=True)
         self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
         self.output['grad_G_GAN'] = (img_fake.grad).norm()
@@ -334,10 +333,10 @@ class MultimodalDesignerGAN_V2(BaseModel):
         # check output
         for output in ['feat_trans', 'img_fake_trans', 'feat', 'img_fake']:
             assert output in self.output
-        self.output['loss_trans']
+        self.output['loss_trans'] = 0
         # feature level distance loss
         self.output['loss_trans_feat'] = self.crit_L1(self.output['feat_trans'], self.output['feat'].detach())
-        self.output['loss_trans'] = self.output['loss_trans_feat'] * self.opt.loss_weight_trans_feat
+        self.output['loss_trans'] += self.output['loss_trans_feat'] * self.opt.loss_weight_trans_feat
         # image level distance loss
         self.output['loss_trans_img'] = self.crit_L1(self.output['img_fake_trans'], self.output['img_fake'].detach())
         self.output['loss_trans'] += self.output['loss_trans_img'] * self.opt.loss_weight_trans_img
@@ -346,7 +345,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
 
     def optimize_parameters(self, train_D = True, train_G = True, check_grad = False):
         # forward
-        if opt.ftn_model == 'none':
+        if self.opt.ftn_model == 'none':
             fwd_mode = 'normal'
         else:
             fwd_mode = 'dual'
@@ -366,7 +365,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         if train_G:
             self.optim_G.step()
         # optimize feature transfer network
-        if opt.ftn_model != 'none':
+        if self.opt.ftn_model != 'none':
             self.optim_FTN.zero_grad()
             self.backward_trans()
             self.optim_FTN.step()
@@ -391,19 +390,20 @@ class MultimodalDesignerGAN_V2(BaseModel):
 
     def encode_edge(self, input, shape_repr):
         if self.opt.edge_shape_guided:
-            input = torch.cat((input, shape_repr))
+            input = torch.cat((input, shape_repr), dim=1)
         return self.edge_encoder(input)
 
     def encode_color(self, input, shape_repr):
         if self.opt.color_shape_guided:
-            input = torch.cat((input, shape_repr))
+            input = torch.cat((input, shape_repr), dim=1)
         return self.color_encoder(input)
     
     def align_and_concat(self, inputs, size):
+        # print(size)
         if isinstance(size, int):
             size = (size, size)
         for i, x in enumerate(inputs):
-            if self.size(2)!=size[0] or self.size(3)!=size[1]:
+            if x.size(2)!=size[0] or x.size(3)!=size[1]:
                 inputs[i] = F.upsample(x, size, mode='bilinear')
         output = torch.cat(inputs, dim=1)
         return output
@@ -421,23 +421,42 @@ class MultimodalDesignerGAN_V2(BaseModel):
         else:
             raise ValueError('post_mask_mode invalid value: %s' % self.opt.post_mask_mode)
 
-    def transfer_feature(self):
-        # tansfer edge / color feature
+    def transfer_feature(self, detach=True):
+        # prepare shape feat as guide
         if self.is_train and self.opt.affine_aug:
             self.output['shape_repr_aug'] = self.get_shape_repr(self.input['lm_map_aug'], self.input['seg_mask_aug'], self.input['edge_map_aug'])
             self.output['shape_feat_aug'] = self.encode_shape(self.output['shape_repr_aug'])
-            if self.opt.use_edge:
+        self.output['shape_feat_trans'] = self.output['shape_feat'].detach() if detach else self.output['shape_feat']
+        # transfer edge feature
+        if self.opt.use_edge:
+            if self.is_train and self.opt.affine_aug:
                 self.output['edge_feat_aug'] = self.encode_edge(self.input['edge_map_aug'], self.output['shape_repr_aug'])
-                self.output['edge_feat_trans'] = self.edge_trans_net(feat=self.output['edge_feat_aug'], input_guide=self.output['shape_feat_aug'], output_guide=self.output['shape_feat'])
-            if self.opt.use_color:
+                input_feat = self.output['edge_feat_aug']
+                input_guide = self.output['shape_feat_aug']
+                output_guide = self.output['shape_feat']
+            else:
+                input_feat = self.output['edge_feat']
+                input_guide = output_guide = self.output['shape_feat']
+            
+            if detach:
+                input_feat, input_guide, output_guide = input_feat.detach(), input_guide.detach(), output_guide.detach()
+
+            self.output['edge_feat_trans'] = self.edge_trans_net(input_feat, input_guide, output_guide)
+        # transfer color feature
+        if self.opt.use_color:
+            if self.is_train and self.opt.affine_aug:
                 self.output['color_feat_aug'] = self.encode_color(self.input['color_map_aug'], self.output['shape_repr_aug'])
-                self.output['color_feat_trans'] = self.color_trans_net(feat=self.output['color_feat_aug'], input_guide=self.output['shape_feat_aug'], output_guide=self.output['shape_feat'])
-        else:
-            if self.use_edge:
-                self.output['edge_feat_trans'] = self.edge_trans_net(feat=self.output['edge_feat'], input_guide=self.output['shape_feat'], output_guide=self.output['shape_feat'])
-            if self.use_color:
-                self.output['color_feat_trans'] = self.color_trans_net(feat=self.output['color_feat'], input_guide=self.output['shape_feat'], output_guide=self.output['shape_feat'])
-        self.output['shape_feat_trans'] = self.output['shape_feat']
+                input_feat = self.output['color_feat_aug']
+                input_guide = self.output['shape_feat_aug']
+                output_guide = self.output['shape_feat']
+            else:
+                input_feat = self.output['color_feat']
+                input_guide = output_guide = self.output['shape_feat']
+            
+            if detach:
+                input_feat, input_guide, output_guide = input_feat.detach(), input_guide.detach(), output_guide.detach()
+
+            self.output['color_feat_trans'] = self.color_trans_net(input_feat, input_guide, output_guide)
 
     def get_sample_repr_for_D(self, sample_type='real', detach_image=False):
         '''
@@ -462,8 +481,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
                 repr.append(self.input['edge_map'])
             if self.opt.use_color:
                 repr.append(self.input['color_map'])
-            repr = align_and_concat(repr, img.size()[2::4])
-        
+            repr = self.align_and_concat(repr, img.size()[2:4])
         return repr
 
     def get_current_errors(self):
@@ -493,19 +511,21 @@ class MultimodalDesignerGAN_V2(BaseModel):
 
     def get_current_visuals(self):
         visuals = OrderedDict([
-            ('img_real', self.output['img_real'].data.clone()),
-            ('img_fake', self.output['img_fake'].data.clone()),
-            ('img_real_raw', self.output['img_real_raw'].data.clone()),
-            ('img_fake_raw', self.output['img_fake_raw'].data.clone()),
-            ('seg_map', self.input['seg_map'].data.clone()),
-            ('landmark_heatmap', self.input['lm_map'].data.clone()),
-            ('edge_map', self.input['edge_map'].data.clone()),
-            ('color_map', self.input['color_map'].data.clone())
+            ('img_real', self.output['img_real'].data.cpu()),
+            ('img_fake', self.output['img_fake'].data.cpu()),
+            ('img_real_raw', self.output['img_real_raw'].data.cpu()),
+            ('img_fake_raw', self.output['img_fake_raw'].data.cpu()),
+            ('seg_map', self.input['seg_map'].data.cpu()),
+            ('landmark_heatmap', self.input['lm_map'].data.cpu()),
+            ('edge_map', self.input['edge_map'].data.cpu()),
+            ('color_map', self.input['color_map'].data.cpu())
             ])
 
         for name in ['img_fake_trans', 'img_fake_trans_raw']:
             if name in self.output:
-                visuals[name] = self.output[name].data.clone()
+                visuals[name] = self.output[name].data.cpu()
+
+        return visuals
 
     def save(self, label):
         for name, net in self.modules.iteritems():

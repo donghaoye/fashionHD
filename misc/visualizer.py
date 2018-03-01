@@ -13,6 +13,34 @@ import numpy as np
 from collections import OrderedDict
 
 
+def seg_to_rgb(seg_map):
+    if isinstance(seg_map, np.ndarray):
+        if seg_map.ndim == 3:
+            seg_map = seg_map[np.newaxis,:]
+        seg_map = torch.from_numpy(seg_map.transpose([0,3,1,2]))
+    elif isinstance(seg_map, torch._TensorBase):
+        seg_map = seg_map.cpu()
+        if seg_map.dim() == 3:
+            seg_map = seg_map.unsqueeze(0)
+
+    if seg_map.size(1) > 1:
+        seg_map = seg_map.max(dim=1, keepdim=True)[1]
+    else:
+        seg_map = seg_map.long()
+
+    b,c,h,w = seg_map.size()
+    assert c == 1
+
+    cmap = torch.Tensor([[73,0,255], [255,0,0], [255,0,219], [255, 219,0], [0,255,146], [0,146,255], [0,146,255]])/255.
+
+    rgb_map = cmap[seg_map.view(-1)]
+    rgb_map = rgb_map.view(b, h, w, 3)
+    rgb_map = rgb_map.transpose(1,3).transpose(2,3)
+
+    rgb_map.sub_(0.5).div_(0.5)
+    return rgb_map
+
+
 class BaseVisualizer(object):
 
     def __init__(self, opt):
@@ -253,8 +281,6 @@ class AttributeVisualizer(BaseVisualizer):
 
         io.save_str_list(str_output, fn_txt)
 
-
-
 class GANVisualizer(BaseVisualizer):
     def __init__(self, opt):
         super(GANVisualizer, self).__init__(opt)
@@ -347,3 +373,84 @@ class GANVisualizer(BaseVisualizer):
 
         super(GANVisualizer, self).pavi_log(phase, iter_num, new_outputs)
 
+class GANVisualizer_V2(BaseVisualizer):
+    def __init__(self, opt):
+        super(GANVisualizer_V2, self).__init__(opt)
+
+
+    def visualize_image(self, epoch, subset, visuals):
+        opt = self.opt
+        vis_dir = os.path.join('checkpoints', opt.id, 'vis')
+        io.mkdir_if_missing(vis_dir)
+        print('[%s] visualizing %s images' % (opt.id, subset))
+
+        # post-process
+        if 'landmark_heatmap' in visuals:
+            visuals['landmark_heatmap'] = visuals['landmark_heatmap'].max(dim=1, keepdim=True)[0].expand_as(visuals['img_real'])
+        if 'seg_map' in visuals:
+            visuals['seg_map'] = seg_to_rgb(visuals['seg_map'])
+        if 'seg_mask_aug' in visuals:
+            visuals['seg_mask_aug'] = seg_to_rgb(visuals['seg_mask_aug'])
+        if 'edge_map' in visuals:
+            visuals['edge_map'] = visuals['edge_map'].expand_as(visuals['img_real'])
+        if 'edge_map_aug' in visuals:
+            visuals['edge_map_aug'] = visuals['edge_map_aug'].expand_as(visuals['img_real'])
+        if 'color_map' in visuals and visuals['color_map'].size(1)==6:
+            visuals['color_map'] = visuals['color_map'][:,0:3] + visuals['color_map'][:,3:6]
+        if 'color_map_aug' in visuals and visuals['color_map_aug'].size(1)==6:
+            visuals['color_map_aug'] = visuals['color_map_aug'][:,0:3] + visuals['color_map_aug'][:,3:6]
+        
+        # display
+        num_vis = min(opt.max_n_vis, visuals['img_real'].size(0))
+        item_list = ['img_real', 'img_fake', 'img_fake_trans', 'seg_map', 'edge_map', 'color_map', 'img_fake_raw', 'img_fake_trans_raw']
+        
+        imgs = [visuals[item_name].cpu() for item_name in item_list if item_name in visuals]
+        imgs = torch.stack(imgs, dim=1)[0:num_vis]
+        imgs = imgs.view(imgs.size(0)*imgs.size(1), imgs.size(2), imgs.size(3), imgs.size(4))
+        nrow = int(imgs.size(0)/num_vis)
+        fn_img = os.path.join(vis_dir, '%s_epoch%d.jpg' % (subset, epoch))
+        torchvision.utils.save_image(imgs, fn_img, nrow = nrow, normalize = True)
+
+    def visualize_image_matrix(self, imgs, imgs_title = None, label = 'default', vis_dir = 'vis'):
+        '''
+        Input:
+            imgs (tensor): image matrix, tensor of size n_row*n_col*C*H*W
+            imgs_title (tensor): title images, tensor of size n*C*H*W (must have n==n_row==n_col)
+            label (str): output filename
+
+        '''
+        vis_dir = os.path.join('checkpoints', self.opt.id, vis_dir)
+        io.mkdir_if_missing(vis_dir)
+
+        n_row, n_col, c, h, w = imgs.size()
+        if imgs_title is not None:
+            assert imgs_title.size(0) == n_row == n_col
+            # insert title images at the head of each row
+            imgs = torch.cat((imgs_title.view(n_row, 1, c, h, w), imgs), 1)
+            # add a title row
+            img_blank = torch.zeros([1]+list(imgs_title.size()[1::]))
+            imgs_title = torch.cat((img_blank, imgs_title), 0)
+            imgs = torch.cat((imgs_title.view(1, n_col+1, c, h, w), imgs), 0)
+
+            n_col += 1
+            n_row += 1
+
+        imgs = imgs.view(n_row*n_col, c, h, w)
+        fn_img = os.path.join(vis_dir, label+'.jpg')
+        torchvision.utils.save_image(imgs, fn_img, nrow = n_col, normalize = True)
+
+
+
+    def pavi_log(self, phase, iter_num, outputs):
+        # upper_list = ['D_real', 'D_fake', '']
+        upper_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG']
+        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'T_feat', 'T_img', 'PSNR']
+
+        new_outputs = {}
+        for k,v in outputs.iteritems():
+            if k in upper_list:
+                new_outputs[k+'_upper'] = v
+            elif k in lower_list:
+                new_outputs[k] = v
+
+        super(GANVisualizer_V2, self).pavi_log(phase, iter_num, new_outputs)
