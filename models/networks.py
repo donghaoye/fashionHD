@@ -319,7 +319,7 @@ class Vgg19(torch.nn.Module):
         h_relu5 = self.slice5(h_relu4)
         out = 0
         for i, h in enumerate([h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]):
-            out += self.weights[i] * self.crit(h[0:bsz], h[bsz::].detach()).view(bsz,-1).mean()
+            out += self.weights[i] * self.crit(h[0:bsz], h[bsz::].detach()).view(bsz,-1).mean(dim=1)
         return out
 
 # Perceptual Feature Loss using VGG19 network
@@ -332,10 +332,15 @@ class VGGLoss(nn.Module):
             self.vgg.cuda()
 
     def forward(self, x, y):
-        if self.gpu_ids:
-            return nn.parallel.data_parallel(self.vgg, (x, y)).mean()
+        if len(self.gpu_ids)>1:
+            # return nn.parallel.data_parallel(self.vgg, (x, y)).mean()
+            a = nn.parallel.data_parallel(self.vgg, (x, y))
+            print(a.size())
+            exit(0)
+            return a
         else:
             return self.vgg(x, y).mean()
+
 
 class TotalVariationLoss(nn.Module):
     def forward(self, x):
