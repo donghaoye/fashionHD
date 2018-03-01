@@ -1171,7 +1171,7 @@ class FeatureReduceNetwork(nn.Module):
             feat_recover = self.recover(torch.cat((feat_reduce_tile, output_guide), dim=1))
             return feat_recover
 
-def define_upsample_generator(opt):
+def define_decoder_generator(opt):
     input_nc_1 = opt.shape_nof + (opt.edge_nof if opt.use_edge else 0) + (opt.color_nof if opt.use_color else 0)
     input_nc_2 = opt.shape_nc if opt.G_shape_guided else 0
     output_nc = opt.G_output_nc
@@ -1183,15 +1183,15 @@ def define_upsample_generator(opt):
     use_dropout = not opt.no_dropout
     gpu_ids = opt.gpu_ids
 
-    model = UpsampleGenerator(input_nc_1, input_nc_2, output_nc, nblocks_1, nups_1, nblocks_2, nups_2, norm, use_dropout, gpu_ids)
+    model = DecoderGenerator(input_nc_1, input_nc_2, output_nc, nblocks_1, nups_1, nblocks_2, nups_2, norm, use_dropout, gpu_ids)
     if len(gpu_ids) > 0:
         model.cuda()
     init_weights(model, opt.init_type)
     return model
 
-class UpsampleGenerator(nn.Module):
+class DecoderGenerator(nn.Module):
     def __init__(self, input_nc_1, input_nc_2=0, output_nc=3, nblocks_1=1, nups_1=3, nblocks_2=5, nups_2=2, norm='batch', use_dropout=False, gpu_ids=[]):
-        super(UpsampleGenerator, self).__init__()
+        super(DecoderGenerator, self).__init__()
         self.gpu_ids = gpu_ids
         norm_layer = get_norm_layer(norm)
         use_bias = (norm_layer.func == nn.InstanceNorm2d)

@@ -77,7 +77,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
                 self.modules['color_trans_net'] = self.color_trans_net
 
         # netG
-        self.netG = networks.define_upsample_generator(opt)
+        self.netG = networks.define_decoder_generator(opt)
         self.modules['netG'] = self.netG
 
         # netD
