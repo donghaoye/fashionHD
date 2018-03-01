@@ -333,11 +333,7 @@ class VGGLoss(nn.Module):
 
     def forward(self, x, y):
         if len(self.gpu_ids)>1:
-            # return nn.parallel.data_parallel(self.vgg, (x, y)).mean()
-            a = nn.parallel.data_parallel(self.vgg, (x, y))
-            print(a.size())
-            exit(0)
-            return a
+            return nn.parallel.data_parallel(self.vgg, (x, y)).mean()
         else:
             return self.vgg(x, y).mean()
 
