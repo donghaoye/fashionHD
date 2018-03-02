@@ -136,9 +136,16 @@ def test_MultiModalDesignerGAN_V2():
     from options.multimodal_gan_options_v2 import TrainMMGANOptions_V2
     from data.data_loader import CreateDataLoader
 
+    def count_param(model):
+        c = 0
+        for module in model.__dict__.values():
+            if isinstance(module, nn.Module):
+                for p in module.parameters():
+                    c += p.numel()
+        return c
     # 8x8 feature map, without FTN
-    args = '--benchmark debug --batch_size 8 --G_nblocks_1 3 --gpu_ids 0 --ftn_model none'
-
+    # args = '--benchmark debug --batch_size 8 --G_nblocks_1 3 --gpu_ids 0 --ftn_model none'
+    ###### decoder G ######
     # 1x1 feature, without FTN
     # args = '--benchmark debug --batch_size 8 --gpu_ids 0 --encoder_type fc --feat_size_lr 1 --G_nblocks_1 0 --G_nups_1 6  --G_nblocks_2 0 --G_nups_2 2'
 
@@ -148,6 +155,9 @@ def test_MultiModalDesignerGAN_V2():
     # 8x8 feature map, with FTN
     # args = '--benchmark debug --batch_size 1 --gpu_ids 0 --encoder_type normal --feat_size_lr 8 --ftn_model reduce --G_nblocks_1 2 --G_nups_1 3 --G_nblocks_2 6 --G_nups_2 2'
 
+
+    ###### unet G ######
+    args = '--benchmark debug --batch_size 4 --gpu_ids 0,1 --which_model_netG unet --feat_size_lr 8 --G_ndowns 5 --G_nblocks 5 --ftn_model trans --ftn_nblocks 1 --G_block residual'
 
     opt = TrainMMGANOptions_V2().parse(args)
     loader = CreateDataLoader(opt)
@@ -165,9 +175,35 @@ def test_MultiModalDesignerGAN_V2():
     for name, net in model.modules.iteritems():
         print(name)
         print(net)
+    print('\nparameter size: %d' % count_param(model))
     print('\n############## data ##############\n')
     for k, v in model.output.iteritems():
         print('%s: %s' % (k, v.size()))
+
+def test_UnetResidualGenerator():
+    from networks import UnetResidualGenerator
+
+    model = UnetResidualGenerator(input_nc_1=7, input_nc_2=128, output_nc=3, nf=32, nof=128, ndowns=5, nblocks=5, norm='instance', use_dropout=True)
+    if model.gpu_ids:
+        model.cuda()
+    input_1 = Variable(torch.rand(2, 7, 256, 256))
+    input_2 = Variable(torch.rand(2, 128, 8, 8))
+    y, feat = model(input_1, input_2, 'full')
+    y.sum().backward(retain_graph=True)
+    feat.sum().backward()
+    print('test full')
+    print(y.size())
+    print(feat.size())
+
+    print('test encode')
+    input_1 = Variable(torch.rand(2, 7, 256, 256))
+    feat = model(input_1, None, 'encode')
+    feat.sum().backward()
+    print(feat.size())
+
+
+
+
 
 if __name__ == '__main__':
     # test_AttributeEncoder()
@@ -179,3 +215,4 @@ if __name__ == '__main__':
     # test_MultiModalDesignerGAN()
     # test_upsample_generator()
     test_MultiModalDesignerGAN_V2()
+    # test_UnetResidualGenerator()

@@ -25,8 +25,8 @@ class GANDataset(BaseDataset):
 
         print('loading data ...')
         samples = io.load_json(os.path.join(opt.data_root, opt.fn_sample))
-        attr_label = io.load_data(os.path.join(opt.data_root, opt.fn_label))
-        attr_entry = io.load_json(os.path.join(opt.data_root, opt.fn_entry))
+        # attr_label = io.load_data(os.path.join(opt.data_root, opt.fn_label))
+        # attr_entry = io.load_json(os.path.join(opt.data_root, opt.fn_entry))
         data_split = io.load_json(os.path.join(opt.data_root, opt.fn_split))
         lm_label = io.load_data(os.path.join(opt.data_root, opt.fn_landmark))
         seg_paths = io.load_json(os.path.join(opt.data_root, opt.fn_seg_path))
@@ -34,11 +34,11 @@ class GANDataset(BaseDataset):
         # color_paths = io.load_json(os.path.join(opt.data_root, opt.fn_color_path))
 
         self.id_list = data_split[split]
-        self.attr_entry = attr_entry
+        # self.attr_entry = attr_entry
         if opt.max_dataset_size != float('inf'):
             self.id_list = self.id_list[0:opt.max_dataset_size]
         self.sample_list = [samples[s_id] for s_id in self.id_list]
-        self.attr_label_list = [attr_label[s_id] for s_id in self.id_list]
+        # self.attr_label_list = [attr_label[s_id] for s_id in self.id_list]
         self.lm_list = [lm_label[s_id] for s_id in self.id_list]
         self.seg_path_list = [seg_paths[s_id] for s_id in self.id_list]
         self.edge_path_list = [edge_paths[s_id] for s_id in self.id_list]
@@ -81,8 +81,6 @@ class GANDataset(BaseDataset):
             img_j = self.to_tensor(img_j).numpy().transpose([1,2,0])
             mask = ((seg_map==3) | (seg_map==4)).astype(np.float32)[:,:,np.newaxis]
             img = img_j * mask + img * (1-mask)
-
-
 
         # create landmark heatmap
         h, w = img.shape[0:2]
@@ -146,7 +144,7 @@ class GANDataset(BaseDataset):
             t_color_map_full = t_color_map.clone()
 
         # load label
-        att = np.array(self.attr_label_list[index], dtype = np.float32)
+        # att = np.array(self.attr_label_list[index], dtype = np.float32)
 
         data = {
             'img': t_img,
@@ -156,7 +154,7 @@ class GANDataset(BaseDataset):
             'edge_map': t_edge_map,
             'color_map': t_color_map,
             'color_map_full': t_color_map_full,
-            'attr_label':att,
+            # 'attr_label':att,
             'id': s_id
         }
 

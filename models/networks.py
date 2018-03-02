@@ -1089,11 +1089,13 @@ class PixelDiscriminator(nn.Module):
 ###############################################################################
 # GAN V2
 ###############################################################################
-def define_feature_fusion_network(name ='FeatureConcatNetwork', feat_nc=128, guide_nc=128, output_nc=-1, ndowns=3, nblocks=3, norm='batch', init_type='normal', gpu_ids=[]):
+def define_feature_fusion_network(name ='FeatureConcatNetwork', feat_nc=128, guide_nc=128, output_nc=-1, ndowns=3, nblocks=3, feat_size=8,norm='batch', init_type='normal', gpu_ids=[]):
     if name == 'FeatureConcatNetwork':
         model = FeatureConcatNetwork(feat_nc, guide_nc, output_nc, nblocks, norm, gpu_ids)
     elif name == 'FeatureReduceNetwork':
         model = FeatureReduceNetwork(feat_nc, guide_nc, output_nc, ndowns, nblocks, norm, gpu_ids)
+    elif name == 'FeatureTransformNetwork':
+        model = FeatureTransformNetwork(feat_nc, guide_nc, output_nc, feat_size, nblocks, norm, gpu_ids)
 
     if len(gpu_ids) > 0:
         model.cuda()
@@ -1172,23 +1174,228 @@ class FeatureReduceNetwork(nn.Module):
             feat_recover = self.recover(torch.cat((feat_reduce_tile, output_guide), dim=1))
             return feat_recover
 
-def define_decoder_generator(opt):
-    input_nc_1 = opt.shape_nof + (opt.edge_nof if opt.use_edge else 0) + (opt.color_nof if opt.use_color else 0)
-    input_nc_2 = opt.shape_nc if opt.G_shape_guided else 0
-    output_nc = opt.G_output_nc
-    nblocks_1 = opt.G_nblocks_1
-    nups_1 = opt.G_nups_1
-    nblocks_2 = opt.G_nblocks_2
-    nups_2 = opt.G_nups_2
-    norm = opt.norm
-    use_dropout = not opt.no_dropout
-    gpu_ids = opt.gpu_ids
+class FeatureTransformNetwork(nn.Module):
+    def __init__(self, feat_nc, guide_nc, output_nc=-1, feat_size = 8, nblocks=1, norm='batch', gpu_ids=[]):
+        super(FeatureTransformNetwork, self).__init__()
+        self.gpu_ids = gpu_ids
+        self.feat_size = feat_size
+        norm_layer = get_norm_layer(norm)
+        activation = nn.ReLU
+        use_bias = (norm_layer.func == nn.InstanceNorm2d)
+        if output_nc == -1:
+            output_nc = feat_nc
+        self.stn = SpatialTransformerNetwork_V2(feat_nc, guide_nc * 2, feat_size)
+        if nblocks > 0:
+            blocks = []
+            for n in range(nblocks):
+                c_in = feat_nc + guide_nc if n == 0 else feat_nc
+                c_out = feat_nc
+                blocks += [ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=1)]
+            self.res_blocks = nn.Sequential(*blocks)
+        else:
+            self.res_blocks = None
 
-    model = DecoderGenerator(input_nc_1, input_nc_2, output_nc, nblocks_1, nups_1, nblocks_2, nups_2, norm, use_dropout, gpu_ids)
-    if len(gpu_ids) > 0:
+    def forward(self, feat, input_guide, output_guide, single_device=False):
+        if not (input_guide.size(2) == input_guide.size(3) == self.feat_size):
+            # input_guide = F.upsample(input_guide, self.feat_size, mode='bilinear')
+            input_guide = F.adaptive_avg_pool(input_guide, self.feat_size)
+        if not (output_guide.size(2) == output_guide.size(3) == self.feat_size):
+            output_guide = F.adaptive_avg_pool(output_guide, self.feat_size)
+
+        if len(self.gpu_ids) > 1 and not single_device:
+            return nn.parallel.data_parallel(self, (feat, input_guide, output_guide), module_kwargs={'single_device': True})
+        else:
+            feat_trans = self.stn(feat, torch.cat((input_guide, output_guide),dim=1))
+            if self.res_blocks is not None:
+                feat_trans = self.res_blocks(torch.cat((feat_trans, output_guide),dim=1))
+            return feat_trans
+
+
+class SpatialTransformerNetwork_V2(nn.Module):
+    def __init__(self, input_nc, guide_nc, size=8):
+        super(SpatialTransformerNetwork_V2, self).__init__()
+        self.input_nc = input_nc
+        self.size = size
+
+        self.loc_conv = nn.Sequential(
+            nn.Conv2d(guide_nc, 32, kernel_size=3, stride=1, padding=1),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.ReLU(True),
+            nn.Conv2d(32,32, kernel_size=3, stride=1, padding=1),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.ReLU(True)
+            )
+        self.loc_fc = nn.Sequential(
+            nn.Linear(32*size*size//16, 32),
+            nn.ReLU(True),
+            nn.Linear(32, 6)
+            )
+
+        self.loc_fc[2].weight.data.fill_(0)
+        self.loc_fc[2].bias.data = torch.FloatTensor([1,0,0,0,1,0])
+
+    def forward(self, x, guide):
+        out = self.loc_conv(guide)
+        out = out.view(guide.size(0),-1)
+        theta = self.loc_fc(out)
+        theta = theta.view(-1, 2, 3)
+
+        grid = F.affine_grid(theta, x.size())
+        return F.grid_sample(x, grid)
+
+def define_generator(opt):
+    if opt.which_model_netG == 'decoder':
+        input_nc_1 = opt.shape_nof + (opt.edge_nof if opt.use_edge else 0) + (opt.color_nof if opt.use_color else 0)
+        input_nc_2 = opt.shape_nc if opt.G_shape_guided else 0
+        output_nc = opt.G_output_nc
+        nblocks_1 = opt.G_nblocks_1
+        nups_1 = opt.G_nups_1
+        nblocks_2 = opt.G_nblocks_2
+        nups_2 = opt.G_nups_2
+        norm = opt.norm
+        use_dropout = not opt.no_dropout
+        gpu_ids = opt.gpu_ids
+        model = DecoderGenerator(input_nc_1, input_nc_2, output_nc, nblocks_1, nups_1, nblocks_2, nups_2, norm, use_dropout, gpu_ids)
+    elif opt.which_model_netG == 'unet':
+        input_nc_1 = opt.shape_nc
+        input_nc_2 = (opt.edge_nof if opt.use_edge else 0) + (opt.color_nof if opt.use_color else 0)
+        output_nc = opt.G_output_nc
+        nf = opt.shape_nf
+        nof = opt.shape_nof
+        ndowns = opt.G_ndowns
+        nblocks = opt.G_nblocks
+        norm = opt.norm
+        use_dropout = not opt.no_dropout
+        block_type = opt.G_block
+        gpu_ids = opt.gpu_ids
+        model = UnetResidualGenerator(input_nc_1, input_nc_2, output_nc, nf, nof, ndowns, nblocks, block_type, norm, use_dropout, gpu_ids)
+
+    if len(opt.gpu_ids) > 0:
         model.cuda()
     init_weights(model, opt.init_type)
     return model
+
+class UnetResidualGenerator(nn.Module):
+    def __init__(self, input_nc_1, input_nc_2=0, output_nc=3, nf=32, nof=128, ndowns=5, nblocks=5, block_type='normal', norm='batch', use_dropout=False, gpu_ids=[]):
+        super(UnetResidualGenerator, self).__init__()
+        self.gpu_ids = gpu_ids
+        self.input_nc_1 = input_nc_1
+        self.input_nc_2 = input_nc_2
+        self.ndowns = ndowns
+        self.down_blocks = None
+        self.up_blocks = None
+        self.bottleneck = None
+        norm_layer = get_norm_layer(norm)
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        # define downsample blocks
+        down_blocks = []
+        for n in range(ndowns):
+            c_in = input_nc_1 if n==0 else nf * min(2**(n-1), 8)
+            c_out = nf * min(2**n, 8) if n < ndowns-1 else nof
+            block = self.define_down_block(input_nc=c_in, output_nc=c_out, norm_layer=norm_layer, use_bias=use_bias, block_type=block_type)
+            down_blocks.append(block)
+        self.down_blocks = nn.ModuleList(down_blocks)
+
+        bottleneck_nc = nof+input_nc_2
+        # define bottleneck
+        if nblocks > 0:
+            self.bottleneck = self.define_bottleneck(nc=bottleneck_nc, nblocks=nblocks, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)
+        # define upsample blocks:
+        up_blocks = []
+        for n in range(ndowns):
+            c_in = bottleneck_nc if n==0 else nf * min(2**(ndowns-n), 16)
+            c_out = nf * min(2**(ndowns-n-2), 8) if n < ndowns-1 else output_nc
+            block = self.define_up_block(input_nc=c_in, output_nc=c_out, norm_layer=norm_layer, use_bias=use_bias, block_type=block_type, outermost=(n==ndowns-1))
+            up_blocks.append(block)
+        self.up_blocks = nn.ModuleList(up_blocks)
+
+        # for n, block in enumerate(self.down_blocks):
+        #     print('down_%d: %d => %d' % (n, block[0].in_channels, block[0].out_channels))
+        # for n, block in enumerate(self.up_blocks):
+        #     print('up_%d: %d => %d' % (n, block[1].in_channels, block[1].out_channels))
+
+
+    def forward(self, input_1, input_2=None, mode ='full', single_device=False):
+        assert mode in {'full', 'encode'}
+        if len(self.gpu_ids) > 1 and (not single_device):
+            if input_2 is not None:
+                return nn.parallel.data_parallel(self, (input_1, input_2), module_kwargs={'mode':mode, 'single_device':True})
+            else:
+                assert self.input_nc_2 == 0 or mode == 'encode'
+                return nn.parallel.data_parallel(self, input_1, module_kwargs={'input_2':None, 'mode': mode, 'single_device':True})
+        else:
+            if mode == 'full':
+                mid_output = []
+                x = input_1
+                for block in self.down_blocks:
+                    x = block(x)
+                    mid_output.append(x)
+                encode_rst = x
+
+                if input_2 is not None:
+                    x = torch.cat((x, input_2), dim=1)
+                if self.bottleneck is not None:
+                    x = self.bottleneck(x)
+
+                for n, block in enumerate(self.up_blocks):
+                    if n == 0:
+                        x = block(x)
+                    else:
+                        x = block(torch.cat((x, mid_output[-(n+1)]), dim=1))
+                return x, encode_rst
+
+            elif mode == 'encode':
+                x = input_1
+                for block in self.down_blocks:
+                    x = block(x)
+                return x
+
+
+    def define_down_block(self, input_nc, output_nc, norm_layer, use_bias, block_type):
+        downrelu = nn.LeakyReLU(0.2, True)
+        if block_type == 'normal':
+            block = nn.Sequential(
+                nn.Conv2d(input_nc, output_nc, kernel_size=4, stride=2, padding=1, bias=use_bias),
+                norm_layer(output_nc),
+                downrelu,
+                )
+        elif block_type == 'residual':
+            block = ResidualEncoderBlock(input_nc, output_nc, norm_layer, activation=downrelu, use_bias=use_bias, stride=2)
+        return block
+    
+    def define_up_block(self, input_nc, output_nc, norm_layer, use_bias, block_type, outermost=False):
+        uprelu = nn.ReLU(True)
+        if block_type == 'normal':
+            block = [
+                uprelu,
+                nn.ConvTranspose2d(input_nc, output_nc, kernel_size=4, stride=2, padding=1, bias=use_bias),
+            ]
+            if outermost:
+                block += [nn.Tanh()]
+            else:
+                block += [norm_layer(output_nc)]
+        elif block_type == 'residual':
+            block = [
+                nn.Upsample(scale_factor=2, mode='bilinear'),
+                ResidualEncoderBlock(input_nc, output_nc, norm_layer, activation=uprelu, use_bias=use_bias, stride=1),
+            ]
+            if outermost:
+                block += [nn.Tanh()]
+
+        block = nn.Sequential(*block)
+        return block
+
+
+    def define_bottleneck(self, nc, nblocks, norm_layer, use_dropout, use_bias):
+        bottleneck = []
+        for n in range(nblocks):
+            bottleneck += [ResnetBlock(dim=nc, padding_type='reflect', norm_layer=norm_layer, use_bias=use_bias, activation=nn.ReLU(True), use_dropout=use_dropout)]
+        return nn.Sequential(*bottleneck)
+
 
 class DecoderGenerator(nn.Module):
     def __init__(self, input_nc_1, input_nc_2=0, output_nc=3, nblocks_1=1, nups_1=3, nblocks_2=5, nups_2=2, norm='batch', use_dropout=False, gpu_ids=[]):
@@ -1850,11 +2057,12 @@ class DownsampleEncoderBlock(nn.Module):
 class ResidualEncoderBlock(nn.Module):
     def __init__(self, input_nc, output_nc, norm_layer, activation, use_bias, stride=2):
         super(ResidualEncoderBlock, self).__init__()
-
+        if not isinstance(activation, nn.Module):
+            activation = activation()
         self.conv = nn.Sequential(
             nn.Conv2d(input_nc, output_nc, kernel_size=3, stride=stride, padding=1, bias=use_bias),
             norm_layer(output_nc),
-            activation(),
+            activation,
             nn.Conv2d(output_nc, output_nc, kernel_size=3, stride=1, padding=1, bias=use_bias),
             norm_layer(output_nc))
         if input_nc == output_nc and stride == 1:
@@ -1863,7 +2071,7 @@ class ResidualEncoderBlock(nn.Module):
             self.downsample = nn.Sequential(
                 nn.Conv2d(input_nc, output_nc, kernel_size=1, stride=stride, bias=use_bias),
                 norm_layer(output_nc))
-        self.activation = activation()
+        self.activation = activation
 
     def forward(self, input):
         out = self.conv(input)

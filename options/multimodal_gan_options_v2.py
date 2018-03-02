@@ -15,7 +15,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--shape_nc', type=int, default=0, help='# channels of shape representation, depends on shape_emcode, will be auto set')
         parser.add_argument('--input_mask_mode', type = str, default = 'map', choices = ['foreground', 'body', 'target', 'map', 'grid_map'], help = 'type of segmentation mask. see base_dataset.segmap_to_mask for details. [foreground|body|target|map]')
         parser.add_argument('--post_mask_mode', type = str, default = 'fuse_face', choices = ['none', 'fuse_face', 'fuse_face+bg'], help = 'how to mask generated images [none|fuse_face|fuse_face+bg]')
-        parser.add_argument('--batch_size', type = int, default = 32, help = 'batch size')
+        parser.add_argument('--batch_size', type = int, default = 16, help = 'batch size')
         parser.add_argument('--pavi', default = False, action = 'store_true', help = 'activate pavi log')
         parser.add_argument('--which_model_init', type = str, default = 'none', help = 'load pretrained model to init netG parameters')
         ##############################
@@ -72,7 +72,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         ##############################
         # Feature Transfer and Fusion
         ##############################
-        parser.add_argument('--ftn_model', type=str, default='none', choices = ['none', 'concat', 'reduce'], help='feature transfer model')
+        parser.add_argument('--ftn_model', type=str, default='none', choices = ['none', 'concat', 'reduce', 'trans'], help='feature transfer model')
         parser.add_argument('--ftn_ndowns', type=int, default=3, help='number of downsample layers in FTN (trans)')
         parser.add_argument('--ftn_nblocks', type=int, default=3, help='number of residual blocks in FTN (trans/concat)')
         parser.add_argument('--feat_size_lr', type=int, default=8, help='LR feature map size (input size of netG)')
@@ -80,13 +80,18 @@ class BaseMMGANOptions_V2(BaseOptions):
         ##############################
         # Generator
         ##############################
-        parser.add_argument('--which_model_netG', type = str, default = 'upsample_generator', help='select model to use for netG')
+        parser.add_argument('--which_model_netG', type = str, default = 'decoder', choices = ['decoder', 'unet'], help='select model to use for netG')
         parser.add_argument('--G_output_nc', type=int, default=3, help='# output channels of netG')
+        # for decoder generator
         parser.add_argument('--G_shape_guided', action='store_true', help='add shape guide at LR level')
         parser.add_argument('--G_nblocks_1', type=int, default=2, help='number of LR residual blocks')
         parser.add_argument('--G_nups_1', type=int, default=3, help='number of LR upsample layers')
         parser.add_argument('--G_nblocks_2', type=int, default=6, help='number of HR residual blocks')
         parser.add_argument('--G_nups_2', type=int, default=2, help='number of HR upsample layers')
+        # for unet generator
+        parser.add_argument('--G_ndowns', type=int, default=5, help='number of downsample layers')
+        parser.add_argument('--G_nblocks', type=int, default=3, help='number of residual block')
+        parser.add_argument('--G_block', type=str, default='normal',choices = ['normal', 'residual'], help='generator block type')
         ##############################
         # Discriminator
         ##############################
@@ -267,7 +272,7 @@ class TrainMMGANOptions_V2(BaseMMGANOptions_V2):
         parser.add_argument('--lr_policy', type=str, default='lambda', help='learning rate policy: lambda|step|plateau',
             choices = ['step', 'plateau', 'lambda'])
         parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
-        parser.add_argument('--niter', type = int, default=20, help = '# of iter at starting learning rate')
+        parser.add_argument('--niter', type = int, default=10, help = '# of iter at starting learning rate')
         parser.add_argument('--niter_decay', type=int, default=5, help='# of iter to linearly decay learning rate to zero')
         parser.add_argument('--lr_decay', type=int, default=1, help='multiply by a gamma every lr_decay_interval epochs')
         parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')

@@ -36,8 +36,11 @@ class MultimodalDesignerGAN_V2(BaseModel):
         ###################################
         self.modules = {}
         # shape branch
-        self.shape_encoder = networks.define_image_encoder(opt, 'shape')
-        self.modules['shape_encoder'] = self.shape_encoder
+        if opt.which_model_netG != 'unet':
+            self.shape_encoder = networks.define_image_encoder(opt, 'shape')
+            self.modules['shape_encoder'] = self.shape_encoder
+        else:
+            self.shape_encoder = None
         # edge branch
         if opt.use_edge:
             self.edge_encoder = networks.define_image_encoder(opt, 'edge')
@@ -76,8 +79,19 @@ class MultimodalDesignerGAN_V2(BaseModel):
                     ndowns=opt.ftn_ndowns, norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
                 self.modules['color_trans_net'] = self.color_trans_net
 
+        elif opt.ftn_model == 'trans':
+            assert opt.use_edge or opt.use_color
+            if opt.use_edge:
+                self.edge_trans_net = networks.define_feature_fusion_network(name='FeatureTransformNetwork', feat_nc=opt.edge_nof, guide_nc=opt.shape_nof, nblocks=opt.ftn_nblocks, 
+                    feat_size=opt.feat_size_lr, norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
+                self.modules['edge_trans_net'] = self.edge_trans_net
+            if opt.use_color:
+                self.color_trans_net = networks.define_feature_fusion_network(name='FeatureTransformNetwork', feat_nc=opt.color_nof, guide_nc=opt.shape_nof, nblocks=opt.ftn_nblocks,
+                    feat_size=opt.feat_size_lr, norm=opt.norm, gpu_ids=self.gpu_ids, init_type=opt.init_type)
+                self.modules['color_trans_net'] = self.color_trans_net
+
         # netG
-        self.netG = networks.define_decoder_generator(opt)
+        self.netG = networks.define_generator(opt)
         self.modules['netG'] = self.netG
 
         # netD
@@ -99,7 +113,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
                         self.load_network(net, label, 'latest', opt.which_model_init, forced=False)
                 else:
                     # load pretrained encoder
-                    if opt.pretrain_shape:
+                    if opt.which_model_netG != 'unet' and opt.pretrain_shape:
                         self.load_network(self.shape_encoder, 'shape_encoder', 'latest', opt.which_model_init_shape_encoder)
                     if opt.use_edge and opt.pretrain_edge:
                         self.load_network(self.edge_encoder, 'edge_encoder', 'latest', opt.which_model_init_edge_encoder)
@@ -163,7 +177,6 @@ class MultimodalDesignerGAN_V2(BaseModel):
 
     def set_input(self, data):
         self.input['img'] = self.Tensor(data['img'].size()).copy_(data['img'])
-        self.input['attr_label'] = self.Tensor(data['attr_label'].size()).copy_(data['attr_label'])
         self.input['lm_map'] = self.Tensor(data['lm_map'].size()).copy_(data['lm_map'])
         self.input['seg_mask'] = self.Tensor(data['seg_mask'].size()).copy_(data['seg_mask'])
         self.input['seg_map'] = self.Tensor(data['seg_map'].size()).copy_(data['seg_map'])
@@ -202,7 +215,6 @@ class MultimodalDesignerGAN_V2(BaseModel):
         ###################################
         # shape repr and shape feat
         self.output['shape_repr'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'])
-        self.output['shape_feat'] = self.encode_shape(self.output['shape_repr'])
         # edge feat
         if self.opt.use_edge:
             self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
@@ -210,32 +222,53 @@ class MultimodalDesignerGAN_V2(BaseModel):
         if self.opt.use_color:
             self.output['color_feat'] = self.encode_color(self.input['color_map'], self.output['shape_repr'])
 
-        feat = [self.output[k] for k in ['shape_feat', 'edge_feat', 'color_feat'] if k in self.output]
-        self.output['feat'] = self.align_and_concat(feat, self.opt.feat_size_lr)
-
+        if self.opt.which_model_netG == 'decoder':
+            # extract shape feat -> feat concat -> generate image
+            self.output['shape_feat'] = self.encode_shape(self.output['shape_repr'])
+            feat = [self.output[k] for k in ['shape_feat', 'edge_feat', 'color_feat'] if k in self.output]
+            self.output['feat'] = self.align_and_concat(feat, self.opt.feat_size_lr)
+        elif self.opt.which_model_netG == 'unet':
+            # generate image & shape feat at the same time
+            feat = [self.output[k] for k in ['edge_feat', 'color_feat'] if k in self.output]
+            if len(feat) > 0:
+                feat = self.align_and_concat(feat, self.opt.feat_size_lr)
+            else:
+                feat = None
+            self.output['img_fake_raw'], self.output['shape_feat'] = self.netG(self.output['shape_repr'], feat)
+            self.output['feat'] = feat
         ###################################
         # feature fusion
         ###################################
         if self.opt.ftn_model != 'none':
             self.transfer_feature(detach=True)
-            feat_trans = [self.output[k] for k in ['shape_feat_trans', 'edge_feat_trans', 'color_feat_trans'] if k in self.output]
+            if self.opt.which_model_netG == 'decoder':
+                feat_trans = [self.output[k] for k in ['shape_feat_trans', 'edge_feat_trans', 'color_feat_trans'] if k in self.output]
+            elif self.opt.which_model_netG == 'unet':
+                feat_trans = [self.output[k] for k in ['edge_feat_trans', 'color_feat_trans'] if k in self.output]
             self.output['feat_trans'] = self.align_and_concat(feat_trans, self.opt.feat_size_lr)
         ###################################
         # netG
         ###################################
         if mode in {'normal', 'dual'}:
-            if self.opt.G_shape_guided:
-                shape_guide = F.upsample(self.output['shape_repr'], self.opt.feat_size_hr)
-                self.output['img_fake_raw'] = self.netG(self.output['feat'], shape_guide)
-            else:
-                self.output['img_fake_raw'] = self.netG(self.output['feat'])
+            if self.opt.which_model_netG == 'decoder':
+                if self.opt.G_shape_guided:
+                    shape_guide = F.adaptive_avg_pool(self.output['shape_repr'], self.opt.feat_size_hr)
+                    self.output['img_fake_raw'] = self.netG(self.output['feat'], shape_guide)
+                else:
+                    self.output['img_fake_raw'] = self.netG(self.output['feat'])
+            elif self.opt.which_model_netG == 'unet':
+                pass
             self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.input['img'])
         if mode in {'trans', 'dual'}:
-            if self.opt.G_shape_guided:
-                shape_guide = F.upsample(self.output['shape_repr'], self.opt.feat_size_hr)
-                self.output['img_fake_trans_raw'] = self.netG(self.output['feat_trans'], shape_guide)
-            else:
-                self.output['img_fake_trans_raw'] = self.netG(self.output['feat_trans'])
+            if self.opt.which_model_netG == 'decoder':
+                if self.opt.G_shape_guided:
+                    shape_guide = F.adaptive_avg_pool(self.output['shape_repr'], self.opt.feat_size_hr)
+                    self.output['img_fake_trans_raw'] = self.netG(self.output['feat_trans'], shape_guide)
+                else:
+                    self.output['img_fake_trans_raw'] = self.netG(self.output['feat_trans'])
+            elif self.opt.which_model_netG == 'unet':
+                self.output['img_fake_trans_raw'], _ = self.netG(self.output['shape_repr'], self.output['feat_trans'])
+
             self.output['img_fake_trans'] = self.mask_image(self.output['img_fake_trans_raw'], self.input['seg_map'], self.input['img'])
         self.output['img_real'] = self.output['img_real_raw'] = self.input['img']
 
@@ -386,7 +419,10 @@ class MultimodalDesignerGAN_V2(BaseModel):
         return shape_repr
 
     def encode_shape(self, shape_repr):
-        return self.shape_encoder(shape_repr)
+        if self.opt.which_model_netG != 'unet':
+            return self.shape_encoder(shape_repr)
+        else:
+            return self.netG(shape_repr, None, 'encode')
 
     def encode_edge(self, input, shape_repr):
         if self.opt.edge_shape_guided:
