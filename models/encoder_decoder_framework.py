@@ -112,7 +112,6 @@ class EncoderDecoderFramework(BaseModel):
 
     def set_input(self, data):
         self.input['img'] = self.Tensor(data['img'].size()).copy_(data['img'])
-        self.input['attr_label'] = self.Tensor(data['attr_label'].size()).copy_(data['attr_label'])
         self.input['lm_map'] = self.Tensor(data['lm_map'].size()).copy_(data['lm_map'])
         self.input['seg_mask'] = self.Tensor(data['seg_mask'].size()).copy_(data['seg_mask'])
         self.input['seg_map'] = self.Tensor(data['seg_map'].size()).copy_(data['seg_map'])

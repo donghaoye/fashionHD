@@ -151,9 +151,9 @@ class SmoothLoss():
         self.weight_buffer.append(input_1.size(0))
 
         if isinstance(loss, Variable):
-            self.buffer.append(loss.data[0])
+            self.buffer.append(loss.data.item())
         elif isinstance(loss, torch.Tensor):
-            self.buffer.append(loss[0])
+            self.buffer.append(loss.data.item())
         else:
             self.buffer.append(loss)
 
