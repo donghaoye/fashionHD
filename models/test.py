@@ -157,7 +157,9 @@ def test_MultiModalDesignerGAN_V2():
 
 
     ###### unet G ######
-    args = '--benchmark debug --batch_size 4 --gpu_ids 0,1 --which_model_netG unet --feat_size_lr 8 --G_ndowns 5 --G_nblocks 5 --ftn_model trans --ftn_nblocks 1 --G_block residual'
+    # args = '--benchmark debug --batch_size 4 --gpu_ids 0,1 --which_model_netG unet --feat_size_lr 8 --G_ndowns 5 --G_nblocks 5 --ftn_model trans --ftn_nblocks 1 --G_block residual'
+
+    
 
     opt = TrainMMGANOptions_V2().parse(args)
     loader = CreateDataLoader(opt)

@@ -75,6 +75,7 @@ def segmap_to_mask(seg_map, mask_type, cloth_type):
             - 'body': arm+leg+cloth (no head, hair, background)
             - 'target': target cloth
             - 'map': output segmentation map in one-hot format
+            - 'reduce_map': segmentation map 4-channel: head, hair, body, background
         cloth_type(int):
             - 1: upperdody
             - 2: lowerbody
@@ -118,7 +119,6 @@ def segmap_to_mask(seg_map, mask_type, cloth_type):
                 mask.append(m)
         mask = np.stack(mask, axis=2).astype(np.float32)
     return mask
-
 
 
 def trans_resize(img, size, interp = cv2.INTER_LINEAR):

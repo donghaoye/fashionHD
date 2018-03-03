@@ -403,19 +403,23 @@ class MultimodalDesignerGAN_V2(BaseModel):
             self.backward_trans()
             self.optim_FTN.step()
 
-    def get_shape_repr(self, lm_map, seg_mask, edge_map):
-        if self.opt.shape_encode == 'lm':
+    def get_shape_repr(self, lm_map, seg_mask, edge_map, shape_encode=None):
+        if shape_encode is None:
+            shape_encode = self.opt.shape_encode
+        if shape_encode == 'lm':
             shape_repr = lm_map
-        elif self.opt.shape_encode == 'seg':
+        elif shape_encode == 'seg':
             shape_repr = seg_mask
-        elif self.opt.shape_encode == 'lm+seg':
+        elif shape_encode == 'lm+seg':
             shape_repr = torch.cat((lm_map, seg_mask), dim = 1)
-        elif self.opt.shape_encode == 'seg+e':
+        elif shape_encode == 'seg+e':
             shape_repr = torch.cat((seg_mask, edge_map), dim = 1)
-        elif self.opt.shape_encode == 'lm+seg+e':
+        elif shape_encode == 'lm+seg+e':
             shape_repr = torch.cat((lm_map, seg_mask, edge_map), dim = 1)
-        elif self.opt.shape_encode == 'e':
+        elif shape_encode == 'e':
             shape_repr = edge_map
+        elif shape_encode == 'reduce_seg':
+            shape_repr = torch.cat((seg_mask[:,0:3], seg_mask[:,3::].max(dim=1, keepdim=True)[0]), dim=1)
         return shape_repr
 
     def encode_shape(self, shape_repr):

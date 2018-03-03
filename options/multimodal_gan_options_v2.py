@@ -11,7 +11,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--which_gan', type=str, default='dcgan', choices = ['dcgan', 'lsgan', 'wgan'], help='type of gan loss [dcgan|lsgan|wgan]')
         parser.add_argument('--norm', type=str, default='instance', help='instance normalization or batch normalization [batch|instance|none]')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
-        parser.add_argument('--shape_encode', type = str, default = 'seg', choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e'], help = 'cloth shape encoding method')
+        parser.add_argument('--shape_encode', type = str, default = 'seg', choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e', 'reduced_seg'], help = 'cloth shape encoding method')
         parser.add_argument('--shape_nc', type=int, default=0, help='# channels of shape representation, depends on shape_emcode, will be auto set')
         parser.add_argument('--input_mask_mode', type = str, default = 'map', choices = ['foreground', 'body', 'target', 'map', 'grid_map'], help = 'type of segmentation mask. see base_dataset.segmap_to_mask for details. [foreground|body|target|map]')
         parser.add_argument('--post_mask_mode', type = str, default = 'fuse_face', choices = ['none', 'fuse_face', 'fuse_face+bg'], help = 'how to mask generated images [none|fuse_face|fuse_face+bg]')
@@ -147,6 +147,8 @@ class BaseMMGANOptions_V2(BaseOptions):
             opt.shape_nc = nc_seg + nc_edge
         elif opt.shape_encode == 'e':
             opt.shape_nc = nc_edge
+        elif opt.shape_encode == 'reduced_seg':
+            opt.shape_nc = 4
         # set D_input_nc
         if opt.D_no_cond:
             opt.D_input_nc = nc_img
