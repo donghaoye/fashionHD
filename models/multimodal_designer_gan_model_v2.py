@@ -147,6 +147,10 @@ class MultimodalDesignerGAN_V2(BaseModel):
                 self.crit_vgg = networks.VGGLoss(self.gpu_ids)
                 self.loss_functions.append(self.crit_vgg)
 
+            if self.opt.G_output_seg:
+                self.crit_CE = nn.CrossEntropyLoss()
+                self.loss_functions.append(self.crit_CE)
+
             self.crit_psnr = networks.SmoothLoss(networks.PSNR())
             self.loss_functions.append(self.crit_psnr)
             ###################################
@@ -234,7 +238,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
                 feat = self.align_and_concat(feat, self.opt.feat_size_lr)
             else:
                 feat = None
-            self.output['img_fake_raw'], self.output['shape_feat'] = self.netG(self.output['shape_repr'], feat)
+            self.output['img_fake_raw'], sefl.output['seg_pred'], self.output['shape_feat'] = self.generate_image(self.output['shape_repr'], feat)
             self.output['feat'] = feat
         ###################################
         # feature fusion
@@ -253,9 +257,9 @@ class MultimodalDesignerGAN_V2(BaseModel):
             if self.opt.which_model_netG == 'decoder':
                 if self.opt.G_shape_guided:
                     shape_guide = F.adaptive_avg_pool(self.output['shape_repr'], self.opt.feat_size_hr)
-                    self.output['img_fake_raw'] = self.netG(self.output['feat'], shape_guide)
+                    self.output['img_fake_raw'], self.output['seg_pred'], _ = self.generate_image(self.output['feat'], shape_guide)
                 else:
-                    self.output['img_fake_raw'] = self.netG(self.output['feat'])
+                    self.output['img_fake_raw'], self.output['seg_pred'], _ = self.generate_image(self.output['feat'], None)
             elif self.opt.which_model_netG == 'unet':
                 pass
             self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.input['img'])
@@ -263,11 +267,11 @@ class MultimodalDesignerGAN_V2(BaseModel):
             if self.opt.which_model_netG == 'decoder':
                 if self.opt.G_shape_guided:
                     shape_guide = F.adaptive_avg_pool(self.output['shape_repr'], self.opt.feat_size_hr)
-                    self.output['img_fake_trans_raw'] = self.netG(self.output['feat_trans'], shape_guide)
+                    self.output['img_fake_trans_raw'], self.output['seg_pred_trans'], _ = self.generate_image(self.output['feat_trans'], shape_guide)
                 else:
-                    self.output['img_fake_trans_raw'] = self.netG(self.output['feat_trans'])
+                    self.output['img_fake_trans_raw'], self.output['seg_pred_trans'], _ = self.generate_image(self.output['feat_trans'], None)
             elif self.opt.which_model_netG == 'unet':
-                self.output['img_fake_trans_raw'], _ = self.netG(self.output['shape_repr'], self.output['feat_trans'])
+                self.output['img_fake_trans_raw'], self.output['seg_pred_trans'], _ = self.generate_image(self.output['shape_repr'], self.output['feat_trans'])
 
             self.output['img_fake_trans'] = self.mask_image(self.output['img_fake_trans_raw'], self.input['seg_map'], self.input['img'])
         self.output['img_real'] = self.output['img_real_raw'] = self.input['img']
@@ -321,6 +325,12 @@ class MultimodalDesignerGAN_V2(BaseModel):
         if self.opt.loss_weight_vgg > 0:
             self.output['loss_G_VGG'] = self.crit_vgg(img_fake, self.output['img_real'])
             self.output['loss_G'] += self.output['loss_G_VGG'] * self.opt.loss_weight_vgg
+        # segmentation prediction loss
+        if self.opt.G_output_seg:
+            assert self.output['seg_pred'] is not None
+            self.output['seg_ref'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], shape_encode='seg')
+            self.output['loss_G_seg'] = self.calc_seg_loss(self.output['seg_pred'], self.output['seg_ref'])
+            self.output['loss_G'] += self.output['loss_G_seg'] * self.opt.loss_weight_seg
         # backward
         self.output['loss_G'].backward()
 
@@ -348,6 +358,13 @@ class MultimodalDesignerGAN_V2(BaseModel):
         self.output['loss_G'] += self.output['loss_G_L1'] * self.opt.loss_weight_L1
         self.output['grad_G_L1'] = (img_fake.grad - grad).norm()
         grad = img_fake.grad.clone()
+        # segmentation prediction loss
+        if self.opt.G_output_seg:
+            assert self.output['seg_pred'] is not None
+            self.output['seg_ref'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], shape_encode='seg')
+            self.output['loss_G_seg'] = self.calc_seg_loss(self.output['seg_pred'], self.output['seg_ref'])
+            (self.output['loss_G_seg'] * self.opt.loss_weight_seg).backward(retain_graph=True)
+            self.output['loss_G'] += self.output['loss_G_seg'] * self.opt.loss_weight_seg
         # VGG Loss
         if self.opt.loss_weight_vgg > 0:
             self.output['loss_G_VGG'] = self.crit_vgg(img_fake, self.output['img_real'])
@@ -437,6 +454,34 @@ class MultimodalDesignerGAN_V2(BaseModel):
         if self.opt.color_shape_guided:
             input = torch.cat((input, shape_repr), dim=1)
         return self.color_encoder(input)
+    
+    def calc_seg_loss(self, seg_pred, seg_ref):
+        seg_pred_f = seg_pred.transpose(1,3).contiguous().view(-1,7)
+        seg_ref_f = seg_ref.transpose(1,3).contiguous().view(-1,7)
+        return self.crit_CE(seg_pred_f, seg_ref_f)
+
+    def generate_image(self, input_1, input_2):
+        '''
+        for unet generator
+            # input_1: shape_repr
+            # input_2: edge/color feature
+        for decoder generator
+            # input_1: feature
+            # input_2: HR shape guide
+        '''
+        if self.opt.which_model_netG == 'unet':
+            out, shape_feat = self.netG(input_1, input_2)
+        elif self.opt.which_model_netG == 'decoder':
+            out = self.netG(input_1, input_2)
+            shape_feat = None
+        if self.opt.G_output_seg:
+            assert out.size(1) == 10
+            img_out = F.tanh(out[:,0:3])
+            seg_out = out[:,3::]
+        else:
+            img_out = F.tanh(out)
+            seg_out = None
+        return img_out, seg_out, shape_feat
     
     def align_and_concat(self, inputs, size):
         # print(size)
@@ -534,6 +579,9 @@ class MultimodalDesignerGAN_V2(BaseModel):
 
         if 'loss_G_VGG' in self.output:
             errors['G_VGG'] = self.output['loss_G_VGG'].data[0]
+        if 'loss_G_seg' in self.output:
+            errors['G_seg'] = self.output['loss_G_seg'].data[0]
+
         if 'loss_trans_feat' in self.output:
             errors['T_feat'] = self.output['loss_trans_feat'].data[0]
         if 'loss_trans_img' in self.output:
@@ -564,7 +612,10 @@ class MultimodalDesignerGAN_V2(BaseModel):
         for name in ['img_fake_trans', 'img_fake_trans_raw']:
             if name in self.output:
                 visuals[name] = self.output[name].data.cpu()
-
+        
+        for name in ['seg_ref','seg_pred', 'seg_pred_trans']:
+            if name in self.output:
+                visuals[name] = self.output[name].data.cpu()
         return visuals
 
     def save(self, label):

@@ -1357,34 +1357,25 @@ class UnetResidualGenerator(nn.Module):
 
     def define_down_block(self, input_nc, output_nc, norm_layer, use_bias, block_type):
         downrelu = nn.LeakyReLU(0.2, True)
-        if block_type == 'normal':
-            block = nn.Sequential(
-                nn.Conv2d(input_nc, output_nc, kernel_size=4, stride=2, padding=1, bias=use_bias),
-                norm_layer(output_nc),
-                downrelu,
-                )
-        elif block_type == 'residual':
-            block = ResidualEncoderBlock(input_nc, output_nc, norm_layer, activation=downrelu, use_bias=use_bias, stride=2)
+        block = nn.Sequential(
+            nn.Conv2d(input_nc, output_nc, kernel_size=4, stride=2, padding=1, bias=use_bias),
+            norm_layer(output_nc),
+            downrelu,
+            )
         return block
     
     def define_up_block(self, input_nc, output_nc, norm_layer, use_bias, block_type, outermost=False):
         uprelu = nn.ReLU(True)
-        if block_type == 'normal':
-            block = [
-                uprelu,
-                nn.ConvTranspose2d(input_nc, output_nc, kernel_size=4, stride=2, padding=1, bias=use_bias),
-            ]
-            if outermost:
-                block += [nn.Tanh()]
-            else:
-                block += [norm_layer(output_nc)]
-        elif block_type == 'residual':
-            block = [
-                nn.Upsample(scale_factor=2, mode='bilinear'),
-                ResidualEncoderBlock(input_nc, output_nc, norm_layer, activation=uprelu, use_bias=use_bias, stride=1),
-            ]
-            if outermost:
-                block += [nn.Tanh()]
+        block = [
+            uprelu,
+            nn.ConvTranspose2d(input_nc, output_nc, kernel_size=4, stride=2, padding=1, bias=use_bias),
+        ]
+        if not outermost:
+            block += [norm_layer(output_nc)]
+            if block_type == 'residual':
+                block = +=[
+                    ResidualEncoderBlock(input_nc, output_nc, norm_layer, activation=uprelu, use_bias=use_bias, stride=1),
+                ]
 
         block = nn.Sequential(*block)
         return block
@@ -1395,7 +1386,6 @@ class UnetResidualGenerator(nn.Module):
         for n in range(nblocks):
             bottleneck += [ResnetBlock(dim=nc, padding_type='reflect', norm_layer=norm_layer, use_bias=use_bias, activation=nn.ReLU(True), use_dropout=use_dropout)]
         return nn.Sequential(*bottleneck)
-
 
 class DecoderGenerator(nn.Module):
     def __init__(self, input_nc_1, input_nc_2=0, output_nc=3, nblocks_1=1, nups_1=3, nblocks_2=5, nups_2=2, norm='batch', use_dropout=False, gpu_ids=[]):
@@ -1444,7 +1434,7 @@ class DecoderGenerator(nn.Module):
         upsample_2_layers += [
             nn.ReflectionPad2d(3),
             nn.Conv2d(c_in, output_nc, kernel_size=7, padding=0),
-            nn.Tanh()
+            # nn.Tanh()
             ]
         self.upsample_2 = nn.Sequential(*upsample_2_layers)
     

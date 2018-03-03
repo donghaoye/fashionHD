@@ -76,7 +76,7 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--edge_nf', type=int, default=64, help='feature dimension of first conv layer in edge encoder')
         parser.add_argument('--edge_nof', type=int, default=128, help='output feature dimension, set -1  to use default setting')
         parser.add_argument('--edge_ndowns',type=int, default=5, help='number of downsample layers in edge encoder')
-        parser.add_argument('--edge_shape_guided', type=int, default=1, choices=[0,1], help='concat shape_mask and edge_map to guide edge encoding')
+        parser.add_argument('--edge_shape_guided', type=int, default=0, choices=[0,1], help='concat shape_mask and edge_map to guide edge encoding')
         parser.add_argument('--edge_encoder_type', type=str, default='default')
         parser.add_argument('--edge_encoder_block', type=str, default='default')
         ##############################
@@ -86,7 +86,7 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--color_nf', type=int, default=64, help='feature dimension of first conv layer in color encoder')
         parser.add_argument('--color_nof', type=int, default=128, help='output feature dimension, set -1  to use default setting')
         parser.add_argument('--color_ndowns', type=int, default=5, help='number of downsample layers in color encoder')
-        parser.add_argument('--color_shape_guided', type=int, default=1, choices=[0,1], help='concat shape_mask and color_map to guide color encoding')
+        parser.add_argument('--color_shape_guided', type=int, default=0, choices=[0,1], help='concat shape_mask and color_map to guide color encoding')
         parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
         parser.add_argument('--color_gaussian_sigma', type=float, default=10.0, help='gaussian blur sigma')
         parser.add_argument('--color_patch', action='store_true', help='use a patch inside the clothing region')

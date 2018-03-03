@@ -46,8 +46,8 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--edge_nf', type=int, default=32, help='feature dimension of first conv layer in edge encoder')
         parser.add_argument('--edge_nof', type=int, default=64, help='output feature dimension, set -1  to use default setting')
         parser.add_argument('--edge_ndowns',type=int, default=5, help='number of downsample layers in edge encoder')
-        parser.add_argument('--edge_shape_guided', type=int, default=1, choices=[0,1], help='concat shape_mask and edge_map to guide edge encoding')
-        parser.add_argument('--edge_outer', action = 'store_true', help='use all edges instead of inner edge')
+        parser.add_argument('--edge_shape_guided', type=int, default=0, choices=[0,1], help='concat shape_mask and edge_map to guide edge encoding')
+        parser.add_argument('--edge_outer', type=int, default=1, choices=[0, 1], help='use all edges instead of inner edge')
         parser.add_argument('--edge_threshold', type=int, default=0, help='edge threshold to filter small edge [0-255]')
         parser.add_argument('--edge_encoder_type', type=str, default='default')
         parser.add_argument('--edge_encoder_block', type=str, default='default')
@@ -60,7 +60,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--color_nf', type=int, default=32, help='feature dimension of first conv layer in color encoder')
         parser.add_argument('--color_nof', type=int, default=64, help='output feature dimension, set -1  to use default setting')
         parser.add_argument('--color_ndowns', type=int, default=5, help='number of downsample layers in color encoder')
-        parser.add_argument('--color_shape_guided', type=int, default=1, choices=[0,1], help='concat shape_mask and color_map to guide color encoding')
+        parser.add_argument('--color_shape_guided', type=int, default=0, choices=[0,1], help='concat shape_mask and color_map to guide color encoding')
         parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
         parser.add_argument('--color_gaussian_sigma', type=float, default=10.0, help='gaussian blur sigma')
         parser.add_argument('--color_patch', type=int, default=1, choices=[0,1], help='use a patch inside the clothing region')
@@ -81,6 +81,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         # Generator
         ##############################
         parser.add_argument('--which_model_netG', type = str, default = 'decoder', choices = ['decoder', 'unet'], help='select model to use for netG')
+        parser.add_argument('--G_output_seg', type=int, default=0, choices=[0,1], help='generator output image and (7-channel) segentation map')
         parser.add_argument('--G_output_nc', type=int, default=3, help='# output channels of netG')
         # for decoder generator
         parser.add_argument('--G_shape_guided', action='store_true', help='add shape guide at LR level')
@@ -149,11 +150,17 @@ class BaseMMGANOptions_V2(BaseOptions):
             opt.shape_nc = nc_edge
         elif opt.shape_encode == 'reduced_seg':
             opt.shape_nc = 4
+        # set G_input_nc
+        if opt.G_output_seg:
+            opt.G_output_nc = 10
+        else:
+            opt.G_output_nc = 3
         # set D_input_nc
         if opt.D_no_cond:
             opt.D_input_nc = nc_img
         else:
             opt.D_input_nc = nc_img + opt.shape_nc + (nc_edge if opt.use_edge else 0) + (nc_color if opt.use_color else 0)
+
         ###########################################
         # set encoder initialization
         ###########################################
@@ -178,40 +185,54 @@ class BaseMMGANOptions_V2(BaseOptions):
             opt.edge_encoder_type = opt.encoder_type
             opt.edge_encoder_block = opt.encoder_block
         if opt.which_model_init_edge_encoder == 'default':
-            if opt.edge_outer:
-                if opt.edge_encoder_type == 'normal' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 64:
-                    opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.0'
-                elif opt.edge_encoder_type == 'fc' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 64:
-                    opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.2'
-                elif opt.edge_encoder_type == 'fc' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 256 and opt.edge_nf == 64:
-                    opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.3'
+            if edge_shape_guided:
+                if opt.edge_outer:
+                    if opt.edge_encoder_type == 'normal' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 64:
+                        opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.0'
+                    elif opt.edge_encoder_type == 'fc' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 64:
+                        opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.2'
+                    elif opt.edge_encoder_type == 'fc' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 256 and opt.edge_nf == 64:
+                        opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.3'
+                else:
+                    if opt.edge_encoder_type == 'normal' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 64:
+                        opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.1'
+                    elif opt.edge_encoder_type == 'normal' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 64 and opt.edge_nf == 32:
+                        opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.8'
+                    elif opt.edge_encoder_type == 'fc' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 64:
+                        opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.4'
+                    elif opt.edge_encoder_type == 'fc' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 256 and opt.edge_nf == 64:
+                        opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.5'
+                    elif opt.edge_encoder_type == 'fc' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 32:
+                        opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.9'
             else:
-                if opt.edge_encoder_type == 'normal' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 64:
-                    opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.1'
-                elif opt.edge_encoder_type == 'normal' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 64 and opt.edge_nf == 32:
-                    opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.8'
-                elif opt.edge_encoder_type == 'fc' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 64:
-                    opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.4'
-                elif opt.edge_encoder_type == 'fc' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 256 and opt.edge_nf == 64:
-                    opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.5'
-                elif opt.edge_encoder_type == 'fc' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 32:
-                    opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.9'
+                if opt.edge_outer:
+                    if opt.edge_encoder_type == 'normal' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 64:
+                        opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.10'
+                    elif opt.edge_encoder_type == 'normal' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 256 and opt.edge_nf == 64:
+                        opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.11'
         # color
         if opt.color_encoder_type == 'default':
             opt.color_encoder_type = opt.encoder_type
             opt.color_encoder_block = opt.encoder_block
         if opt.which_model_init_color_encoder == 'default':
-            if opt.color_patch and opt.color_patch_mode == 'crop5':
-                if opt.color_encoder_type == 'normal' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 128 and opt.color_nf == 64:
-                    opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.4'
-                elif opt.color_encoder_type == 'normal' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 64 and opt.color_nf == 32:
-                    opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.11'
-                elif opt.color_encoder_type == 'fc' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 128 and opt.color_nf == 64:
-                    opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.7'
-                elif opt.color_encoder_type == 'fc' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 256 and opt.color_nf == 64:
-                    opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.8'
-                elif opt.color_encoder_type == 'fc' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 128 and opt.color_nf == 32:
-                    opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.12'
+            if opt.color_shape_guided:
+                if opt.color_patch and opt.color_patch_mode == 'crop5':
+                    if opt.color_encoder_type == 'normal' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 128 and opt.color_nf == 64:
+                        opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.4'
+                    elif opt.color_encoder_type == 'normal' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 64 and opt.color_nf == 32:
+                        opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.11'
+                    elif opt.color_encoder_type == 'fc' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 128 and opt.color_nf == 64:
+                        opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.7'
+                    elif opt.color_encoder_type == 'fc' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 256 and opt.color_nf == 64:
+                        opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.8'
+                    elif opt.color_encoder_type == 'fc' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 128 and opt.color_nf == 32:
+                        opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.12'
+            else:
+                if opt.color_patch and opt.color_patch_mode == 'crop5':
+                    if opt.color_encoder_type == 'normal' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 128 and opt.color_nf == 64:
+                        opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.13'
+                    elif opt.color_encoder_type == 'normal' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 256 and opt.color_nf == 64:
+                        opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.14'
 
         ###########################################
         # set dataset file path
@@ -294,7 +315,7 @@ class TrainMMGANOptions_V2(BaseMMGANOptions_V2):
         parser.add_argument('--loss_weight_vgg', type = float, default = 100., help = 'loss weight of vgg loss (perceptual feature loss)')
         parser.add_argument('--loss_weight_trans_feat', type=float, default=1, help = 'loss weight of feature transfer loss (feat distance)')
         parser.add_argument('--loss_weight_trans_img', type=float, default=1, help = 'loss weight of feature transfer loss (image distance)')
-
+        parser.add_argument('--loss_weight_seg', type=float, default=1, help = 'loss weight of segmentation prediction')
         # set train
         self.is_train = True
 

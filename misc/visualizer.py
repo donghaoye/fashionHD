@@ -387,22 +387,18 @@ class GANVisualizer_V2(BaseVisualizer):
         # post-process
         if 'landmark_heatmap' in visuals:
             visuals['landmark_heatmap'] = visuals['landmark_heatmap'].max(dim=1, keepdim=True)[0].expand_as(visuals['img_real'])
-        if 'seg_map' in visuals:
-            visuals['seg_map'] = seg_to_rgb(visuals['seg_map'])
-        if 'seg_mask_aug' in visuals:
-            visuals['seg_mask_aug'] = seg_to_rgb(visuals['seg_mask_aug'])
-        if 'edge_map' in visuals:
-            visuals['edge_map'] = visuals['edge_map'].expand_as(visuals['img_real'])
-        if 'edge_map_aug' in visuals:
-            visuals['edge_map_aug'] = visuals['edge_map_aug'].expand_as(visuals['img_real'])
-        if 'color_map' in visuals and visuals['color_map'].size(1)==6:
-            visuals['color_map'] = visuals['color_map'][:,0:3] + visuals['color_map'][:,3:6]
-        if 'color_map_aug' in visuals and visuals['color_map_aug'].size(1)==6:
-            visuals['color_map_aug'] = visuals['color_map_aug'][:,0:3] + visuals['color_map_aug'][:,3:6]
-        
+        for name in ['seg_map', 'seg_mask_aug', 'seg_ref', 'seg_pred', 'seg_pred_trans']:
+            if name in visuals:
+                visuals['name'] = seg_to_rgb(visuals['name'])
+        for name in ['edge_map', 'edge_map_aug']:
+            if name in visuals:
+                visuals['name'] = visuals['name'].expand_as(visuals['img_real'])
+        for name in ['color_map', 'color_map_aug']:
+            if name in visuals and visuals[name].size(1) == 6:
+                visuals[name] = visuals[name][:,0:3] + visuals[name][:,3:6]
         # display
         num_vis = min(opt.max_n_vis, visuals['img_real'].size(0))
-        item_list = ['img_real', 'img_fake', 'img_fake_trans', 'seg_map', 'edge_map', 'color_map', 'img_fake_raw', 'img_fake_trans_raw']
+        item_list = ['img_real', 'img_fake', 'img_fake_trans', 'seg_map', 'edge_map', 'color_map', 'seg_ref', 'seg_pred', 'seg_pred_trans']
         
         imgs = [visuals[item_name].cpu() for item_name in item_list if item_name in visuals]
         imgs = torch.stack(imgs, dim=1)[0:num_vis]
