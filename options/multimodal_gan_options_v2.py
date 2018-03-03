@@ -32,8 +32,8 @@ class BaseMMGANOptions_V2(BaseOptions):
         ##############################
         # Shape Encoder
         ##############################
-        parser.add_argument('--shape_nf', type=int, default=32, help='feature dimension of first conv layer in shape encoder')
-        parser.add_argument('--shape_nof', type=int, default=64, help='output feature dimension, set -1  to use default setting')
+        parser.add_argument('--shape_nf', type=int, default=64, help='feature dimension of first conv layer in shape encoder')
+        parser.add_argument('--shape_nof', type=int, default=128, help='output feature dimension, set -1  to use default setting')
         parser.add_argument('--shape_ndowns',type=int, default=5, help='number of downsample layers in shape encoder')
         parser.add_argument('--shape_encoder_type', type=str, default='default')
         parser.add_argument('--shape_encoder_block', type=str, default='default')
@@ -43,8 +43,8 @@ class BaseMMGANOptions_V2(BaseOptions):
         # Edge Encoder
         ##############################
         parser.add_argument('--use_edge', type=int, default=1, choices=[0,1], help='use edge condition branch')
-        parser.add_argument('--edge_nf', type=int, default=32, help='feature dimension of first conv layer in edge encoder')
-        parser.add_argument('--edge_nof', type=int, default=64, help='output feature dimension, set -1  to use default setting')
+        parser.add_argument('--edge_nf', type=int, default=64, help='feature dimension of first conv layer in edge encoder')
+        parser.add_argument('--edge_nof', type=int, default=128, help='output feature dimension, set -1  to use default setting')
         parser.add_argument('--edge_ndowns',type=int, default=5, help='number of downsample layers in edge encoder')
         parser.add_argument('--edge_shape_guided', type=int, default=0, choices=[0,1], help='concat shape_mask and edge_map to guide edge encoding')
         parser.add_argument('--edge_outer', type=int, default=1, choices=[0, 1], help='use all edges instead of inner edge')
@@ -57,8 +57,8 @@ class BaseMMGANOptions_V2(BaseOptions):
         # Color Encoder
         ##############################
         parser.add_argument('--use_color', type=int, default=1, choices=[0,1], help='use color condition branch')
-        parser.add_argument('--color_nf', type=int, default=32, help='feature dimension of first conv layer in color encoder')
-        parser.add_argument('--color_nof', type=int, default=64, help='output feature dimension, set -1  to use default setting')
+        parser.add_argument('--color_nf', type=int, default=64, help='feature dimension of first conv layer in color encoder')
+        parser.add_argument('--color_nof', type=int, default=128, help='output feature dimension, set -1  to use default setting')
         parser.add_argument('--color_ndowns', type=int, default=5, help='number of downsample layers in color encoder')
         parser.add_argument('--color_shape_guided', type=int, default=0, choices=[0,1], help='concat shape_mask and color_map to guide color encoding')
         parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
@@ -185,7 +185,7 @@ class BaseMMGANOptions_V2(BaseOptions):
             opt.edge_encoder_type = opt.encoder_type
             opt.edge_encoder_block = opt.encoder_block
         if opt.which_model_init_edge_encoder == 'default':
-            if edge_shape_guided:
+            if opt.edge_shape_guided:
                 if opt.edge_outer:
                     if opt.edge_encoder_type == 'normal' and opt.edge_encoder_block == 'residual' and opt.edge_ndowns == 5 and opt.edge_nof == 128 and opt.edge_nf == 64:
                         opt.which_model_init_edge_encoder = 'ED_MMDGAN_RECON_1.0'
@@ -295,7 +295,7 @@ class TrainMMGANOptions_V2(BaseMMGANOptions_V2):
         parser.add_argument('--lr_policy', type=str, default='lambda', help='learning rate policy: lambda|step|plateau',
             choices = ['step', 'plateau', 'lambda'])
         parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
-        parser.add_argument('--niter', type = int, default=10, help = '# of iter at starting learning rate')
+        parser.add_argument('--niter', type = int, default=20, help = '# of iter at starting learning rate')
         parser.add_argument('--niter_decay', type=int, default=5, help='# of iter to linearly decay learning rate to zero')
         parser.add_argument('--lr_decay', type=int, default=1, help='multiply by a gamma every lr_decay_interval epochs')
         parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')

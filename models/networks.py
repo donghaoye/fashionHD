@@ -1309,7 +1309,7 @@ class UnetResidualGenerator(nn.Module):
         for n in range(ndowns):
             c_in = bottleneck_nc if n==0 else nf * min(2**(ndowns-n), 16)
             c_out = nf * min(2**(ndowns-n-2), 8) if n < ndowns-1 else output_nc
-            block = self.define_up_block(input_nc=c_in, output_nc=c_out, norm_layer=norm_layer, use_bias=use_bias, block_type=block_type, outermost=(n==ndowns-1))
+            block = self.define_up_block(input_nc=c_in, output_nc=c_out, norm_layer=norm_layer, use_bias=use_bias, block_type=block_type, outermost=(n==ndowns-1), use_dropout=use_dropout)
             up_blocks.append(block)
         self.up_blocks = nn.ModuleList(up_blocks)
 
@@ -1364,7 +1364,7 @@ class UnetResidualGenerator(nn.Module):
             )
         return block
     
-    def define_up_block(self, input_nc, output_nc, norm_layer, use_bias, block_type, outermost=False):
+    def define_up_block(self, input_nc, output_nc, norm_layer, use_bias, block_type, outermost=False, use_dropout=False):
         uprelu = nn.ReLU(True)
         block = [
             uprelu,
@@ -1373,8 +1373,8 @@ class UnetResidualGenerator(nn.Module):
         if not outermost:
             block += [norm_layer(output_nc)]
             if block_type == 'residual':
-                block = +=[
-                    ResidualEncoderBlock(input_nc, output_nc, norm_layer, activation=uprelu, use_bias=use_bias, stride=1),
+                block +=[
+                    ResnetBlock(dim=output_nc, padding_type='reflect', norm_layer=norm_layer, use_bias=use_bias, activation=uprelu, use_dropout=use_dropout)
                 ]
 
         block = nn.Sequential(*block)

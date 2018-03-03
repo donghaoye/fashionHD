@@ -196,7 +196,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
 
         # create input variables
         for k, v in self.input.iteritems():
-            if isinstance(v, torch.tensor._TensorBase):
+            if isinstance(v, torch.Tensor):
                 self.input[k] = Variable(v)
 
     def forward(self, mode='normal', check_grad=False):
@@ -238,7 +238,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
                 feat = self.align_and_concat(feat, self.opt.feat_size_lr)
             else:
                 feat = None
-            self.output['img_fake_raw'], sefl.output['seg_pred'], self.output['shape_feat'] = self.generate_image(self.output['shape_repr'], feat)
+            self.output['img_fake_raw'], self.output['seg_pred'], self.output['shape_feat'] = self.generate_image(self.output['shape_repr'], feat)
             self.output['feat'] = feat
         ###################################
         # feature fusion
@@ -572,20 +572,20 @@ class MultimodalDesignerGAN_V2(BaseModel):
     def get_current_errors(self):
         # losses
         errors = OrderedDict([
-            ('D_GAN', self.output['loss_D'].data[0]),
-            ('G_GAN', self.output['loss_G_GAN'].data[0]),
-            ('G_L1', self.output['loss_G_L1'].data[0]),
+            ('D_GAN', self.output['loss_D'].data.item()),
+            ('G_GAN', self.output['loss_G_GAN'].item()),
+            ('G_L1', self.output['loss_G_L1'].item())
             ])
 
         if 'loss_G_VGG' in self.output:
-            errors['G_VGG'] = self.output['loss_G_VGG'].data[0]
+            errors['G_VGG'] = self.output['loss_G_VGG'].item()
         if 'loss_G_seg' in self.output:
-            errors['G_seg'] = self.output['loss_G_seg'].data[0]
+            errors['G_seg'] = self.output['loss_G_seg'].item()
 
         if 'loss_trans_feat' in self.output:
-            errors['T_feat'] = self.output['loss_trans_feat'].data[0]
+            errors['T_feat'] = self.output['loss_trans_feat'].item()
         if 'loss_trans_img' in self.output:
-            errors['T_img'] = self.output['loss_trans_img'].data[0]
+            errors['T_img'] = self.output['loss_trans_img'].item()
         if 'PSNR' in self.output:
             errors['PSNR'] = self.crit_psnr.smooth_loss(clear=True)
 
@@ -593,7 +593,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         grad_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG', 'grad_seg', 'grad_edge', 'grad_color']
         for name in grad_list:
             if name in self.output:
-                errors[name] = self.output[name].data[0]
+                errors[name] = self.output[name].item()
         
         return errors
 
