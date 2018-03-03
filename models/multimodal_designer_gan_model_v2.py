@@ -614,7 +614,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
                 visuals[name] = self.output[name].data.cpu()
         
         for name in ['seg_ref','seg_pred', 'seg_pred_trans']:
-            if name in self.output:
+            if name in self.output and self.output[name] is not None:
                 visuals[name] = self.output[name].data.cpu()
         return visuals
 
