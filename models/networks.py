@@ -118,7 +118,7 @@ class LossBuffer():
 
         if isinstance(loss, Variable):
             self.buffer.append(loss.data[0])
-        elif isinstance(loss, torch.tensor._TensorBase):
+        elif isinstance(loss, torch.Tensor):
             self.buffer.append(loss[0])
         else:
             self.buffer.append(loss)
@@ -152,7 +152,7 @@ class SmoothLoss():
 
         if isinstance(loss, Variable):
             self.buffer.append(loss.data[0])
-        elif isinstance(loss, torch.tensor._TensorBase):
+        elif isinstance(loss, torch.Tensor):
             self.buffer.append(loss[0])
         else:
             self.buffer.append(loss)
@@ -373,7 +373,7 @@ class MeanAP():
             elif isinstance(inputs[i], np.ndarray):
                 inputs[i] = inputs[i].astype(np.float32)
 
-            elif isinstance(inputs[i], torch.tensor._TensorBase):
+            elif isinstance(inputs[i], torch.Tensor):
                 inputs[i] = inputs[i].cpu().numpy().astype(np.float32)
 
             elif isinstance(inputs[i], Variable):
@@ -506,7 +506,7 @@ class ClassificationAccuracy():
             elif isinstance(inputs[i], np.ndarray):
                 inputs[i] = inputs[i].astype(np.float32)
 
-            elif isinstance(inputs[i], torch.tensor._TensorBase):
+            elif isinstance(inputs[i], torch.Tensor):
                 inputs[i] = inputs[i].cpu().numpy().astype(np.float32)
 
             elif isinstance(inputs[i], Variable):

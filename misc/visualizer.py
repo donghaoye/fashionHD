@@ -18,7 +18,7 @@ def seg_to_rgb(seg_map):
         if seg_map.ndim == 3:
             seg_map = seg_map[np.newaxis,:]
         seg_map = torch.from_numpy(seg_map.transpose([0,3,1,2]))
-    elif isinstance(seg_map, torch._TensorBase):
+    elif isinstance(seg_map, torch.Tensor):
         seg_map = seg_map.cpu()
         if seg_map.dim() == 3:
             seg_map = seg_map.unsqueeze(0)

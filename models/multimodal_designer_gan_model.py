@@ -159,7 +159,7 @@ class MultimodalDesignerGAN(BaseModel):
 
         # create input variables
         for k, v in self.input.iteritems():
-            if isinstance(v, torch.tensor._TensorBase):
+            if isinstance(v, torch.Tensor):
                 self.input[k] = Variable(v)
 
     def forward(self, check_grad=False):

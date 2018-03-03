@@ -129,7 +129,7 @@ class EncoderDecoderFramework(BaseModel):
 
         # create input variable
         for k, v in self.input.iteritems():
-            if isinstance(v, torch.tensor._TensorBase):
+            if isinstance(v, torch.Tensor):
                 self.input[k] = Variable(v)
     
     def encode(self, img, shape_repr, guide=None):
