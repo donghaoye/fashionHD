@@ -389,10 +389,10 @@ class GANVisualizer_V2(BaseVisualizer):
             visuals['landmark_heatmap'] = visuals['landmark_heatmap'].max(dim=1, keepdim=True)[0].expand_as(visuals['img_real'])
         for name in ['seg_map', 'seg_mask_aug', 'seg_ref', 'seg_pred', 'seg_pred_trans']:
             if name in visuals:
-                visuals['name'] = seg_to_rgb(visuals['name'])
+                visuals[name] = seg_to_rgb(visuals[name])
         for name in ['edge_map', 'edge_map_aug']:
             if name in visuals:
-                visuals['name'] = visuals['name'].expand_as(visuals['img_real'])
+                visuals[name] = visuals[name].expand_as(visuals['img_real'])
         for name in ['color_map', 'color_map_aug']:
             if name in visuals and visuals[name].size(1) == 6:
                 visuals[name] = visuals[name][:,0:3] + visuals[name][:,3:6]
