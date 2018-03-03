@@ -225,7 +225,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         # color feat
         if self.opt.use_color:
             self.output['color_feat'] = self.encode_color(self.input['color_map'], self.output['shape_repr'])
-
+        # shape feat
         if self.opt.which_model_netG == 'decoder':
             # extract shape feat -> feat concat -> generate image
             self.output['shape_feat'] = self.encode_shape(self.output['shape_repr'])
@@ -253,6 +253,8 @@ class MultimodalDesignerGAN_V2(BaseModel):
         ###################################
         # netG
         ###################################
+        if self.opt.G_output_seg:
+            self.output['seg_input'] = self.output['shape_repr'] # should be reduced_seg_map or flexible_seg_map
         if mode in {'normal', 'dual'}:
             if self.opt.which_model_netG == 'decoder':
                 if self.opt.G_shape_guided:
@@ -329,7 +331,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         if self.opt.G_output_seg:
             assert self.output['seg_pred'] is not None
             self.output['seg_ref'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], shape_encode='seg')
-            self.output['loss_G_seg'] = self.calc_seg_loss(self.output['seg_pred'], self.output['seg_ref'])
+            self.output['loss_G_seg'] = self.calc_seg_loss(self.output['seg_pred'], self.input['seg_map'])
             self.output['loss_G'] += self.output['loss_G_seg'] * self.opt.loss_weight_seg
         # backward
         self.output['loss_G'].backward()
@@ -362,7 +364,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         if self.opt.G_output_seg:
             assert self.output['seg_pred'] is not None
             self.output['seg_ref'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], shape_encode='seg')
-            self.output['loss_G_seg'] = self.calc_seg_loss(self.output['seg_pred'], self.output['seg_ref'])
+            self.output['loss_G_seg'] = self.calc_seg_loss(self.output['seg_pred'], self.input['seg_map'])
             (self.output['loss_G_seg'] * self.opt.loss_weight_seg).backward(retain_graph=True)
             self.output['loss_G'] += self.output['loss_G_seg'] * self.opt.loss_weight_seg
         # VGG Loss
@@ -435,8 +437,8 @@ class MultimodalDesignerGAN_V2(BaseModel):
             shape_repr = torch.cat((lm_map, seg_mask, edge_map), dim = 1)
         elif shape_encode == 'e':
             shape_repr = edge_map
-        elif shape_encode == 'reduce_seg':
-            shape_repr = torch.cat((seg_mask[:,0:3], seg_mask[:,3::].max(dim=1, keepdim=True)[0]), dim=1)
+        elif shape_encode == 'reduced_seg':
+            shape_repr = torch.cat((seg_mask[:,0:3], seg_mask[:,3::].max(dim=1, keepdim=True)[0]), dim=1).detach()
         return shape_repr
 
     def encode_shape(self, shape_repr):
@@ -455,10 +457,10 @@ class MultimodalDesignerGAN_V2(BaseModel):
             input = torch.cat((input, shape_repr), dim=1)
         return self.color_encoder(input)
     
-    def calc_seg_loss(self, seg_pred, seg_ref):
+    def calc_seg_loss(self, seg_pred, seg_map):
         seg_pred_f = seg_pred.transpose(1,3).contiguous().view(-1,7)
-        seg_ref_f = seg_ref.transpose(1,3).contiguous().view(-1,7)
-        return self.crit_CE(seg_pred_f, seg_ref_f)
+        seg_map_f = seg_map.transpose(1,3).contiguous().view(-1).long()
+        return self.crit_CE(seg_pred_f, seg_map_f)
 
     def generate_image(self, input_1, input_2):
         '''
@@ -581,7 +583,6 @@ class MultimodalDesignerGAN_V2(BaseModel):
             errors['G_VGG'] = self.output['loss_G_VGG'].item()
         if 'loss_G_seg' in self.output:
             errors['G_seg'] = self.output['loss_G_seg'].item()
-
         if 'loss_trans_feat' in self.output:
             errors['T_feat'] = self.output['loss_trans_feat'].item()
         if 'loss_trans_img' in self.output:
@@ -604,7 +605,6 @@ class MultimodalDesignerGAN_V2(BaseModel):
             ('img_real_raw', self.output['img_real_raw'].data.cpu()),
             ('img_fake_raw', self.output['img_fake_raw'].data.cpu()),
             ('seg_map', self.input['seg_map'].data.cpu()),
-            ('landmark_heatmap', self.input['lm_map'].data.cpu()),
             ('edge_map', self.input['edge_map'].data.cpu()),
             ('color_map', self.input['color_map'].data.cpu())
             ])
@@ -613,7 +613,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
             if name in self.output:
                 visuals[name] = self.output[name].data.cpu()
         
-        for name in ['seg_ref','seg_pred', 'seg_pred_trans']:
+        for name in ['seg_input', 'seg_pred', 'seg_pred_trans']:
             if name in self.output and self.output[name] is not None:
                 visuals[name] = self.output[name].data.cpu()
         return visuals
