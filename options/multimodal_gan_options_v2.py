@@ -183,6 +183,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         # edge
         if opt.edge_encoder_type == 'default':
             opt.edge_encoder_type = opt.encoder_type
+        if opt.shape_encoder_block == 'default':
             opt.edge_encoder_block = opt.encoder_block
         if opt.which_model_init_edge_encoder == 'default':
             if opt.edge_shape_guided:
@@ -213,6 +214,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         # color
         if opt.color_encoder_type == 'default':
             opt.color_encoder_type = opt.encoder_type
+        if opt.color_encoder_block == 'default':
             opt.color_encoder_block = opt.encoder_block
         if opt.which_model_init_color_encoder == 'default':
             if opt.color_shape_guided:
@@ -311,8 +313,8 @@ class TrainMMGANOptions_V2(BaseMMGANOptions_V2):
 
         # loss weights
         parser.add_argument('--loss_weight_GAN', type = float, default = 1., help = 'loss wweight of GAN loss (for netG)')
-        parser.add_argument('--loss_weight_L1', type = float, default = 100., help = 'loss weight of L1 loss')
-        parser.add_argument('--loss_weight_vgg', type = float, default = 100., help = 'loss weight of vgg loss (perceptual feature loss)')
+        parser.add_argument('--loss_weight_L1', type = float, default = 0., help = 'loss weight of L1 loss')
+        parser.add_argument('--loss_weight_vgg', type = float, default = 10., help = 'loss weight of vgg loss (perceptual feature loss)')
         parser.add_argument('--loss_weight_trans_feat', type=float, default=1, help = 'loss weight of feature transfer loss (feat distance)')
         parser.add_argument('--loss_weight_trans_img', type=float, default=1, help = 'loss weight of feature transfer loss (image distance)')
         parser.add_argument('--loss_weight_seg', type=float, default=1, help = 'loss weight of segmentation prediction')
