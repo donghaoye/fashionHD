@@ -524,4 +524,5 @@ if __name__ == '__main__':
     #################################################
     # visualization and test
     #
-    visualize_seg_map()
+    # visualize_seg_map()
+    pass
