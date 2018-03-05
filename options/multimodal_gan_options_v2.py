@@ -183,7 +183,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         # edge
         if opt.edge_encoder_type == 'default':
             opt.edge_encoder_type = opt.encoder_type
-        if opt.shape_encoder_block == 'default':
+        if opt.edge_encoder_block == 'default':
             opt.edge_encoder_block = opt.encoder_block
         if opt.which_model_init_edge_encoder == 'default':
             if opt.edge_shape_guided:
