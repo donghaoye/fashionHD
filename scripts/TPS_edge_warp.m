@@ -1,6 +1,5 @@
 clear all;
 addpath('../../VITON/shape_context');
-%addpath('/data2/ynli/download/ParforProgMon');
 addpath('./parfor_progress');
 
 %% load data
@@ -21,13 +20,11 @@ n_control = 10;
 
 %% perform TPS
 parpool(16)
-range = 1:20000;
-%ppm = ParforProgMon('TPS', length(tar_list));
-parfor_progress(length(tar_list));
-%parfor i = 1:length(tar_list)
-parfor i = range
+start_idx = 1
+N = 20000
+parfor_progress(N);
+parfor i = start_idx:(N+start_idx-1)
     %fprintf('%s\n', tar_list{i});
-    %ppm.increment();
     parfor_progress;
 
     fn_out = [output_dir tar_list{i} '.jpg'];
