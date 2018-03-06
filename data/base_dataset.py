@@ -120,6 +120,9 @@ def segmap_to_mask(seg_map, mask_type, cloth_type):
         mask = np.stack(mask, axis=2).astype(np.float32)
     return mask
 
+def segmap_to_mask_v2(seg_map, nc = 7):
+    mask = [(seg_map == i) for i in range(nc)]
+    return np.concatenate(mask, axis=2).astype(np.float32)
 
 def trans_resize(img, size, interp = cv2.INTER_LINEAR):
     '''

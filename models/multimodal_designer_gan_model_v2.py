@@ -184,15 +184,18 @@ class MultimodalDesignerGAN_V2(BaseModel):
         self.input['lm_map'] = self.Tensor(data['lm_map'].size()).copy_(data['lm_map'])
         self.input['seg_mask'] = self.Tensor(data['seg_mask'].size()).copy_(data['seg_mask'])
         self.input['seg_map'] = self.Tensor(data['seg_map'].size()).copy_(data['seg_map'])
+        self.input['flx_seg_mask'] = self.Tensor(data['flx_seg_mask'].size()).copy_(data['flx_seg_mask'])
         self.input['edge_map'] = self.Tensor(data['edge_map'].size()).copy_(data['edge_map'])
         self.input['color_map'] = self.Tensor(data['color_map'].size()).copy_(data['color_map'])
         self.input['id'] = data['id']
 
         if self.opt.affine_aug:
             self.input['seg_mask_aug'] = self.Tensor(data['seg_mask_aug'].size()).copy_(data['seg_mask_aug'])
+            self.input['flx_seg_mask_aug'] = self.Tensor(data['flx_seg_mask_aug'].size()).copy_(data['flx_seg_mask_aug'])
             self.input['edge_map_aug'] = self.Tensor(data['edge_map_aug'].size()).copy_(data['edge_map_aug'])
             self.input['color_map_aug'] = self.Tensor(data['color_map_aug'].size()).copy_(data['color_map_aug'])
             self.input['lm_map_aug'] = self.Tensor(data['lm_map_aug'].size()).copy_(data['lm_map_aug'])
+            self.input['img_aug'] = self.Tensor(data['img_aug'].size()).copy_(data['img_aug'])
 
         # create input variables
         for k, v in self.input.iteritems():
@@ -218,7 +221,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         # encode shape, edge and color
         ###################################
         # shape repr and shape feat
-        self.output['shape_repr'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'])
+        self.output['shape_repr'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], self.input['flx_seg_mask'], self.input['img'])
         # edge feat
         if self.opt.use_edge:
             self.output['edge_feat'] = self.encode_edge(self.input['edge_map'], self.output['shape_repr'])
@@ -255,6 +258,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         ###################################
         if self.opt.G_output_seg:
             self.output['seg_input'] = self.output['shape_repr'] # should be reduced_seg_map or flexible_seg_map
+
         if mode in {'normal', 'dual'}:
             if self.opt.which_model_netG == 'decoder':
                 if self.opt.G_shape_guided:
@@ -265,6 +269,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
             elif self.opt.which_model_netG == 'unet':
                 pass
             self.output['img_fake'] = self.mask_image(self.output['img_fake_raw'], self.input['seg_map'], self.input['img'])
+
         if mode in {'trans', 'dual'}:
             if self.opt.which_model_netG == 'decoder':
                 if self.opt.G_shape_guided:
@@ -274,8 +279,8 @@ class MultimodalDesignerGAN_V2(BaseModel):
                     self.output['img_fake_trans_raw'], self.output['seg_pred_trans'], _ = self.generate_image(self.output['feat_trans'], None)
             elif self.opt.which_model_netG == 'unet':
                 self.output['img_fake_trans_raw'], self.output['seg_pred_trans'], _ = self.generate_image(self.output['shape_repr'], self.output['feat_trans'])
-
             self.output['img_fake_trans'] = self.mask_image(self.output['img_fake_trans_raw'], self.input['seg_map'], self.input['img'])
+        
         self.output['img_real'] = self.output['img_real_raw'] = self.input['img']
 
     def test(self, mode='normal'):
@@ -330,7 +335,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         # segmentation prediction loss
         if self.opt.G_output_seg:
             assert self.output['seg_pred'] is not None
-            self.output['seg_ref'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], shape_encode='seg')
+            self.output['seg_ref'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], self.input['flx_seg_mask'], self.input['img'], shape_encode='seg', shape_with_face=False)
             self.output['loss_G_seg'] = self.calc_seg_loss(self.output['seg_pred'], self.input['seg_map'])
             self.output['loss_G'] += self.output['loss_G_seg'] * self.opt.loss_weight_seg
         # backward
@@ -363,7 +368,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
         # segmentation prediction loss
         if self.opt.G_output_seg:
             assert self.output['seg_pred'] is not None
-            self.output['seg_ref'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], shape_encode='seg')
+            self.output['seg_ref'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], self.input['flx_seg_mask'], self.input['img'], shape_encode='seg', shape_with_face=False)
             self.output['loss_G_seg'] = self.calc_seg_loss(self.output['seg_pred'], self.input['seg_map'])
             (self.output['loss_G_seg'] * self.opt.loss_weight_seg).backward(retain_graph=True)
             self.output['loss_G'] += self.output['loss_G_seg'] * self.opt.loss_weight_seg
@@ -401,6 +406,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
             fwd_mode = 'normal'
         else:
             fwd_mode = 'dual'
+
         self.output = {} # clear previous output
         self.forward(fwd_mode, check_grad)
         # optimize D
@@ -422,9 +428,12 @@ class MultimodalDesignerGAN_V2(BaseModel):
             self.backward_trans()
             self.optim_FTN.step()
 
-    def get_shape_repr(self, lm_map, seg_mask, edge_map, shape_encode=None):
+    def get_shape_repr(self, lm_map, seg_mask, edge_map, flx_seg_mask, img, shape_encode=None, shape_with_face=None):
         if shape_encode is None:
             shape_encode = self.opt.shape_encode
+        if shape_with_face is None:
+            shape_with_face = self.opt.shape_with_face
+
         if shape_encode == 'lm':
             shape_repr = lm_map
         elif shape_encode == 'seg':
@@ -439,6 +448,12 @@ class MultimodalDesignerGAN_V2(BaseModel):
             shape_repr = edge_map
         elif shape_encode == 'reduced_seg':
             shape_repr = torch.cat((seg_mask[:,0:3], seg_mask[:,3::].max(dim=1, keepdim=True)[0]), dim=1).detach()
+        elif shape_encode == 'flx_seg':
+            shape_repr = flx_seg_mask
+
+        if shape_with_face:
+            face_mask = seg_mask[:,1:3].sum(dim=1, keepdim=True)
+            shape_repr = torch.cat((shape_repr, face_mask * img), dim=1)
         return shape_repr
 
     def encode_shape(self, shape_repr):
@@ -511,7 +526,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
     def transfer_feature(self, detach=True):
         # prepare shape feat as guide
         if self.is_train and self.opt.affine_aug:
-            self.output['shape_repr_aug'] = self.get_shape_repr(self.input['lm_map_aug'], self.input['seg_mask_aug'], self.input['edge_map_aug'])
+            self.output['shape_repr_aug'] = self.get_shape_repr(self.input['lm_map_aug'], self.input['seg_mask_aug'], self.input['edge_map_aug'], self.input['flx_seg_mask_aug'], self.input['img_aug'])
             self.output['shape_feat_aug'] = self.encode_shape(self.output['shape_repr_aug'])
         self.output['shape_feat_trans'] = self.output['shape_feat'].detach() if detach else self.output['shape_feat']
         # transfer edge feature

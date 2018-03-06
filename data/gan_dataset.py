@@ -32,6 +32,7 @@ class GANDataset(BaseDataset):
         seg_paths = io.load_json(os.path.join(opt.data_root, opt.fn_seg_path))
         edge_paths = io.load_json(os.path.join(opt.data_root, opt.fn_edge_path))
         # color_paths = io.load_json(os.path.join(opt.data_root, opt.fn_color_path))
+        flx_seg_paths = io.load_json(os.path.join(opt.data_root, opt.fn_flx_seg_path))
 
         self.id_list = data_split[split]
         # self.attr_entry = attr_entry
@@ -43,6 +44,7 @@ class GANDataset(BaseDataset):
         self.seg_path_list = [seg_paths[s_id] for s_id in self.id_list]
         self.edge_path_list = [edge_paths[s_id] for s_id in self.id_list]
         # self.color_path_list = [color_paths[s_id] for s_id in self.id_list]
+        self.flx_seg_path_list = [flx_seg_paths[s_id] for s_id in self.id_list]
 
 
         # check data
@@ -68,6 +70,7 @@ class GANDataset(BaseDataset):
 
         # load segmentation map
         seg_map = cv2.imread(self.seg_path_list[index], cv2.IMREAD_GRAYSCALE)
+        flx_seg_map = cv2.imread(self.flx_seg_path_list[index], cv2.IMREAD_GRAYSCALE)
 
         # load image
         img_uint = cv2.imread(self.sample_list[index]['img_path'])
@@ -106,21 +109,27 @@ class GANDataset(BaseDataset):
             # only resize
             mix = trans_resize(mix, size = (self.opt.fine_size, self.opt.fine_size))
             seg_map = trans_resize(seg_map, size =(self.opt.fine_size, self.opt.fine_size), interp = cv2.INTER_NEAREST)
-            mix = np.concatenate((mix, seg_map[:,:,np.newaxis]), axis = 2)
+            flx_seg_map =trans_resize(flx_seg_map, size =(self.opt.fine_size, self.opt.fine_size), interp = cv2.INTER_NEAREST)
+            mix = np.concatenate((mix, seg_map[:,:,np.newaxis], flx_seg_map[:,:,np.newaxis]), axis = 2)
         elif self.opt.resize_or_crop == 'resize_and_crop':
             mix = trans_resize(mix, size = (self.opt.load_size, self.opt.load_size))
             seg_map = trans_resize(seg_map, size =(self.opt.load_size, self.opt.load_size), interp = cv2.INTER_NEAREST)
-            mix = np.concatenate((mix, seg_map[:,:,np.newaxis]), axis = 2)
+            flx_seg_map = trans_resize(flx_seg_map, size =(self.opt.load_size, self.opt.load_size), interp = cv2.INTER_NEAREST)
+            mix = np.concatenate((mix, seg_map[:,:,np.newaxis], flx_seg_map[:,:,np.newaxis]), axis = 2)
             if self.split == 'train':
                 mix = trans_random_crop(mix, size = (self.opt.fine_size, self.opt.fine_size))
                 mix = trans_random_horizontal_flip(mix)
             else:
                 mix = trans_center_crop(mix, size = (self.opt.fine_size, self.opt.fine_size))
 
-        seg_map = mix[:,:,-1::]
-        seg_mask = segmap_to_mask(seg_map, self.opt.input_mask_mode, self.sample_list[index]['cloth_type'])
+        seg_map = mix[:,:,-2:-1]
+        seg_mask = segmap_to_mask_v2(seg_map)
         t_seg_mask = torch.Tensor(seg_mask.transpose([2, 0, 1]))
         t_seg_map = torch.Tensor(seg_map.transpose([2, 0, 1]))
+
+        flx_seg_map = mix[:,:,-1::]
+        flx_seg_mask = segmap_to_mask_v2(flx_seg_map)
+        t_flx_seg_mask = torch.Tensor(flx_seg_mask.transpose([2, 0, 1]))
 
         img = mix[:,:,0:nc_img]
         t_img = self.to_tensor(img)
@@ -151,6 +160,7 @@ class GANDataset(BaseDataset):
             'lm_map': t_lm_map,
             'seg_mask': t_seg_mask,
             'seg_map': t_seg_map,
+            'flx_seg_mask': t_flx_seg_mask,
             'edge_map': t_edge_map,
             'color_map': t_color_map,
             'color_map_full': t_color_map_full,
@@ -162,19 +172,24 @@ class GANDataset(BaseDataset):
         if self.opt.affine_aug:
             if self.split == 'train':
                 if 'lm' in self.opt.shape_encode:
-                    edge_map_affine, color_map_affine, seg_mask_affine, lm_map_affine = trans_random_affine([edge_map, color_map, seg_mask, lm_map], self.opt.affine_aug_scale)
+                    img_affine, edge_map_affine, color_map_affine, seg_mask_affine, flx_seg_mask_affine, lm_map_affine = trans_random_affine([img, edge_map, color_map, seg_mask, flx_seg_mask, lm_map], self.opt.affine_aug_scale)
                 else:
-                    edge_map_affine, color_map_affine, seg_mask_affine = trans_random_affine([edge_map, color_map, seg_mask], self.opt.affine_aug_scale)
+                    img_affine, edge_map_affine, color_map_affine, seg_mask_affine, flx_seg_mask_affine = trans_random_affine([img, edge_map, color_map, seg_mask, flx_seg_mask_affine], self.opt.affine_aug_scale)
                     lm_map_affine = lm_map #don't comput affine transformation of lm_map for efficiency
 
                 data['edge_map_aug'] = torch.Tensor(edge_map_affine.transpose([2,0,1]))
-                data['color_map_aug'] = self.to_tensor(color_map_affine)# has been normalized, no need to do it again
+                data['color_map_aug'] = self.to_tensor(color_map_affine)# has been normalized, do not normalize it again
                 data['seg_mask_aug'] = torch.Tensor(seg_mask_affine.transpose([2,0,1]))
+                data['flx_seg_mask_aug'] = torch.Tensor(flx_seg_mask_affine.transpose([2,0,1]))
                 data['lm_map_aug'] = torch.Tensor(lm_map_affine.transpose([2,0,1]))
+                data['img_affine'] = self.to_tensor(img_affine)# has been normalized, do not normalize it again
+
             else:
                 data['edge_map_aug'] = data['edge_map']
                 data['color_map_aug'] = data['color_map']
                 data['seg_mask_aug'] = data['seg_mask']
+                data['flx_seg_mask_aug'] = data['flx_seg_mask']
                 data['lm_map_aug'] = data['lm_map']
+                data['img_affine'] = data['img']
         return data
 

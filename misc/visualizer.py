@@ -13,7 +13,7 @@ import numpy as np
 from collections import OrderedDict
 
 
-def seg_to_rgb(seg_map):
+def seg_to_rgb(seg_map, with_face=False):
     if isinstance(seg_map, np.ndarray):
         if seg_map.ndim == 3:
             seg_map = seg_map[np.newaxis,:]
@@ -22,6 +22,10 @@ def seg_to_rgb(seg_map):
         seg_map = seg_map.cpu()
         if seg_map.dim() == 3:
             seg_map = seg_map.unsqueeze(0)
+
+    if with_face:
+        face = seg_map[:,-3::]
+        seg_map = seg_map[:,0:-3]
 
     if seg_map.size(1) > 1:
         seg_map = seg_map.max(dim=1, keepdim=True)[1]
@@ -37,15 +41,18 @@ def seg_to_rgb(seg_map):
     rgb_map = cmap[seg_map.view(-1)]
     rgb_map = rgb_map.view(b, h, w, 3)
     rgb_map = rgb_map.transpose(1,3).transpose(2,3)
-
     rgb_map.sub_(0.5).div_(0.5)
+
+    if with_face:
+        face_mask = ((seg_map == 1) | (seg_map == 2)).float()
+        rgb_map = rgb_map * (1 - face_mask) + face * face_mask
+
     return rgb_map
 
 
 class BaseVisualizer(object):
 
     def __init__(self, opt):
-
         self.opt = opt
         self.expr_dir = os.path.join('checkpoints', opt.id)
         self.f_log = None
@@ -59,7 +66,6 @@ class BaseVisualizer(object):
 
         self.clock = time.time()
         self.step_counter = 0
-
         print('create visualizer')
 
     def __del__(self):
@@ -388,9 +394,12 @@ class GANVisualizer_V2(BaseVisualizer):
         # post-process
         if 'landmark_heatmap' in visuals:
             visuals['landmark_heatmap'] = visuals['landmark_heatmap'].max(dim=1, keepdim=True)[0].expand_as(visuals['img_real'])
-        for name in ['seg_map', 'seg_mask_aug', 'seg_input', 'seg_pred', 'seg_pred_trans']:
+        for name in ['seg_map', 'seg_pred', 'seg_pred_trans']:
             if name in visuals:
                 visuals[name] = seg_to_rgb(visuals[name])
+        for name in ['seg_mask_aug', 'seg_input']:
+            if name in visuals:
+                visuals[name] = seg_to_rgb(visuals[name], with_face = self.opt.shape_with_face)
         for name in ['edge_map', 'edge_map_aug']:
             if name in visuals:
                 visuals[name] = visuals[name].expand_as(visuals['img_real'])
