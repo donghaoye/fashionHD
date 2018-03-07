@@ -453,7 +453,7 @@ class MultimodalDesignerGAN_V2(BaseModel):
 
         if shape_with_face:
             face_mask = seg_mask[:,1:3].sum(dim=1, keepdim=True)
-            shape_repr = torch.cat((shape_repr, face_mask * img), dim=1)
+            shape_repr = torch.cat((shape_repr, face_mask * img), dim=1).detach()
         return shape_repr
 
     def encode_shape(self, shape_repr):

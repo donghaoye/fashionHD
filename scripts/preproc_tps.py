@@ -38,7 +38,7 @@ def create_train_pair():
         pair_list += zip(s_list_org, s_list)
 
     pair_dict = {s_tar:s_src for s_tar, s_src in pair_list}
-    io.save_json(pair_dict, design_root + 'Label/ca_train_tps_pair.json')
+    io.save_json(pair_dict, design_root + 'Temp/ca_train_tps_pair.json')
 
     io.save_str_list(pair_dict.keys(), design_root + 'Temp/ca_train_tps_tar.txt')
     io.save_str_list(pair_dict.values(), design_root + 'Temp/ca_train_tps_src.txt')
@@ -67,10 +67,34 @@ def create_test_pair():
         pair_list += zip(s_list_org, s_list)
 
     pair_dict = {s_tar:s_src for s_tar, s_src in pair_list}
-    io.save_json(pair_dict, design_root + 'Label/ca_test_tps_pair.json')
+    io.save_json(pair_dict, design_root + 'Temp/ca_test_tps_pair.json')
 
     io.save_str_list(pair_dict.keys(), design_root + 'Temp/ca_test_tps_tar.txt')
     io.save_str_list(pair_dict.values(), design_root + 'Temp/ca_test_tps_src.txt')
+
+
+def gather_tps_pair():
+    split = io.load_json(design_root + 'Split/ca_gan_split_trainval_upper.json')
+    tps_pair = io.load_json(design_root + 'Temp/ca_train_tps_pair.json')
+    tps_pair.update(io.load_json(design_root + 'Temp/ca_test_tps_pair.json'))
+    io.save_json(tps_pair, design_root + 'Label/ca_tps_pair.json')
+    print(len(split))
+    print(len(tps_pair))
+    img_dir = design_root + 'Img/edge_ca_256_tps/'
+    missing_list = []
+    for i, (tar_id, src_id) in enumerate(tps_pair.items()):
+        print('%d/%d' % (i, len(tps_pair)))
+        fn_old = img_dir + tar_id + '.jpg'
+        fn_new = img_dir + tar_id + '_' + src_id + '.jpg'
+        if os.path.isfile(fn_old):
+            shutil.move(fn_old, fn_new)
+        else:
+            missing_list.append(tar_id)
+
+    print(missing_list)
+
+
+
 
 def create_vis_pair():
     '''
@@ -101,7 +125,7 @@ def create_vis_pair():
         np.random.shuffle(src_list)
         group_dict[tar_id] = src_list[0:num_src_per_tar]
 
-    io.save_json(group_dict, design_root + 'Label/ca_vis_tps_group.json')
+    io.save_json(group_dict, design_root + 'Temp/ca_vis_tps_group.json')
 
     output_src_list = []
     output_tar_list = []
@@ -110,10 +134,6 @@ def create_vis_pair():
         output_src_list += src_list
     io.save_str_list(output_tar_list, design_root + 'Temp/ca_vis_tps_tar.txt')
     io.save_str_list(output_src_list, design_root + 'Temp/ca_vis_tps_src.txt')
-
-
-
-
 
 
 
@@ -277,6 +297,10 @@ def create_flexible_segmap():
 
 
 
+
+
+
+
 if __name__ == '__main__':
     #############################
     # TPS edge warpping 
@@ -284,7 +308,8 @@ if __name__ == '__main__':
     # create_cloth_edge_map()
     # create_train_pair()
     # create_test_pair()
-    create_vis_pair()
+    gather_tps_pair()
+    # create_vis_pair()
     #############################
     # flexible segmap
     #############################
