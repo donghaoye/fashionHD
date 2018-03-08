@@ -65,7 +65,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
         parser.add_argument('--color_gaussian_sigma', type=float, default=10.0, help='gaussian blur sigma')
         parser.add_argument('--color_patch', type=int, default=1, choices=[0,1], help='use a patch inside the clothing region')
-        parser.add_argument('--color_patch_mode', type=str, default='crop5', choices=['center', 'crop5', 'single'], help='method to extract patch')
+        parser.add_argument('--color_patch_mode', type=str, default='center', choices=['center', 'crop5', 'single'], help='method to extract patch')
         parser.add_argument('--color_encoder_type', type=str, default='default')
         parser.add_argument('--color_encoder_block', type=str, default='default')
         parser.add_argument('--pretrain_color', type=int, default=1, choices=[0,1], help='load pretrained color encoder')
@@ -230,7 +230,7 @@ class BaseMMGANOptions_V2(BaseOptions):
             opt.color_encoder_block = opt.encoder_block
         if opt.which_model_init_color_encoder == 'default':
             if opt.color_shape_guided:
-                if opt.color_patch and opt.color_patch_mode == 'crop5':
+                if opt.color_patch:
                     if opt.color_encoder_type == 'normal' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 128 and opt.color_nf == 64:
                         opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.4'
                     elif opt.color_encoder_type == 'normal' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 64 and opt.color_nf == 32:
@@ -242,7 +242,7 @@ class BaseMMGANOptions_V2(BaseOptions):
                     elif opt.color_encoder_type == 'fc' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 128 and opt.color_nf == 32:
                         opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.12'
             else:
-                if opt.color_patch and opt.color_patch_mode == 'crop5':
+                if opt.color_patch:
                     if opt.color_encoder_type == 'normal' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 128 and opt.color_nf == 64:
                         opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.13'
                     elif opt.color_encoder_type == 'normal' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 256 and opt.color_nf == 64:
