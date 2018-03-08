@@ -278,7 +278,6 @@ def create_flexible_segmap():
                 else:
                     upper_arm = _get_rect_region(p_sleeve[j], p_shoulder[j], upper_arm_width, gx, gy)
                     arm_flx_mask = arm_flx_mask | (upper_arm & cloth_flx_mask_outer.astype(np.bool))
-                
 
         # combine channels
         seg_org = seg_map.copy()
@@ -296,8 +295,73 @@ def create_flexible_segmap():
         image.imwrite(seg_map, output_dir + s_id + '.bmp')
 
 
+def create_aligned_index():
+    '''
+    create (tar_id, edge_src_id, color_src_id) tuplets
+    '''
+    if False:
+        split = io.load_json(design_root + 'Split/ca_gan_split_trainval_upper.json')
+        ############### for train/test ###############
+        edge_pair = io.load_json(design_root + 'Label/ca_tps_pair.json')
+        
+        # attach color src index (random select) for each target
+        np.random.seed(0)
+        color_pair = {}
+        for set_name in ['train', 'test']:
+            id_list = split[set_name]
+            id_list_shuffle = [s_id for s_id in id_list]
+            np.random.shuffle(id_list_shuffle)
+            for tar_id, src_id in zip(id_list, id_list_shuffle):
+                color_pair[tar_id] = src_id
+        # create index file
+        aligned_index = {}
+        for s_id in split['train'] + split['test']:
+            aligned_index[s_id] = {
+                'id': s_id,
+                'edge_ids': [edge_pair[s_id]],
+                'color_ids': [color_pair[s_id]]
+            }
+        io.save_json(aligned_index, design_root + 'Label/ca_gan_trainval_upper_aligned_index.json')
 
+        ############### for vis ###############
+        edge_vis_group = io.load_json(design_root + 'Label/ca_vis_tps_group.json')
+        vis_id_list = edge_vis_group.keys()
+        # check
+        assert set(vis_id_list).issubset(set(split['test']))
+        # attach color src candidate set (random select) for each target
+        num_color = 6
+        id_list = split['test']
+        color_vis_group = {}
+        for tar_id in vis_id_list:
+            id_list_shuffle = [s_id for s_id in id_list if s_id != tar_id]
+            np.random.shuffle(id_list_shuffle)
+            color_vis_group[tar_id] = id_list_shuffle[0:num_color]
+        # create index file
+        vis_aligned_index = {}
+        for s_id in vis_id_list:
+            vis_aligned_index[s_id] = {
+                'id': s_id, 
+                'edge_ids': edge_vis_group[s_id],
+                'color_ids': color_vis_group[s_id]
+            }
+        io.save_json(vis_aligned_index, design_root + 'Label/ca_gan_vis_upper_aligned_index.json')
 
+    ############### visualize ###############
+    vis_aligned_index = io.load_json(design_root + 'Label/ca_gan_vis_upper_aligned_index.json')
+    num_visual = 10
+    img_dir = design_root + 'Img/img_ca_256/'
+    output_dir = 'temp/aligned_index/'
+    io.mkdir_if_missing(output_dir)
+
+    for tar_id, index in vis_aligned_index.items()[0:num_visual]:
+        img_edge = [image.imread(img_dir + s_id + '.jpg') for s_id in [tar_id] + index['edge_ids']]
+        img_color = [image.imread(img_dir + s_id + '.jpg') for s_id in [tar_id] + index['color_ids']]
+
+        img_edge = np.concatenate(img_edge, axis = 1)
+        img_color = np.concatenate(img_color, axis = 1)
+        img_out = np.concatenate((img_edge, img_color), axis = 0)
+
+        image.imwrite(img_out, output_dir + tar_id + '.jpg')
 
 
 
@@ -308,13 +372,20 @@ if __name__ == '__main__':
     # create_cloth_edge_map()
     # create_train_pair()
     # create_test_pair()
-    gather_tps_pair()
+    # gather_tps_pair()
     # create_vis_pair()
+
     #############################
     # flexible segmap
     #############################
     # gather_pose_estimation_result()
     # create_flexible_segmap()
+
+    #############################
+    # create index file for aligned gan dataset
+    #############################
+    create_aligned_index()
+
 
 
 

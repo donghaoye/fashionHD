@@ -1,9 +1,9 @@
 from base_options import BaseOptions
 
-class BaseMMGANOptions_V2(BaseOptions):
+class BaseMMGANOptions_V3(BaseOptions):
 
     def initialize(self):
-        super(BaseMMGANOptions_V2, self).initialize()
+        super(BaseMMGANOptions_V3, self).initialize()
         parser = self.parser
         ##############################
         # General Setting
@@ -37,7 +37,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--pretrain_shape', type=int, default=1, choices=[0,1], help='load pretrained shape_encoder')
         parser.add_argument('--which_model_init_shape_encoder', type=str, default='default', help='id of pretrained shape encoder')
         parser.add_argument('--shape_encode', type = str, default = 'reduced_seg', choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e', 'reduced_seg', 'flx_seg'], help = 'cloth shape encoding method')
-        parser.add_argument('--shape_with_face', type= int, default = 0, choices = [0,1], help='add face region rgb information into shape representation')
+        parser.add_argument('--shape_with_face', type= int, default = 1, choices = [0,1], help='add face region rgb information into shape representation')
         parser.add_argument('--shape_nc', type=int, default=0, help='# channels of shape representation, depends on shape_emcode, will be auto set')
         ##############################
         # Edge Encoder
@@ -73,9 +73,6 @@ class BaseMMGANOptions_V2(BaseOptions):
         ##############################
         # Feature Transfer and Fusion
         ##############################
-        parser.add_argument('--ftn_model', type=str, default='none', choices = ['none', 'concat', 'reduce', 'trans'], help='feature transfer model')
-        parser.add_argument('--ftn_ndowns', type=int, default=3, help='number of downsample layers in FTN (trans)')
-        parser.add_argument('--ftn_nblocks', type=int, default=3, help='number of residual blocks in FTN (trans/concat)')
         parser.add_argument('--feat_size_lr', type=int, default=8, help='LR feature map size (input size of netG)')
         parser.add_argument('--feat_size_hr', type=int, default=64, help='HR feature map size (input size of shape guide)')
         ##############################
@@ -83,8 +80,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         ##############################
         parser.add_argument('--which_model_netG', type = str, default = 'unet', choices = ['decoder', 'unet'], help='select model to use for netG')
         parser.add_argument('--G_output_seg', type=int, default=1, choices=[0,1], help='generator output image and (7-channel) segentation map')
-        parser.add_argument('--G_output_region', type=int, default=0, choices=[0,1], help='generator output rgb channels for each seg region, and then combine them')
-        parser.add_argument('--G_output_nc', type=int, default=-1, help='# output channels of netG')
+        parser.add_argument('--G_output_nc', type=int, default=3, help='# output channels of netG')
         # for decoder generator
         parser.add_argument('--G_shape_guided', action='store_true', help='add shape guide at LR level')
         parser.add_argument('--G_nblocks_1', type=int, default=2, help='number of LR residual blocks')
@@ -107,26 +103,30 @@ class BaseMMGANOptions_V2(BaseOptions):
         # data setting 1 fot gan dataset
         ##############################
         parser.add_argument('--benchmark', type = str, default = 'ca_upper', choices = ['ca', 'ca_upper', 'inshop', 'debug', 'user'], help = 'set benchmark [ca|ca_org|inshop|user|debug]')
-        parser.add_argument('--fn_sample', type = str, default = 'default', help = 'path of sample index file')
-        parser.add_argument('--fn_label', type = str, default = 'default', help = 'path of attribute label file')
-        parser.add_argument('--fn_entry', type = str, default = 'default', help = 'path of attribute entry file')
-        parser.add_argument('--fn_split', type = str, default = 'default', help = 'path of split file')
-        parser.add_argument('--fn_landmark', type = str, default = 'default', help = 'path of landmark label file')
-        parser.add_argument('--fn_seg_path', type = str, default = 'default', help = 'path of seg map')
-        parser.add_argument('--fn_flx_seg_path', type = str, default = 'default', help = 'path of uncertain seg map')
-        parser.add_argument('--fn_edge_path', type = str, default = 'default', help = 'path of edge map')
-        parser.add_argument('--fn_color_path', type = str, default = 'default', help = 'path of color map')
-        
+        parser.add_argument('--fn_split', type = str, default = 'Split/ca_gan_split_trainval_upper.json', help = 'path of split file')
+        parser.add_argument('--fn_landmark', type = str, default = 'Label/ca_landmark_label_256.pkl', help = 'path of landmark label file')
+        ##############################
+        # data setting 2 for aligned dataset
+        ##############################
+        parser.add_argument('--debug', action='store_true', help='use debug split of dataset (32 samples)')
+        parser.add_argument('--img_dir', type=str, default='Img/img_ca_256/')
+        parser.add_argument('--seg_dir', type=str, default='Img/seg_ca_syn_256/')
+        parser.add_argument('--flx_seg_dir', type=str, default='Img/seg_ca_syn_256_flexible/')
+        parser.add_argument('--edge_dir', type=str, default='Img/edge_ca_256_cloth/')
+        parser.add_argument('--edge_warp_dir', type=str, default='Img/edge_ca_256_cloth_tps/')
 
     def auto_set(self):
-        super(BaseMMGANOptions_V2, self).auto_set()
+        super(BaseMMGANOptions_V3, self).auto_set()
         opt = self.opt
         ###########################################
         # Add id profix
         ###########################################
-        if not opt.id.startswith('V2MMDGAN_RECON_'):
-            opt.id = 'V2MMDGAN_RECON_' + opt.id
-
+        if not opt.id.startswith('V3_'):
+            opt.id = 'V3_' + opt.id
+        ###########################################
+        # set for aligned dataset
+        ###########################################
+        opt.dataset_mode = 'aligned_gan'
         ###########################################
         # set dimmension settings
         ###########################################
@@ -161,10 +161,7 @@ class BaseMMGANOptions_V2(BaseOptions):
             opt.shape_nc += 3
         # set G_output_nc
         if opt.G_output_seg:
-            if opt.G_output_region:
-                opt.G_output_nc = 7 + 3*7
-            else:
-                opt.G_output_nc = 7 + 3
+            opt.G_output_nc = 10
         else:
             opt.G_output_nc = 3
         # set D_input_nc
@@ -248,54 +245,12 @@ class BaseMMGANOptions_V2(BaseOptions):
                     elif opt.color_encoder_type == 'normal' and opt.color_encoder_block == 'residual' and opt.color_ndowns == 5 and opt.color_nof == 256 and opt.color_nf == 64:
                         opt.which_model_init_color_encoder = 'ED_MMDGAN_RECON_2.14'
 
-        ###########################################
-        # set dataset file path
-        ###########################################
-        if opt.benchmark.startswith('ca'):
-            if opt.fn_sample == 'default':
-                opt.fn_sample = 'Label/ca_samples.json'
-            if opt.fn_label == 'default':
-                opt.fn_label = 'Label/ca_attr_label.pkl'
-            if opt.fn_entry == 'default':
-                opt.fn_entry = 'Label/attr_entry.json'
-            if opt.fn_landmark == 'default':
-                opt.fn_landmark = 'Label/ca_landmark_label_256.pkl'
-            if opt.fn_seg_path == 'default':
-                # opt.fn_seg_path = 'Label/ca_seg_paths.json'
-                opt.fn_seg_path = 'Label/ca_syn_seg_paths.json'
-            if opt.fn_flx_seg_path == 'default':
-                opt.fn_flx_seg_path = 'Label/ca_gan_flx_seg_paths.json'
-            if opt.fn_edge_path == 'default':
-                if opt.edge_mode == 'outer':
-                    opt.fn_edge_path = 'Label/ca_edge_paths.json'
-                elif opt.edge_mode == 'inner':
-                    opt.fn_edge_path = 'Label/ca_edge_inner_paths.json'
-                elif opt.edge_mode == 'cloth':
-                    opt.fn_edge_path = 'Label/ca_edge_cloth_paths.json'
-            if opt.fn_color_path == 'default':
-                opt.fn_color_path = 'Label/ca_edge_paths.json'# Todo: modify this temp setting
-            if opt.fn_split == 'default':
-                if opt.benchmark == 'ca':
-                    opt.fn_split = 'Split/ca_gan_split_trainval.json'
-                elif opt.benchmark == 'ca_upper':
-                    opt.fn_split = 'Split/ca_gan_split_trainval_upper.json'
-
-        elif opt.benchmark == 'debug':
-            opt.fn_sample = 'Label/debugca_gan_samples.json'
-            opt.fn_label = 'Label/debugca_gan_attr_label.pkl'
-            opt.fn_entry = 'Label/attr_entry.json'
-            opt.fn_split = 'Split/debugca_gan_split.json'
-            opt.fn_landmark = 'Label/debugca_gan_landmark_label.pkl'
-            opt.fn_seg_path = 'Label/debugca_seg_paths.json'
-            opt.fn_flx_seg_path = 'Label/debugca_gan_flx_seg_paths.json'
-            opt.fn_edge_path = 'Label/debugca_edge_paths.json'
-            opt.fn_color_path = 'Label/debugca_edge_paths.json' # Todo: modify this temp setting
-
-class TrainMMGANOptions_V2(BaseMMGANOptions_V2):
+        
+class TrainMMGANOptions_V3(BaseMMGANOptions_V3):
 
     def initialize(self):
 
-        super(TrainMMGANOptions_V2,self).initialize()
+        super(TrainMMGANOptions_V3,self).initialize()
         parser = self.parser
         
         # basic
@@ -339,11 +294,11 @@ class TrainMMGANOptions_V2(BaseMMGANOptions_V2):
         self.is_train = True
 
 
-class TestMMGANOptions_v2(BaseMMGANOptions_V2):
+class TestMMGANOptions_V3(BaseMMGANOptions_V3):
 
     def initialize(self):
 
-        super(TestMMGANOptions_v2, self).initialize()
+        super(TestMMGANOptions_V3, self).initialize()
         parser = self.parser
         
         # test

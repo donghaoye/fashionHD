@@ -11,10 +11,13 @@ def CreateDataLoader(opt, split = None):
     # return loader
 
     if split is None:
-        split = 'train' if opt.is_train else 'test'
+        if 'debug' in opt and opt.debug:
+            split = 'debug'
+        else:
+            split = 'train' if opt.is_train else 'test'
 
     dataset = CreateDataset(opt, split)
-    shuffle = (split == 'train')
+    shuffle = (split == 'train' and opt.is_train)
     dataloader = torch.utils.data.DataLoader(
         dataset = dataset, 
         batch_size = opt.batch_size,
@@ -38,6 +41,9 @@ def CreateDataset(opt, split):
     elif opt.dataset_mode in {'gan_self'}:
         from data.gan_dataset import GANDataset
         dataset = GANDataset()
+    elif opt.dataset_mode in {'aligned_gan'}:
+        from data.aligned_gan_dataset import AlignedGANDataset
+        dataset = AlignedGANDataset()
     else:
         raise ValueError('Dataset mode [%s] not recognized.' % opt.dataset_mode)
 

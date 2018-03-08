@@ -492,13 +492,29 @@ class MultimodalDesignerGAN_V2(BaseModel):
             out = self.netG(input_1, input_2)
             shape_feat = None
         if self.opt.G_output_seg:
-            assert out.size(1) == 10
-            img_out = F.tanh(out[:,0:3])
-            seg_out = out[:,3::]
+            if self.opt.G_output_region:
+                assert out.size(1) == 28 #(7+3*7)
+                region_out = out[:,0:21]
+                seg_out = out[:,21:28]
+                img_out = F.tanh(self.merge_region(region_out, seg_out))
+            else:
+                assert out.size(1) == 10
+                img_out = F.tanh(out[:,0:3])
+                seg_out = out[:,3::]
         else:
             img_out = F.tanh(out)
             seg_out = None
         return img_out, seg_out, shape_feat
+
+    def merge_region(self, region_out, seg_out):
+        b, c, h, w = region_out.size()
+        cs = seg_out.size(1)
+        assert c == 3*cs
+        region_out = region_out.view(b, 3, cs, h, w)
+        seg_out = F.softmax(seg_out, dim=1).view(b,1,cs,h,w)
+        img_out = (region_out * seg_out).sum(2)
+        return img_out
+
     
     def align_and_concat(self, inputs, size):
         # print(size)

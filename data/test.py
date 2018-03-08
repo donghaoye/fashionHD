@@ -75,7 +75,7 @@ def test_GANDataset():
     data = loader_iter.next()
 
     for k, v in data.iteritems():
-        if isinstance(v, torch.tensor._TensorBase):
+        if isinstance(v, torch.Tensor):
             print('[%s]: (%s), %s' % (k,type(v), v.size()))
         else:
             print('[%s]: %s' % (k, type(v)))
@@ -106,7 +106,25 @@ def test_GANDataset():
         img_maps = img_maps[:,:,[2,1,0]] # from RGB to BGR
         image.imshow(img_maps)
 
+def test_AlignedGANDataset():
+    from data_loader import CreateDataLoader
+    from options.multimodal_gan_options_v3 import TrainMMGANOptions_V3
+
+    opt = TrainMMGANOptions_V3().parse('--debug --batch_size 1 --nThreads 1')
+    loader = CreateDataLoader(opt)
+    loader_iter = iter(loader)
+    data = loader_iter.next()
+
+    for k, v in data.iteritems():
+        if isinstance(v, torch.Tensor):
+            print('[%s]: (%s), %s' % (k,type(v), v.size()))
+        else:
+            print('[%s]: %s' % (k, type(v)))
+
+
+
 if __name__ == '__main__':
     # test_AttributeDataset()
     # test_EXPAttributeDataset()
-    test_GANDataset()
+    # test_GANDataset()
+    test_AlignedGANDataset()

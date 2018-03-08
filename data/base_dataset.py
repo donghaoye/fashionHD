@@ -153,8 +153,10 @@ def trans_random_crop(img, size):
 
     return img[i:(i+th), j:(j+tw), :]
 
-def trans_random_horizontal_flip(img):
-    if np.random.rand() >= 0.5:
+def trans_random_horizontal_flip(img, coin=None):
+    if coin is None:
+        coin = np.random.rand()
+    if coin >= 0.5:
         return cv2.flip(img, flipCode = 1) # horizontal flip
     else:
         return img

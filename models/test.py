@@ -204,7 +204,30 @@ def test_UnetResidualGenerator():
     print(feat.size())
 
 
+def test_V3Model():
+    from data.data_loader import CreateDataLoader
+    from options.multimodal_gan_options_v3 import TrainMMGANOptions_V3 as Option
+    from models.multimodal_designer_gan_model_v3 import MultimodalDesignerGAN_V3 as Model
+    from misc.visualizer import GANVisualizer_V3
+    
+    opt = Option().parse('--debug --batch_size 1 --nThreads 1 --shape_encode flx_seg --shape_with_face 1')
+    data = iter(CreateDataLoader(opt)).next()
 
+    visualizer = GANVisualizer_V3(opt)
+    
+    model = Model()
+    model.initialize(opt)
+    model.set_input(data)
+    model.forward()
+
+    for k, v in model.output.iteritems():
+        try:
+            print('%s: %s'%(k, v.size()))
+        except:
+            print('%s' % k)
+
+    visuals = model.get_current_visuals(mode = 'input')
+    visualizer.visualize_image(1, subset='input', visuals=visuals)
 
 
 if __name__ == '__main__':
@@ -216,5 +239,6 @@ if __name__ == '__main__':
     # test_feature_spatial_transformer()
     # test_MultiModalDesignerGAN()
     # test_upsample_generator()
-    test_MultiModalDesignerGAN_V2()
+    # test_MultiModalDesignerGAN_V2()
     # test_UnetResidualGenerator()
+    test_V3Model()

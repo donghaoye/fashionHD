@@ -460,3 +460,88 @@ class GANVisualizer_V2(BaseVisualizer):
                 new_outputs[k] = v
 
         super(GANVisualizer_V2, self).pavi_log(phase, iter_num, new_outputs)
+
+
+class GANVisualizer_V3(BaseVisualizer):
+    def __init__(self, opt):
+        super(GANVisualizer_V3, self).__init__(opt)
+
+
+    def visualize_image(self, epoch, subset, visuals):
+        opt = self.opt
+        vis_dir = os.path.join('checkpoints', opt.id, 'vis')
+        io.mkdir_if_missing(vis_dir)
+        print('[%s] visualizing %s images' % (opt.id, subset))
+
+        imgs = []
+        vis_list = []
+        for name, (vis, vis_type) in visuals.iteritems():
+            if vis_type == 'rgb':
+                pass
+            elif vis_type == 'seg':
+                vis = seg_to_rgb(vis)
+            elif vis_type == 'segf':
+                vis = seg_to_rgb(vis, self.opt.shape_with_face)
+            elif vis_type == 'edge':
+                size = list(vis.size())
+                size[1] = 3
+                vis = vis.expand(size)
+            elif vis_type == 'color':
+                if vis.size(1) == 6:
+                    vis = vis[:,0:3] + vis[:,3::]
+            imgs.append(vis.cpu())
+            vis_list.append(name)
+
+        num_vis = min(opt.max_n_vis, imgs[0].size(0))
+        imgs = torch.stack(imgs, dim=1)[0:num_vis]
+        imgs = imgs.view(imgs.size(0)*imgs.size(1), imgs.size(2), imgs.size(3), imgs.size(4))
+        nrow = int(imgs.size(0)/num_vis)
+        fn_img = os.path.join(vis_dir, '%s_epoch%d.jpg' % (subset, epoch))
+        torchvision.utils.save_image(imgs, fn_img, nrow = nrow, normalize = True)
+        io.save_str_list(vis_list, os.path.join(vis_dir, 'vis_name_list.txt'))
+
+    def visualize_image_matrix(self, imgs, imgs_title_top = None, imgs_title_left = None, label = 'default', vis_dir = 'vis'):
+        '''
+        Input:
+            imgs (tensor): image matrix, tensor of size n_row*n_col*C*H*W
+            imgs_title_top (tensor): top title images, tensor of size n_col*C*H*W
+            imgs_title_left (tensor): left title images, tensor of size n_row*C*H*W
+            label (str): output filename
+
+        '''
+        vis_dir = os.path.join('checkpoints', self.opt.id, vis_dir)
+        io.mkdir_if_missing(vis_dir)
+
+        n_row, n_col, c, h, w = imgs.size()
+
+        if imgs_title_top is not None:
+            assert imgs_title_top.size(0) == n_col
+            imgs = torch.cat((imgs_title_top.view(1, n_col, c, h, w), imgs), 0)
+            n_row += 1
+        if imgs_title_left is not None:
+            assert imgs_title_left.size(0) in {n_row, n_row-1}
+            if imgs_title_left.size(0) == n_row-1:
+                img_blank = torch.zeros([1] + list(imgs_title_left.size()[1::]))
+                imgs_title_left = torch.cat((img_blank, imgs_title_left), 0)
+            imgs = torch.cat((imgs_title_left.view(n_row, 1, c, h, w), imgs), 1)
+            n_col += 1
+
+        imgs = imgs.view(n_row*n_col, c, h, w)
+        fn_img = os.path.join(vis_dir, label+'.jpg')
+        torchvision.utils.save_image(imgs, fn_img, nrow = n_col, normalize = True)
+
+
+
+    def pavi_log(self, phase, iter_num, outputs):
+        # upper_list = ['D_real', 'D_fake', '']
+        upper_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG']
+        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'T_feat', 'T_img', 'G_seg', 'PSNR']
+
+        new_outputs = {}
+        for k,v in outputs.iteritems():
+            if k in upper_list:
+                new_outputs[k+'_upper'] = v
+            elif k in lower_list:
+                new_outputs[k] = v
+
+        super(GANVisualizer_V3, self).pavi_log(phase, iter_num, new_outputs)

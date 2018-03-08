@@ -100,7 +100,7 @@ class GANDataset(BaseDataset):
         # load color map
         # color_map = cv2.imread(self.color_path_list[index]).astype(np.float32) / 255.
         # create color map on the fly
-        color_map = cv2.GaussianBlur(img, (self.opt.color_gaussian_ksz, self.opt.color_gaussian_ksz), self.opt.color_gaussian_sigma)            
+        color_map = cv2.GaussianBlur(img, (self.opt.color_gaussian_ksz, self.opt.color_gaussian_ksz), self.opt.color_gaussian_sigma)
         nc_img, nc_lm, nc_edge, nc_color = img.shape[-1], lm_map.shape[-1], edge_map.shape[-1], color_map.shape[-1]
         mix = np.concatenate((img, lm_map, edge_map, color_map), axis = 2)
 
