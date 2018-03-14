@@ -111,7 +111,7 @@ def test_AlignedGANDataset():
     from options.multimodal_gan_options_v3 import TrainMMGANOptions_V3
 
     opt = TrainMMGANOptions_V3().parse('--debug --batch_size 1 --nThreads 1')
-    loader = CreateDataLoader(opt)
+    loader = CreateDataLoader(opt, 'train')
     loader_iter = iter(loader)
     data = loader_iter.next()
 

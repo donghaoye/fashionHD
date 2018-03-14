@@ -106,6 +106,7 @@ class BaseMMGANOptions(BaseOptions):
         parser.add_argument('--fn_seg_path', type = str, default = 'default', help = 'path of seg map')
         parser.add_argument('--fn_edge_path', type = str, default = 'default', help = 'path of edge map')
         parser.add_argument('--fn_color_path', type = str, default = 'default', help = 'path of color map')
+        parser.add_argument('--fn_flx_seg_path', type = str, default = 'default', help = 'path of uncertain seg map')
         ##############################
         # auxiliary discriminators
         ##############################
@@ -188,6 +189,8 @@ class BaseMMGANOptions(BaseOptions):
             if opt.fn_seg_path == 'default':
                 # opt.fn_seg_path = 'Label/ca_seg_paths.json'
                 opt.fn_seg_path = 'Label/ca_syn_seg_paths.json'
+            if opt.fn_flx_seg_path == 'default':
+                opt.fn_flx_seg_path = 'Label/ca_gan_flx_seg_paths.json'
             if opt.fn_edge_path == 'default':
                 if opt.edge_outer:
                     opt.fn_edge_path = 'Label/ca_edge_paths.json'
@@ -209,6 +212,7 @@ class BaseMMGANOptions(BaseOptions):
             opt.fn_split = 'Split/debugca_gan_split.json'
             opt.fn_landmark = 'Label/debugca_gan_landmark_label.pkl'
             opt.fn_seg_path = 'Label/debugca_seg_paths.json'
+            opt.fn_flx_seg_path = 'Label/debugca_gan_flx_seg_paths.json'
             opt.fn_edge_path = 'Label/debugca_edge_paths.json'
             opt.fn_color_path = 'Label/debugca_edge_paths.json' # Todo: modify this temp setting
 

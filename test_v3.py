@@ -21,7 +21,7 @@ num_batch = 20
 opt = TestMMGANOptions_V3().parse()
 opt.batch_size = batch_size
 org_opt = io.load_json(os.path.join('checkpoints', opt.id, 'train_opt.json'))
-preserved_opt = {'gpu_ids', 'batch_size', 'is_train', 'dataset_mode'}
+preserved_opt = {'id', 'gpu_ids', 'batch_size', 'is_train', 'dataset_mode'}
 for k, v in org_opt.iteritems():
     if k in opt and (k not in preserved_opt):
         setattr(opt, k, v)

@@ -31,7 +31,7 @@ class BaseOptions(object):
         parser.add_argument('--dataset_mode', type = str, default = 'gan_self', help = 'type of dataset',
             choices = ['attribute', 'attribute_exp', 'gan_self'])
         parser.add_argument('--data_root', type = str, default = './datasets/DeepFashion/Fashion_design/', help = 'data root path')
-        parser.add_argument('--nThreads', type = int, default = 12, help = 'number of workers to load data')
+        parser.add_argument('--nThreads', type = int, default = 8, help = 'number of workers to load data')
         parser.add_argument('--max_dataset_size', type = int, default = float('inf'), help = 'maximum number of samples')
         parser.add_argument('--load_size', type = int, default = 256, help = 'scale input image to this size')
         parser.add_argument('--fine_size', type = int, default = 256, help = 'crop input image to this size')
