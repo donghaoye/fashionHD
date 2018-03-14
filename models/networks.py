@@ -1451,426 +1451,6 @@ class DecoderGenerator(nn.Module):
             return self.upsample_2(output_1)
 
 
-###############################################################################
-# Attribute
-###############################################################################
-
-def define_attr_encoder_net(opt):
-    if opt.joint_cat:
-        if opt.spatial_pool != 'none' or opt.input_lm:
-            raise NotImplementedError()
-        if opt.spatial_pool == 'none':
-            net = JointNoneSpatialAttributeEncoderNet(
-                convnet = opt.convnet,
-                input_nc = opt.input_nc,
-                output_nc = opt.n_attr,
-                output_nc1 = opt.n_cat,
-                feat_norm = opt.feat_norm,
-                gpu_ids = opt.gpu_ids,
-                init_type = opt.init_type)
-    else:
-        if opt.input_lm:
-            if opt.spatial_pool == 'none':
-                raise NotImplementedError()
-            else:
-                net = DualSpatialAttributeEncoderNet(
-                    convnet = opt.convnet,
-                    spatial_pool = opt.spatial_pool,
-                    input_nc = opt.input_nc,
-                    output_nc = opt.n_attr,
-                    lm_input_nc = opt.lm_input_nc,
-                    lm_output_nc = opt.lm_output_nc,
-                    lm_fusion = opt.lm_fusion,
-                    feat_norm = opt.feat_norm,
-                    gpu_ids = opt.gpu_ids,
-                    init_type = opt.init_type)
-        else:
-            if opt.spatial_pool == 'none':
-                net = NoneSpatialAttributeEncoderNet(
-                    convnet = opt.convnet,
-                    input_nc = opt.input_nc,
-                    output_nc = opt.n_attr,
-                    feat_norm = opt.feat_norm,
-                    gpu_ids = opt.gpu_ids,
-                    init_type = opt.init_type)
-            elif opt.spatial_pool in {'max', 'noisyor'}:
-                net = SpatialAttributeEncoderNet(
-                    convnet = opt.convnet,
-                    spatial_pool = opt.spatial_pool,
-                    input_nc = opt.input_nc, 
-                    output_nc = opt.n_attr,
-                    feat_norm = opt.feat_norm,
-                    gpu_ids = opt.gpu_ids,
-                    init_type = opt.init_type)
-
-    if len(opt.gpu_ids) > 0:
-        net.cuda()
-
-    return net
-
-
-
-class NoisyOR(nn.Module):
-    def __init__(self):
-        super(NoisyOR,self).__init__()
-
-    def forward(self, prob_map):
-        bsz, nc, w, h = prob_map.size()
-        neg_prob_map = 1 - prob_map.view(bsz, nc, -1)
-        neg_prob = Variable(prob_map.data.new(bsz, nc).fill_(1))
-
-        for i in xrange(neg_prob_map.size(2)):
-            neg_prob = neg_prob * neg_prob_map[:,:,i]
-
-        return 1 - neg_prob
-
-class LandmarkPool(nn.Module):
-    def __init__(self, pool = 'max', region_size = (3,3)):
-        super(LandmarkPool, self).__init__()
-
-    def forward(feat_map, lm_list):
-        raise NotImplementedError('LandmarkPool.forward not implemented')
-
-        
-
-def create_stack_conv_layers(input_nc, feat_nc_s = 64, feat_nc_f = 1024, num_layer = 5, norm = 'batch'):
-    
-    c_in = input_nc
-    c_out = feat_nc_s
-    norm_layer = get_norm_layer(norm_type = norm)
-    conv_layers = []
-
-    for n in range(num_layer):
-        conv_layers.append(nn.Conv2d(c_in, c_out, 4,2,1, bias = False))
-        conv_layers.append(norm_layer(c_out))
-        conv_layers.append(nn.ReLU())
-
-        c_in = c_out
-        c_out = feat_nc_f if n == num_layer-2 else c_out * 2
-
-    conv = nn.Sequential(*conv_layers)
-
-    conv.input_nc = input_nc
-    conv.output_nc = feat_nc_f
-
-    return conv
-
-
-class NoneSpatialAttributeEncoderNet(nn.Module):
-    def __init__(self, convnet, input_nc, output_nc, feat_norm, gpu_ids, init_type):
-        '''
-        Args:
-            convnet (str): convnet architecture.
-            input_nc (int): number of input channels.
-            output_nc (int): number of output channels (number of attribute entries)
-        '''
-        super(NoneSpatialAttributeEncoderNet, self).__init__()
-        self.gpu_ids = gpu_ids
-        self.feat_norm = feat_norm
-
-        if convnet == 'stackconv':
-            pretrain = False
-            self.conv = create_stack_conv_layers(input_nc)
-        else:
-            pretrain = (input_nc == 3)
-            self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
-        self.avgpool = nn.AvgPool2d(7, stride=1)
-        self.fc = nn.Linear(self.conv.output_nc, output_nc)
-
-        # initialize weights
-        init_weights(self.fc, init_type = init_type)
-        if not pretrain:
-            init_weights(self.conv, init_type = init_type)
-
-        if pretrain:
-            print('load CNN weight pretrained on ImageNet!')
-
-
-    def forward(self, input_img):
-        
-        feat, _ = self.extract_feat(input_img)
-        return self.predict(feat)
-
-    def extract_feat(self, input_img):
-        bsz = input_img.size(0)
-
-        if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img)
-        else:
-            feat_map = self.conv(input_img)
-
-        if self.feat_norm:
-            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
-
-        feat = self.avgpool(feat_map).view(bsz, -1)
-
-        return feat, feat_map
-
-    def predict(self, feat_map):
-        '''
-        Input:
-            feat_map: feature map (bsz, c, H, W) or feat(bsz, c)
-        Output:
-            prob
-            prob_map
-        '''
-        bsz = feat_map.size(0)
-        if feat_map.ndimension() == 4:
-            feat = self.avgpool(feat_map).view(bsz, -1)
-        else:
-            assert feat_map.ndimension() == 2
-            feat = feat_map
-
-        prob = F.sigmoid(self.fc(feat))
-        return prob, None
-
-
-class SpatialAttributeEncoderNet(nn.Module):
-    def __init__(self, convnet, spatial_pool, input_nc, output_nc, feat_norm, gpu_ids, init_type):
-        super(SpatialAttributeEncoderNet, self).__init__()
-        self.gpu_ids = gpu_ids
-        self.feat_norm = feat_norm
-
-        if convnet == 'stackconv':
-            pretrain = False
-            self.conv = create_stack_conv_layers(input_nc)
-        else:
-            pretrain = (input_nc == 3)
-            self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
-
-        self.cls = nn.Conv2d(self.conv.output_nc, output_nc, kernel_size = 1)
-
-        if spatial_pool == 'max':
-            self.pool = nn.MaxPool2d(7, stride=1)
-        elif spatial_pool == 'noisyor':
-            self.pool = NoisyOR()
-
-        # initialize weights
-        init_weights(self.cls, init_type = init_type)
-        if spatial_pool == 'noisyor':
-            # special initialization
-            init.constant(self.cls.bias, -6.58)
-            
-        if pretrain:
-            print('load CNN weight pretrained on ImageNet!')
-        else:
-            init_weights(self.conv, init_type = init_type)
-
-
-
-    def forward(self, input_img):
-        _, feat_map = self.extract_feat(input_img)
-        return self.predict(feat_map)
-
-    def extract_feat(self, input_img):
-        bsz = input_img.size(0)
-        if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img)
-        else:
-            feat_map = self.conv(input_img)
-
-        if self.feat_norm:
-            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
-        feat = F.avg_pool2d(feat_map, kernel_size = 7, stride = 1).view(bsz, -1)
-
-        return feat, feat_map
-
-    def predict(self, feat_map):
-        '''
-        Input:
-            feat_map
-        Output:
-            prob
-            prob_map
-        '''
-        bsz = feat_map.size(0)
-        prob_map = F.sigmoid(self.cls(feat_map))
-        prob = self.pool(prob_map).view(bsz, -1)
-
-        return prob, prob_map
-
-class DualSpatialAttributeEncoderNet(nn.Module):
-    '''
-    Attribute Encoder with 2 branches of ConvNet, for RGB image and Landmark heatmap respectively.
-    '''
-    def __init__(self, convnet, spatial_pool, input_nc, output_nc, lm_input_nc, lm_output_nc, lm_fusion, feat_norm, gpu_ids, init_type):
-        super(DualSpatialAttributeEncoderNet, self).__init__()
-        # create RGB channel
-        self.gpu_ids = gpu_ids
-        self.feat_norm = feat_norm
-        self.spatial_pool = spatial_pool
-        self.fusion = lm_fusion
-        if convnet == 'stackconv':
-            pretrain = False
-            self.conv = create_stack_conv_layers(input_nc)
-        else:
-            pretrain = (input_nc == 3)
-            self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
-        
-
-        # create landmark channel
-        lm_layer_list = []
-        c_in = lm_input_nc
-        c_out = lm_output_nc // (2**4)
-
-        for n in range(5):
-            lm_layer_list.append(nn.Conv2d(c_in, c_out, 4, 2, 1, bias = False))
-            lm_layer_list.append(nn.BatchNorm2d(c_out))
-            lm_layer_list.append(nn.ReLU())
-            c_in = c_out
-            c_out *= 2
-
-        self.conv_lm = nn.Sequential(*lm_layer_list)
-
-        # create fusion layers
-        if lm_fusion == 'concat':
-            feat_nc = self.conv.output_nc + lm_output_nc
-            self.cls = nn.Conv2d(feat_nc, output_nc, kernel_size = 1)
-        elif lm_fusion == 'linear':
-            feat_nc = self.conv.output_nc + lm_output_nc
-            self.fuse_layer = nn.Sequential(
-                nn.Conv2d(feat_nc, self.conv.output_nc, kernel_size = 1),
-                nn.BatchNorm1d(self.conv.output_nc),
-                nn.ReLu()
-                )
-            self.cls = nn.Conv2d(self.conv.output_nc, output_nc, kernel_size = 1)
-        else:
-            print(lm_fusion)
-            raise NotImplementedError()
-
-
-        # create pooling layers
-        if spatial_pool == 'max':
-            self.pool = nn.MaxPool2d(7, stride=1)
-        elif spatial_pool == 'noisyor':
-            self.pool = NoisyOR()
-
-        # initialize weights
-        init_weights(self.cls, init_type = init_type)
-        init_weights(self.conv_lm, init_type = init_type)
-        if lm_fusion == 'linear':
-            init_weights(self.fuse_layer, init_type = init_type)
-        if spatial_pool == 'noisyor':
-            # special initialization
-            init.constant(self.cls.bias, -6.58)
-            
-        if pretrain:
-            print('load CNN weight pretrained on ImageNet!')
-        else:
-            init_weights(self.conv, init_type = init_type)
-
-    def forward(self, input_img, input_lm_heatmap):
-        bsz = input_img.size(0)
-        if self.gpu_ids:
-            img_feat_map = nn.parallel.data_parallel(self.conv, input_img)
-            lm_feat_map = nn.parallel.data_parallel(self.conv_lm, input_lm_heatmap)
-        else:
-            img_feat_map = self.conv(input_img)
-            lm_feat_map = self.conv_lm(input_lm_heatmap)
-
-        feat_map = None
-        if self.fusion == 'concat':
-            feat_map = torch.cat((img_feat_map, lm_feat_map), dim = 1)
-        elif self.fusion == 'linear':
-            feat_map = self.fuse_layer(torch.cat((img_feat_map, lm_feat_map), dim = 1))
-        else:
-            print(self.fusion)
-            raise NotImplementedError()
-
-        if self.feat_norm:
-            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
-        
-        prob_map = F.sigmoid(self.cls(feat_map))
-        prob = self.pool(prob_map).view(bsz, -1)
-
-        return prob, prob_map
-
-    def extract_feat(self, input_img, input_lm_heatmap):
-        bsz = input_img.size(0)
-        if self.gpu_ids:
-            img_feat_map = nn.parallel.data_parallel(self.conv, input_img)
-            lm_feat_map = nn.parallel.data_parallel(self.conv_lm, input_lm_heatmap)
-        else:
-            img_feat_map = self.conv(input_img)
-            lm_feat_map = self.conv_lm(input_lm_heatmap)
-
-        feat_map = None
-        if self.fusion == 'cancat':
-            feat_map = torch.cat((img_feat_map, lm_feat_map), dim = 1)
-        elif self.fusion == 'linear':
-            feat_map = self.fuse_layer(torch.cat((img_feat_map, lm_feat_map), dim = 1))
-
-        if self.feat_norm:
-            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
-
-        feat = F.avg_pool2d(feat_map, kernel_size = 7, stride = 1).view(bsz, -1)
-
-        return feat, feat_map
-
-
-class JointNoneSpatialAttributeEncoderNet(nn.Module):
-    def __init__(self, convnet, input_nc, output_nc, output_nc1, feat_norm, gpu_ids, init_type):
-        '''
-        Args:
-            convnet (str): convnet architecture.
-            input_nc (int): number of input channels.
-            output_nc (int): number of output channels (number of attribute entries)
-            output_nc1 (int): number of auxiliary output chnnels (number of category entries)
-        '''
-
-        super(JointNoneSpatialAttributeEncoderNet, self).__init__()
-        self.gpu_ids = gpu_ids
-        self.feat_norm = feat_norm
-
-        if convnet == 'stackconv':
-            pretrain = False
-            self.conv = create_stack_conv_layers(input_nc)
-        else:
-            pretrain = (input_nc == 3)
-            self.conv = create_resnet_conv_layers(convnet, input_nc, pretrain)
-        self.avgpool = nn.AvgPool2d(7, stride=1)
-        self.fc = nn.Linear(self.conv.output_nc, output_nc)
-        self.fc_cat = nn.Linear(self.conv.output_nc, output_nc1)
-
-        # initialize weights
-        init_weights(self.fc, init_type = init_type)
-        init_weights(self.fc_cat, init_type = init_type)
-        if not pretrain:
-            init_weights(self.conv, init_type = init_type)
-
-        if pretrain:
-            print('load CNN weight pretrained on ImageNet!')
-
-    def forward(self, input_img):
-        bsz = input_img.size(0)
-        if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img)
-        else:
-            feat_map = self.conv(input_img)
-
-        if self.feat_norm:
-            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
-
-        feat = self.avgpool(feat_map).view(bsz, -1)
-        prob = F.sigmoid(self.fc(feat))
-        pred_cat = self.fc_cat(feat)
-
-        return prob, None, pred_cat
-
-    def extract_feat(self, input_img):
-        bsz = input_img.size(0)
-        if self.gpu_ids:
-            feat_map = nn.parallel.data_parallel(self.conv, input_img)
-        else:
-            feat_map = self.conv(input_img)
-
-        if self.feat_norm:
-            feat_map = feat_map / feat_map.norm(p=2, dim=1, keepdim=True)
-
-        feat = self.avgpool(feat_map).view(bsz, -1)
-
-        return feat, feat_map
-
 
 ###############################################################################
 # Feature Spatial Transformer
@@ -2258,7 +1838,7 @@ class STImageEncoder(nn.Module):
 
             return self.stn(feat)[:,0:self.output_nc]
         
-# return nn.parallel.data_parallel(self, (feat_input, shape_src, shape_tar), module_kwargs = {'single_device': True})
+
 
 class SpatialTransformerNetwork(nn.Module):
     def __init__(self, input_nc, size=8):
@@ -2348,3 +1928,168 @@ class ImageDecoder(nn.Module):
             return nn.parallel.data_parallel(self.model, input)
         else:
             return self.model(input)
+
+
+
+###############################################################################
+# General Image Encoder V2
+###############################################################################
+
+def define_encoder_v2(opt):
+    norm_layer = get_norm_layer(opt.norm)
+    activation = nn.ReLU(True)
+
+    # input_nc
+    if opt.input_type == 'image':
+        input_nc = 3
+    elif opt.input_type == 'seg':
+        input_nc = 7
+    elif opt.input_type == 'edge':
+        input_nc = 1
+    else:
+        raise NotImplementedError()
+
+    encoder = Encoder_V2(block=opt.block, input_nc=input_nc, output_nc=opt.nof, input_size=opt.fine_size, nf=opt.nf, max_nf=opt.max_nf, nf_increase=opt.nf_increase, ndowns=opt.ndowns, final_fc=opt.encode_fc, norm_layer=norm_layer, activation=activation, gpu_ids=opt.gpu_ids)
+    if opt.gpu_ids:
+        encoder.cuda()
+    init_weights(encoder, init_type=opt.init_type)
+    return encoder
+
+def define_decoder_v2(opt):
+    norm_layer = get_norm_layer(opt.norm)
+    activation = nn.ReLU(True)
+
+    # output_nc
+    
+    if opt.output_type == 'image':
+        output_activation = nn.Tanh()
+        output_nc = 3
+    elif opt.output_type == 'seg':
+        output_nc = 7
+        output_activation = None
+    elif opt.output_type == 'edge':
+        output_activation = nn.ReLU()
+        output_nc = 1
+    else:
+        raise NotImplementedError()
+
+    # input_nc
+    if opt.decode_guide:
+        input_nc = opt.nof + opt.gf
+    else:
+        input_nc = opt.nof
+
+    decoder = Decoder_V2(input_nc=input_nc, output_nc=output_nc, input_size=opt.feat_size, nf=opt.nf, max_nf=opt.max_nf, nf_increase=opt.nf_increase, nups=opt.ndowns, start_fc=opt.decode_fc, norm_layer=norm_layer, activation=activation, output_activation=output_activation, gpu_ids=opt.gpu_ids)
+    if opt.gpu_ids:
+        decoder.cuda()
+    init_weights(decoder, init_type=opt.init_type)
+
+    return decoder
+
+class Encoder_V2(nn.Module):
+    def __init__(self, block, input_nc, output_nc, input_size=256, nf=64, max_nf=512, nf_increase='exp', ndowns=5, final_fc=False, norm_layer=nn.BatchNorm2d, activation=nn.ReLU(True), gpu_ids=[]):
+        super(Encoder_V2, self).__init__()
+        assert nf <= max_nf
+        assert 2**ndowns < input_size, '%dx%d input image can not be reduced by stride-2 convolution for ndowns=%d times' % (input_size, input_size, ndowns)
+
+        self.input_size = input_size
+        self.gpu_ids = gpu_ids
+
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        layers = [
+            nn.Conv2d(input_nc, nf, kernel_size=7, padding=3, bias=use_bias),
+            norm_layer(nf),
+            activation]
+
+        c_out = nf
+        for n in range(ndowns):
+            c_in = c_out
+            if n == ndowns - 1 and not final_fc:
+                c_out = output_nc
+            elif nf_increase == 'exp':
+                c_out = min(max_nf, nf*2**(n+1))
+            else:
+                c_out = min(max_nf, nf*(n+2))
+
+            if block == 'conv':
+                layers.append(DownsampleEncoderBlock(c_in, c_out, norm_layer, activation, use_bias))
+            elif block == 'residual':
+                layers.append(ResidualEncoderBlock(c_in, c_out, norm_layer, activation, use_bias, stride=2))
+
+        if final_fc:
+            feat_size = input_size // (2**ndowns)
+            layers += [
+                nn.Conv2d(c_out, output_n, kernel_size=feat_size),
+                activation]
+
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, img):
+        if len(self.gpu_ids) > 1:
+            return nn.parallel.data_parallel(self.net, img)
+        else:
+            return self.net(img)
+
+class Decoder_V2(nn.Module):
+    def __init__(self, input_nc, output_nc, input_size=8, nf=64, max_nf=512, nf_increase='exp', nups=5, start_fc=False, norm_layer=nn.BatchNorm2d, activation=nn.ReLU(True), output_activation=nn.Tanh(), gpu_ids=[]):
+        super(Decoder_V2, self).__init__()
+        assert nf <= max_nf
+
+        self.input_size = input_size
+        self.gpu_ids = gpu_ids
+
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        layers = []
+        if start_fc:
+            # input feature (1x1) will pass through a fc layer to create (input_size x input_size) feature map
+            if nf_increase == 'exp':
+                c_out = min(max_nf, nf*2**(nups))
+            else:
+                c_out = min(max_nf, nf*(nups+1))
+            layers += [
+                nn.ConvTranspose2d(input_size, c_out, kernel_size=input_size),
+                norm_layer(c_out),
+                activation
+            ]
+        else:
+            c_out = input_nc
+
+        for n in range(nups):
+            c_in = c_out
+            if nf_increase == 'exp':
+                c_out = min(max_nf, nf*2**(nups-n-1))
+            else:
+                c_out = min(max_nf, nf*(nups-n))
+
+            layers += [
+                nn.ConvTranspose2d(c_in, c_out, kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
+                norm_layer(c_out),
+                activation
+            ]
+
+        layers += [
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(c_out, output_nc, kernel_size=7)
+        ]
+
+        if output_activation is not None:
+            if not isinstance(output_activation, nn.Module):
+                output_activation = output_activation
+            layers += [output_activation]
+
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, feat):
+        if len(self.gpu_ids) > 1:
+            return nn.parallel.data_parallel(self.net, feat)
+        else:
+            return self.net(feat)
+

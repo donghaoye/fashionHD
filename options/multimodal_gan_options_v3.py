@@ -15,7 +15,7 @@ class BaseMMGANOptions_V3(BaseOptions):
         parser.add_argument('--post_mask_mode', type = str, default = 'none', choices = ['none', 'fuse_face', 'fuse_face+bg'], help = 'how to mask generated images [none|fuse_face|fuse_face+bg]')
         parser.add_argument('--batch_size', type = int, default = 16, help = 'batch size')
         parser.add_argument('--pavi', default = False, action = 'store_true', help = 'activate pavi log')
-        parser.add_argument('--which_model_init', type = str, default = 'none', help = 'load pretrained model to init netG parameters')
+        parser.add_argument('--which_model_init', type = str, default = 'V3_1.3', help = 'load pretrained model to init netG parameters')
         ##############################
         # Encoder General Setting
         ##############################
@@ -36,7 +36,7 @@ class BaseMMGANOptions_V3(BaseOptions):
         parser.add_argument('--shape_encoder_block', type=str, default='default')
         parser.add_argument('--pretrain_shape', type=int, default=1, choices=[0,1], help='load pretrained shape_encoder')
         parser.add_argument('--which_model_init_shape_encoder', type=str, default='default', help='id of pretrained shape encoder')
-        parser.add_argument('--shape_encode', type = str, default = 'reduced_seg', choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e', 'reduced_seg', 'flx_seg'], help = 'cloth shape encoding method')
+        parser.add_argument('--shape_encode', type = str, default = 'flx_seg', choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e', 'reduced_seg', 'flx_seg'], help = 'cloth shape encoding method')
         parser.add_argument('--shape_with_face', type= int, default = 1, choices = [0,1], help='add face region rgb information into shape representation')
         parser.add_argument('--shape_nc', type=int, default=0, help='# channels of shape representation, depends on shape_emcode, will be auto set')
         ##############################
@@ -79,8 +79,9 @@ class BaseMMGANOptions_V3(BaseOptions):
         # Generator
         ##############################
         parser.add_argument('--which_model_netG', type = str, default = 'unet', choices = ['decoder', 'unet'], help='select model to use for netG')
+        parser.add_argument('--G_output_region', type=int, default=0, choices=[0,1], help='generator output rgb channels for each seg region, and then combine them')
         parser.add_argument('--G_output_seg', type=int, default=1, choices=[0,1], help='generator output image and (7-channel) segentation map')
-        parser.add_argument('--G_output_nc', type=int, default=3, help='# output channels of netG')
+        parser.add_argument('--G_output_nc', type=int, default=-1, help='# output channels of netG')
         # for decoder generator
         parser.add_argument('--G_shape_guided', action='store_true', help='add shape guide at LR level')
         parser.add_argument('--G_nblocks_1', type=int, default=2, help='number of LR residual blocks')
@@ -98,7 +99,9 @@ class BaseMMGANOptions_V3(BaseOptions):
         parser.add_argument('--n_layers_D', type=int, default=3, help='only used if which_model_netD==n_layers')
         parser.add_argument('--D_input_nc', type = int, default = 22, help = '# of netD input channels')
         parser.add_argument('--ndf', type=int, default=64, help='# of discrim filters in first conv layer')
-        parser.add_argument('--D_no_cond', action='store_true', help='only input images(no condition info) into netD')
+        # parser.add_argument('--D_no_cond', action='store_true', help='only input images(no condition info) into netD')
+        parser.add_argument('--D_cond', type=str, default='std', choices=['std', 'shape', 'none'], help='input mode of discriminator')
+        parser.add_argument('--D_output_type', type=str, default='binary', choices=['binary', 'class'], help='output mode of discriminator')
         ##############################
         # data setting 1 fot gan dataset
         ##############################
@@ -161,15 +164,20 @@ class BaseMMGANOptions_V3(BaseOptions):
             opt.shape_nc += 3
         # set G_output_nc
         if opt.G_output_seg:
-            opt.G_output_nc = 10
+            if opt.G_output_region:
+                opt.G_output_nc = 7 + 3*7
+            else:
+                opt.G_output_nc = 7 + 3
         else:
             opt.G_output_nc = 3
         # set D_input_nc
-        if opt.D_no_cond:
+        if opt.D_cond == 'none':
             opt.D_input_nc = nc_img
+        elif opt.D_cond == 'shape':
+            opt.D_input_nc = nc_img + opt.shape_nc
         else:
             opt.D_input_nc = nc_img + opt.shape_nc + (nc_edge if opt.use_edge else 0) + (nc_color if opt.use_color else 0)
-
+        
         ###########################################
         # set encoder initialization
         ###########################################
@@ -260,17 +268,16 @@ class TrainMMGANOptions_V3(BaseMMGANOptions_V3):
         self.parser.add_argument('--pool_size', type=int, default=0, help='the size of image buffer that stores previously generated images')
         
         # optimizer (we use Adam)
-        parser.add_argument('--lr', type = float, default = 2e-4, help = 'initial learning rate')
-        parser.add_argument('--lr_D', type=float, default=2e-4, help='initial learning rate for netD')
-        parser.add_argument('--lr_FTN', type=float, default=2e-4, help='initial learning rate for FTN')
+        parser.add_argument('--lr', type = float, default = 2e-5, help = 'initial learning rate')
+        parser.add_argument('--lr_D', type=float, default=2e-5, help='initial learning rate for netD')
         parser.add_argument('--beta1', type = float, default = 0.5, help = 'momentum1 term for Adam')
         parser.add_argument('--beta2', type = float, default = 0.999, help = 'momentum2 term for Adam')
         # scheduler
         parser.add_argument('--lr_policy', type=str, default='lambda', help='learning rate policy: lambda|step|plateau',
             choices = ['step', 'plateau', 'lambda'])
         parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
-        parser.add_argument('--niter', type = int, default=20, help = '# of iter at starting learning rate')
-        parser.add_argument('--niter_decay', type=int, default=5, help='# of iter to linearly decay learning rate to zero')
+        parser.add_argument('--niter', type = int, default=10, help = '# of iter at starting learning rate')
+        parser.add_argument('--niter_decay', type=int, default=0, help='# of iter to linearly decay learning rate to zero')
         parser.add_argument('--lr_decay', type=int, default=1, help='multiply by a gamma every lr_decay_interval epochs')
         parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')
         parser.add_argument('--display_freq', type = int, default = 10, help='frequency of showing training results on screen')
@@ -285,11 +292,11 @@ class TrainMMGANOptions_V3(BaseMMGANOptions_V3):
 
         # loss weights
         parser.add_argument('--loss_weight_GAN', type = float, default = 1., help = 'loss wweight of GAN loss (for netG)')
-        parser.add_argument('--loss_weight_L1', type = float, default = 100., help = 'loss weight of L1 loss')
-        parser.add_argument('--loss_weight_vgg', type = float, default = 100., help = 'loss weight of vgg loss (perceptual feature loss)')
-        parser.add_argument('--loss_weight_trans_feat', type=float, default=1, help = 'loss weight of feature transfer loss (feat distance)')
-        parser.add_argument('--loss_weight_trans_img', type=float, default=1, help = 'loss weight of feature transfer loss (image distance)')
+        parser.add_argument('--loss_weight_L1', type = float, default = 10., help = 'loss weight of L1 loss')
+        parser.add_argument('--loss_weight_vgg', type = float, default = 10., help = 'loss weight of vgg loss (perceptual feature loss)')
+        parser.add_argument('--loss_weight_vgg_gen', type = float, default = 1., help = 'loss weight of vgg loss (perceptual feature loss)')
         parser.add_argument('--loss_weight_seg', type=float, default=1, help = 'loss weight of segmentation prediction')
+        parser.add_argument('--loss_weight_seg_gen', type=float, default=0.1, help = 'loss weight of segmentation prediction')
         # set train
         self.is_train = True
 

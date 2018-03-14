@@ -157,9 +157,10 @@ def trans_random_horizontal_flip(img, coin=None):
     if coin is None:
         coin = np.random.rand()
     if coin >= 0.5:
-        return cv2.flip(img, flipCode = 1) # horizontal flip
-    else:
-        return img
+        img = cv2.flip(img, flipCode = 1) # horizontal flip
+        if len(img.shape)==2:
+            img = img[:,:,np.newaxis]
+    return img
 
 def trans_random_affine(input, scale=0.05):
     '''

@@ -73,7 +73,7 @@ class MultimodalDesignerGAN_V3(BaseModel):
                 if opt.which_model_init != 'none':
                     # load pretrained entire model
                     for label, net in self.modules.iteritems():
-                        self.load_network(net, label, 'latest', opt.which_model_init, forced=False)
+                        self.load_network(net, label, 'latest', opt.which_model_init)
                 else:
                     # load pretrained encoder
                     if opt.which_model_netG != 'unet' and opt.pretrain_shape:
@@ -217,8 +217,10 @@ class MultimodalDesignerGAN_V3(BaseModel):
 
         self.output['img_raw_rec'] = img_out[0:bsz]
         self.output['img_raw_gen'] = img_out[bsz::]
-        self.output['seg_pred_rec'] = seg_pred[0:bsz]
-        self.output['seg_pred_gen'] = seg_pred[bsz::]
+
+        if self.opt.G_output_seg:
+            self.output['seg_pred_rec'] = seg_pred[0:bsz]
+            self.output['seg_pred_gen'] = seg_pred[bsz::]
 
         self.output['img_rec'] = self.mask_image(self.output['img_raw_rec'], self.input['seg_map'], self.input['img'])
         self.output['img_gen'] = self.mask_image(self.output['img_raw_gen'], self.input['seg_map'], self.input['img'])
@@ -236,91 +238,71 @@ class MultimodalDesignerGAN_V3(BaseModel):
 
     def backward_D(self):
         # PSNR
-        self.output['PSNR'] = self.crit_psnr(self.output['img_fake'], self.output['img_real'])
-        # fake
-        repr_fake = self.get_sample_repr_for_D('fake', detach_image=True)
-        repr_fake = self.fake_pool.query(repr_fake.data)
-        pred_fake = self.netD(repr_fake)
-        self.output['loss_D_fake'] = self.crit_GAN(pred_fake, False)
-        # real
-        repr_real = self.get_sample_repr_for_D('real')
-        pred_real = self.netD(repr_real)
-        self.output['loss_D_real'] = self.crit_GAN(pred_real, True)
-        # combine loss
-        self.output['loss_D'] = (self.output['loss_D_real'] + self.output['loss_D_fake']) * 0.5 * self.opt.loss_weight_GAN
+        self.output['PSNR'] = self.crit_psnr(self.output['img_rec'], self.output['img_real'])
+        if self.opt.D_output_type == 'binary':
+            # real
+            repr_real = self.get_sample_repr_for_D('real')
+            pred_real = self.netD(repr_real)
+            self.output['loss_D_real'] = self.crit_GAN(pred_real, True)
+            # rec
+            repr_rec = self.get_sample_repr_for_D('rec', detach=True)
+            pred_rec = self.netD(repr_rec)
+            self.output['loss_D_rec'] = self.crit_GAN(pred_rec, False)
+            # gen
+            repr_gen = self.get_sample_repr_for_D('gen', detach=True)
+            pred_gen = self.netD(repr_gen)
+            self.output['loss_D_gen'] = self.crit_GAN(pred_gen, False)
+            # combine loss
+            self.output['loss_D'] =(self.output['loss_D_real']*0.5 + self.output['loss_D_rec']*0.25 + self.output['loss_D_gen']*0.25)* self.opt.loss_weight_GAN
+        elif self.opt.D_output_type == 'class':
+            raise NotImplementedError()
         self.output['loss_D'].backward()
 
     def backward_D_wgangp(self):
         raise NotImplementedError('WGAN-GP not supported!')
 
     def backward_G(self, mode='normal'):
-        # check forward mode
-        repr_fake = self.get_sample_repr_for_D('fake', detach_image=False)
-        img_fake = self.output['img_fake']
         self.output['loss_G'] = 0
-        # GAN loss
-        pred_fake = self.netD(repr_fake)
-        self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
-        self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
+        # GAN Loss
+        repr_rec = self.get_sample_repr_for_D('rec', detach=False)
+        pred_rec = self.netD(repr_rec)
+        repr_gen = self.get_sample_repr_for_D('gen', detach=False)
+        pred_gen = self.netD(repr_gen)
+        if self.opt.D_output_type == 'binary':
+            self.output['loss_G_GAN_rec'] = self.crit_GAN(pred_rec, True)
+            self.output['loss_G_GAN_gen'] = self.crit_GAN(pred_gen, True)
+            self.output['loss_G_GAN'] = (self.output['loss_G_GAN_rec'] + self.output['loss_G_GAN_gen']) * 0.5
+            self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
+        elif self.opt.D_output_type == 'class':
+            raise NotImplementedError()
         # L1 loss
-        self.output['loss_G_L1'] = self.crit_L1(img_fake, self.output['img_real'])
+        self.output['loss_G_L1'] = self.crit_L1(self.output['img_rec'], self.output['img_real'])
         self.output['loss_G'] += self.output['loss_G_L1'] * self.opt.loss_weight_L1
-        # VGG Loss
+        # VGG loss
         if self.opt.loss_weight_vgg > 0:
-            self.output['loss_G_VGG'] = self.crit_vgg(img_fake, self.output['img_real'])
+            self.output['loss_G_VGG'] = self.crit_vgg(self.output['img_rec'], self.output['img_real'])
             self.output['loss_G'] += self.output['loss_G_VGG'] * self.opt.loss_weight_vgg
-        # segmentation prediction loss
+            self.output['loss_G_VGG_gen'] = self.crit_vgg(self.output['img_gen'], self.output['img_real'])
+            self.output['loss_G'] += self.output['loss_G_VGG_gen'] * self.opt.loss_weight_vgg_gen
+        # segmentation loss
         if self.opt.G_output_seg:
-            assert self.output['seg_pred'] is not None
-            self.output['seg_ref'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], self.input['flx_seg_mask'], self.input['img'], shape_encode='seg', shape_with_face=False)
-            self.output['loss_G_seg'] = self.calc_seg_loss(self.output['seg_pred'], self.input['seg_map'])
-            self.output['loss_G'] += self.output['loss_G_seg'] * self.opt.loss_weight_seg
-        # backward
+            self.output['loss_G_seg_rec'] = self.calc_seg_loss(self.output['seg_pred_rec'], self.input['seg_map'])
+            self.output['loss_G'] += self.output['loss_G_seg_rec'] * self.opt.loss_weight_seg
+            self.output['loss_G_seg_gen'] = self.calc_seg_loss(self.output['seg_pred_gen'], self.input['seg_map'])
+            self.output['loss_G'] += self.output['loss_G_seg_gen'] * self.opt.loss_weight_seg_gen
         self.output['loss_G'].backward()
+       
+
 
     def backward_G_grad_check(self, mode='normal'):
-        # check forward mode
-        repr_fake = self.get_sample_repr_for_D('fake', detach_image=False)
-        img_fake = self.output['img_fake']
-        
-
-        img_fake.retain_grad()
-        self.output['loss_G'] = 0
-        # GAN loss
-        pred_fake = self.netD(repr_fake)
-        self.output['loss_G_GAN'] = self.crit_GAN(pred_fake, True)
-        (self.output['loss_G_GAN'] * self.opt.loss_weight_GAN).backward(retain_graph=True)
-        self.output['loss_G'] += self.output['loss_G_GAN'] * self.opt.loss_weight_GAN
-        self.output['grad_G_GAN'] = (img_fake.grad).norm()
-        grad = img_fake.grad.clone()
-        # L1 loss
-        self.output['loss_G_L1'] = self.crit_L1(img_fake, self.output['img_real'])
-        (self.output['loss_G_L1'] * self.opt.loss_weight_L1).backward(retain_graph=True)
-        self.output['loss_G'] += self.output['loss_G_L1'] * self.opt.loss_weight_L1
-        self.output['grad_G_L1'] = (img_fake.grad - grad).norm()
-        grad = img_fake.grad.clone()
-        # segmentation prediction loss
-        if self.opt.G_output_seg:
-            assert self.output['seg_pred'] is not None
-            self.output['seg_ref'] = self.get_shape_repr(self.input['lm_map'], self.input['seg_mask'], self.input['edge_map'], self.input['flx_seg_mask'], self.input['img'], shape_encode='seg', shape_with_face=False)
-            self.output['loss_G_seg'] = self.calc_seg_loss(self.output['seg_pred'], self.input['seg_map'])
-            (self.output['loss_G_seg'] * self.opt.loss_weight_seg).backward(retain_graph=True)
-            self.output['loss_G'] += self.output['loss_G_seg'] * self.opt.loss_weight_seg
-        # VGG Loss
-        if self.opt.loss_weight_vgg > 0:
-            self.output['loss_G_VGG'] = self.crit_vgg(img_fake, self.output['img_real'])
-            (self.output['loss_G_VGG'] * self.opt.loss_weight_vgg).backward()
-            self.output['loss_G'] += self.output['loss_G_VGG'] * self.opt.loss_weight_vgg
-            self.output['grad_G_VGG'] = (img_fake.grad - grad).norm()
-        # gradient of input channels
-        self.output['grad_seg'] = self.input['seg_mask'].grad.norm() if self.input['seg_mask'].grad is not None else Variable(torch.zeros(1))
-        self.output['grad_edge'] = self.input['edge_map'].grad.norm() if self.input['edge_map'].grad is not None else Variable(torch.zeros(1))
-        self.output['grad_color'] = self.input['color_map'].grad.norm() if self.input['color_map'].grad is not None else Variable(torch.zeros(1))
+        # Not implemented
+        self.backward_G(mode)
 
     def optimize_parameters(self, train_D = True, train_G = True, check_grad = False):
+        mode = 'normal'
         # forward
         self.output = {} # clear previous output
-        self.forward(fwd_mode, check_grad)
+        self.forward(mode)
         # optimize D
         self.optim_D.zero_grad()
         self.backward_D()
@@ -329,12 +311,11 @@ class MultimodalDesignerGAN_V3(BaseModel):
         # optimize G
         self.optim_G.zero_grad()
         if check_grad:
-            self.backward_G_grad_check(fwd_mode)
+            self.backward_G_grad_check(mode)
         else:
-            self.backward_G(fwd_mode)
+            self.backward_G(mode)
         if train_G:
             self.optim_G.step()
-
 
     def get_shape_repr(self, seg_mask, edge_map, flx_seg_mask, img, shape_encode=None, shape_with_face=None):
         if shape_encode is None:
@@ -398,13 +379,28 @@ class MultimodalDesignerGAN_V3(BaseModel):
             out = self.netG(input_1, input_2)
             shape_feat = None
         if self.opt.G_output_seg:
-            assert out.size(1) == 10
-            img_out = F.tanh(out[:,0:3])
-            seg_out = out[:,3::]
+            if self.opt.G_output_region:
+                assert out.size(1) == 28 #(7+3*7)
+                region_out = out[:,0:21]
+                seg_out = out[:,21:28]
+                img_out = F.tanh(self.merge_region(region_out, seg_out))
+            else:
+                assert out.size(1) == 10
+                img_out = F.tanh(out[:,0:3])
+                seg_out = out[:,3::]
         else:
             img_out = F.tanh(out)
             seg_out = None
         return img_out, seg_out, shape_feat
+
+    def merge_region(self, region_out, seg_out):
+        b, c, h, w = region_out.size()
+        cs = seg_out.size(1)
+        assert c == 3*cs
+        region_out = region_out.view(b, 3, cs, h, w)
+        seg_out = F.softmax(seg_out, dim=1).view(b,1,cs,h,w)
+        img_out = (region_out * seg_out).sum(2)
+        return img_out
     
     def align_and_concat(self, inputs, size):
         # print(size)
@@ -450,9 +446,12 @@ class MultimodalDesignerGAN_V3(BaseModel):
             edge = self.input['edge_map_src']
             color = self.input['color_map_src']
 
-        if self.opt.D_no_cond:
+        if self.opt.D_cond == 'none':
             repr = img
-        else:
+        elif self.opt.D_cond == 'shape':
+            repr = [img, shape]
+            repr = self.align_and_concat(repr, img.size()[2:4])
+        elif self.opt.D_cond == 'std':
             repr = [img, shape]
             if self.opt.use_edge:
                 repr.append(edge)
@@ -464,19 +463,22 @@ class MultimodalDesignerGAN_V3(BaseModel):
             repr = repr.detach()
         return repr
 
-
     def get_current_errors(self):
         # losses
         errors = OrderedDict([
             ('D_GAN', self.output['loss_D'].data.item()),
             ('G_GAN', self.output['loss_G_GAN'].item()),
+            ('G_GAN_rec', self.output['loss_G_GAN_rec'].item()),
+            ('G_GAN_gen', self.output['loss_G_GAN_gen'].item()),
             ('G_L1', self.output['loss_G_L1'].item())
             ])
 
         if 'loss_G_VGG' in self.output:
             errors['G_VGG'] = self.output['loss_G_VGG'].item()
-        if 'loss_G_seg' in self.output:
-            errors['G_seg'] = self.output['loss_G_seg'].item()
+        if 'loss_G_seg_rec' in self.output:
+            errors['G_seg_rec'] = self.output['loss_G_seg_rec'].item()
+        if 'loss_G_seg_gen' in self.output:
+            errors['G_seg_gen'] = self.output['loss_G_seg_gen'].item()
         if 'PSNR' in self.output:
             errors['PSNR'] = self.crit_psnr.smooth_loss(clear=True)
 
@@ -508,7 +510,7 @@ class MultimodalDesignerGAN_V3(BaseModel):
                 ('edge_map', (self.input['edge_map'].data.cpu(), 'edge')),
                 ('color_map', (self.input['color_map'].data.cpu(), 'color')),
                 ('img_rec', (self.output['img_rec'].data.cpu(), 'rgb')),
-                ('seg_pred', (self.output['seg_pred_rec'].data.cpu(), 'seg')),
+                ('seg_pred_rec', (self.output['seg_pred_rec'].data.cpu(), 'seg')),
                 ('seg_map', (self.input['seg_map'].data.cpu(), 'seg')),
                 # generation
                 ('edge_map_src', (self.input['edge_map_src'].data.cpu(), 'edge')),
@@ -516,10 +518,10 @@ class MultimodalDesignerGAN_V3(BaseModel):
                 ('img_gen', (self.output['img_gen'].data.cpu(), 'rgb')),
                 ('seg_pred_gen', (self.output['seg_pred_gen'].data.cpu(), 'seg'))
                 ])
-            if self.opt.G_output_seg:
-                visual['seg_map'] = (self.input['seg_map'].data.cpu(), 'seg')
-                visual['seg_pred_rec'] = (self.input['seg_pred_rec'].data.cpu(), 'seg')
-                visual['seg_pred_gen'] = (self.input['seg_pred_gen'].data.cpu(), 'seg')
+            # if self.opt.G_output_seg:
+            #     visuals['seg_map'] = (self.input['seg_map'].data.cpu(), 'seg')
+            #     visuals['seg_pred_rec'] = (self.output['seg_pred_rec'].data.cpu(), 'seg')
+            #     visuals['seg_pred_gen'] = (self.output['seg_pred_gen'].data.cpu(), 'seg')
 
         elif mode == 'input':
             visuals = OrderedDict([

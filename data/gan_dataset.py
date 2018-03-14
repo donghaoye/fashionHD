@@ -174,7 +174,7 @@ class GANDataset(BaseDataset):
                 if 'lm' in self.opt.shape_encode:
                     img_affine, edge_map_affine, color_map_affine, seg_mask_affine, flx_seg_mask_affine, lm_map_affine = trans_random_affine([img, edge_map, color_map, seg_mask, flx_seg_mask, lm_map], self.opt.affine_aug_scale)
                 else:
-                    img_affine, edge_map_affine, color_map_affine, seg_mask_affine, flx_seg_mask_affine = trans_random_affine([img, edge_map, color_map, seg_mask, flx_seg_mask_affine], self.opt.affine_aug_scale)
+                    img_affine, edge_map_affine, color_map_affine, seg_mask_affine, flx_seg_mask_affine = trans_random_affine([img, edge_map, color_map, seg_mask, flx_seg_mask], self.opt.affine_aug_scale)
                     lm_map_affine = lm_map #don't comput affine transformation of lm_map for efficiency
 
                 data['edge_map_aug'] = torch.Tensor(edge_map_affine.transpose([2,0,1]))
@@ -182,7 +182,7 @@ class GANDataset(BaseDataset):
                 data['seg_mask_aug'] = torch.Tensor(seg_mask_affine.transpose([2,0,1]))
                 data['flx_seg_mask_aug'] = torch.Tensor(flx_seg_mask_affine.transpose([2,0,1]))
                 data['lm_map_aug'] = torch.Tensor(lm_map_affine.transpose([2,0,1]))
-                data['img_affine'] = self.to_tensor(img_affine)# has been normalized, do not normalize it again
+                data['img_aug'] = self.to_tensor(img_affine)# has been normalized, do not normalize it again
 
             else:
                 data['edge_map_aug'] = data['edge_map']
@@ -190,6 +190,7 @@ class GANDataset(BaseDataset):
                 data['seg_mask_aug'] = data['seg_mask']
                 data['flx_seg_mask_aug'] = data['flx_seg_mask']
                 data['lm_map_aug'] = data['lm_map']
-                data['img_affine'] = data['img']
+                data['img_aug'] = data['img']
+
         return data
 

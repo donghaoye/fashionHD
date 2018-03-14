@@ -78,7 +78,8 @@ class AlignedGANDataset(BaseDataset):
         try:
             seg_dir = self.flx_seg_dir if flx else self.seg_dir
             fn = os.path.join(seg_dir, s_id + '.bmp')
-            return cv2.imread(fn, cv2.IMREAD_GRAYSCALE).astype(np.float32)[:,:,np.newaxis]
+            seg_map = cv2.imread(fn, cv2.IMREAD_GRAYSCALE).astype(np.float32)[:,:,np.newaxis]
+            return seg_map
         except:
             raise Exception('fail to load image %s' % fn)
 
@@ -115,7 +116,6 @@ class AlignedGANDataset(BaseDataset):
         flx_seg_map = self.read_seg(s_id, flx=True)
         # seg_map_edge = self.read_seg(edge_id)
         seg_map_color = self.read_seg(color_id)
-        
         ######################
         # load image
         ######################
@@ -130,7 +130,7 @@ class AlignedGANDataset(BaseDataset):
             img_j = self.to_pil_image((img_color*255).astype(np.uint8))
             img_j = self.color_jitter(img_j)
             img_j = self.to_tensor(img_j).numpy().transpose([1,2,0])
-            mask = ((seg_map_color==3) | (seg_map_color==4)).astype(np.float32)[:,:,np.newaxis]
+            mask = ((seg_map_color==3) | (seg_map_color==4)).astype(np.float32)
             img_color = img_j * mask + img_color * (1-mask)
 
         ######################
@@ -157,7 +157,6 @@ class AlignedGANDataset(BaseDataset):
             edge_map = trans_random_horizontal_flip(edge_map, coin)
             edge_map_src = trans_random_horizontal_flip(edge_map_src, coin)
             # lm_map = trans_random_horizontal_flip(lm_map, coin)
-        
         ######################
         # get color map
         ######################

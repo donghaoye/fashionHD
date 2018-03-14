@@ -36,7 +36,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--shape_encoder_block', type=str, default='default')
         parser.add_argument('--pretrain_shape', type=int, default=1, choices=[0,1], help='load pretrained shape_encoder')
         parser.add_argument('--which_model_init_shape_encoder', type=str, default='default', help='id of pretrained shape encoder')
-        parser.add_argument('--shape_encode', type = str, default = 'reduced_seg', choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e', 'reduced_seg', 'flx_seg'], help = 'cloth shape encoding method')
+        parser.add_argument('--shape_encode', type = str, default = 'flx_seg', choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e', 'reduced_seg', 'flx_seg'], help = 'cloth shape encoding method')
         parser.add_argument('--shape_with_face', type= int, default = 0, choices = [0,1], help='add face region rgb information into shape representation')
         parser.add_argument('--shape_nc', type=int, default=0, help='# channels of shape representation, depends on shape_emcode, will be auto set')
         ##############################
@@ -65,7 +65,7 @@ class BaseMMGANOptions_V2(BaseOptions):
         parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
         parser.add_argument('--color_gaussian_sigma', type=float, default=10.0, help='gaussian blur sigma')
         parser.add_argument('--color_patch', type=int, default=1, choices=[0,1], help='use a patch inside the clothing region')
-        parser.add_argument('--color_patch_mode', type=str, default='center', choices=['center', 'crop5', 'single'], help='method to extract patch')
+        parser.add_argument('--color_patch_mode', type=str, default='crop5', choices=['center', 'crop5', 'single'], help='method to extract patch')
         parser.add_argument('--color_encoder_type', type=str, default='default')
         parser.add_argument('--color_encoder_block', type=str, default='default')
         parser.add_argument('--pretrain_color', type=int, default=1, choices=[0,1], help='load pretrained color encoder')

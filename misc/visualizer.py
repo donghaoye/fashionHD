@@ -481,7 +481,11 @@ class GANVisualizer_V3(BaseVisualizer):
             elif vis_type == 'seg':
                 vis = seg_to_rgb(vis)
             elif vis_type == 'segf':
-                vis = seg_to_rgb(vis, self.opt.shape_with_face)
+                if 'shape_with_face' in self.opt:
+                    shape_with_face = self.opt.shape_with_face
+                else:
+                    shape_with_face = False
+                vis = seg_to_rgb(vis, shape_with_face)
             elif vis_type == 'edge':
                 size = list(vis.size())
                 size[1] = 3
@@ -531,11 +535,10 @@ class GANVisualizer_V3(BaseVisualizer):
         torchvision.utils.save_image(imgs, fn_img, nrow = n_col, normalize = True)
 
 
-
     def pavi_log(self, phase, iter_num, outputs):
         # upper_list = ['D_real', 'D_fake', '']
-        upper_list = ['grad_G_GAN', 'grad_G_L1', 'grad_G_VGG']
-        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'T_feat', 'T_img', 'G_seg', 'PSNR']
+        upper_list = ['G_GAN_rec', 'G_GAN_gen']
+        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'G_seg_rec', 'G_seg_gen', 'PSNR']
 
         new_outputs = {}
         for k,v in outputs.iteritems():
