@@ -8,13 +8,13 @@ import networks
 from torch.autograd import Variable
 from misc.image_pool import ImagePool
 from base_model import BaseModel
-import network_loader
 
 import os
 import sys
 import numpy as np
 import time
 from collections import OrderedDict
+import argparse
 import util.io as io
 
 from misc.visualizer import seg_to_rgb
@@ -36,16 +36,20 @@ class EncoderDecoderFramework_V2(BaseModel):
         ###################################
         # guide encoder
         ###################################
-        # Todo
-
+        if opt.use_guide_encoder:
+            self.guide_encoder = networks.load_encoder_v2(opt, opt.which_model_guide)
+            self.guide_encoder.eval()
+            for p in self.guide_encoder.parameters():
+                p.requires_grad = False
         ###################################
         # loss functions
         ###################################
         self.loss_functions = []
         self.schedulers = []
-        self.crit_L1 = networks.SmoothLoss(nn.L1Loss())
-        self.crit_CE = networks.SmoothLoss(nn.CrossEntropyLoss())
-        self.loss_functions += [self.crit_L1, self.crit_CE]
+        self.crit_image = networks.SmoothLoss(nn.L1Loss())
+        self.crit_seg = networks.SmoothLoss(nn.CrossEntropyLoss())
+        self.crit_edge = networks.SmoothLoss(nn.BCELoss())
+        self.loss_functions += [self.crit_image, self.crit_seg, self.crit_edge]
 
         self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
         self.optimizers = [self.optim]
@@ -60,10 +64,11 @@ class EncoderDecoderFramework_V2(BaseModel):
         self.input['color_map'] = self.Tensor(data['color_map'].size()).copy_(data['color_map'])
         self.input['id'] = data['id']
 
-        self.input['img'] = self.Tensor(data['img'].size()).copy_(data['img_aug'])
-        self.input['seg_mask_aug'] = self.Tensor(data['seg_mask_aug'].size()).copy_(data['seg_mask_aug'])
-        self.input['edge_map_aug'] = self.Tensor(data['edge_map_aug'].size()).copy_(data['edge_map_aug'])
-        self.input['color_map_aug'] = self.Tensor(data['color_map_aug'].size()).copy_(data['color_map_aug'])
+        if self.opt.affine_aug:
+            self.input['img_aug'] = self.Tensor(data['img_aug'].size()).copy_(data['img_aug'])
+            self.input['seg_mask_aug'] = self.Tensor(data['seg_mask_aug'].size()).copy_(data['seg_mask_aug'])
+            self.input['edge_map_aug'] = self.Tensor(data['edge_map_aug'].size()).copy_(data['edge_map_aug'])
+            self.input['color_map_aug'] = self.Tensor(data['color_map_aug'].size()).copy_(data['color_map_aug'])
 
         # create input variable
         for k, v in self.input.iteritems():
@@ -86,7 +91,6 @@ class EncoderDecoderFramework_V2(BaseModel):
                 input = self.input['seg_mask_aug']
             elif self.opt.input_type == 'edge':
                 input = self.input['edge_map_aug']
-
         return input
 
     def get_decoder_target(self, output_type = 'image'):
@@ -125,18 +129,29 @@ class EncoderDecoderFramework_V2(BaseModel):
         if list(feat.size())[2:4] != [self.opt.feat_size, self.opt.feat_size]:
             feat = F.upsample(feat, size=self.opt.feat_size, mode='bilinear')
         self.output['feat'] = feat
+
+        # guide
+        if self.opt.decode_guide:
+            feat_guide = self.guide_encoder(self.get_encoder_input(input_type = 'seg', aug=False))
+            if list(feat_guide.size())[2:4] != [self.opt.feat_size, self.opt.feat_size]:
+                feat_guide = F.upsample(feat_guide, size=self.opt.feat_size, mode='bilinear')
+            self.output['feat_guide'] = feat_guide
+            self.output['feat'] = torch.cat((self.output['feat'], self.output['feat_guide']), dim=1)
+
         # decode
         self.output['output'] = self.decoder(self.output['feat'])
         # set target
         self.output['tar'] = self.get_decoder_target(self.opt.output_type)
 
         self.output['loss'] = 0
-        if self.opt.output_type == 'seg':
+        if self.opt.output_type == 'image':
+            self.output['loss_decode'] = self.crit_image(self.output['output'], self.output['tar'])
+        elif self.opt.output_type == 'seg':
             out_flat = self.output['output'].transpose(1,3).contiguous().view(-1, 7)
             tar_flat = self.output['tar'].transpose(1,3).contiguous().view(-1).long()
-            self.output['loss_decode'] = self.crit_CE(out_flat, tar_flat)
-        else:
-            self.output['loss_decode'] = self.crit_L1(self.output['output'], self.output['tar'])
+            self.output['loss_decode'] = self.crit_seg(out_flat, tar_flat)
+        elif self.opt.output_type == 'edge':
+            self.output['loss_decode'] = self.crit_edge(self.output['output'], self.output['tar'])
         self.output['loss'] += self.output['loss_decode'] * self.opt.loss_weight_decode
 
     def test(self, mode='normal'):
@@ -157,8 +172,9 @@ class EncoderDecoderFramework_V2(BaseModel):
 
     def get_current_errors(self):
         errors = OrderedDict([
-            ('loss_L1', self.crit_L1.smooth_loss(clear=True)),
-            ('loss_CE', self.crit_CE.smooth_loss(clear=True))
+            ('loss_image', self.crit_image.smooth_loss(clear=True)),
+            ('loss_seg', self.crit_seg.smooth_loss(clear=True)),
+            ('loss_edge', self.crit_edge.smooth_loss(clear=True))
             ])
 
         return errors

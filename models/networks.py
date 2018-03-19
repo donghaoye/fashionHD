@@ -10,8 +10,11 @@ from torch.optim import lr_scheduler
 
 from resnet_wrapper import create_resnet_conv_layers
 
+import os
 import numpy as np
 import functools
+
+import util.io as io
 
 ###############################################################################
 # Functions
@@ -1934,6 +1937,21 @@ class ImageDecoder(nn.Module):
 ###############################################################################
 # General Image Encoder V2
 ###############################################################################
+def load_encoder_v2(opt, which_model):
+    from argparse import Namespace
+    reserve_opt = ['gpu_ids']
+
+    opt_dict = io.load_json(os.path.join('checkpoints', which_model, 'train_opt.json'))
+    opt_load = Namespace()
+    for k, v in opt_dict.iteritems():
+        opt_load.__setattr__(k, v)
+    
+    for k in reserve_opt:
+        opt_load.__setattr__(k, opt.__getattribute__(k))
+
+    model = define_encoder_v2(opt_load)
+    model.load_state_dict(torch.load(os.path.join('checkpoints', which_model, 'latest_net_encoder.pth')))
+    return model
 
 def define_encoder_v2(opt):
     norm_layer = get_norm_layer(opt.norm)
@@ -1965,10 +1983,10 @@ def define_decoder_v2(opt):
         output_activation = nn.Tanh()
         output_nc = 3
     elif opt.output_type == 'seg':
-        output_nc = 7
         output_activation = None
+        output_nc = 7
     elif opt.output_type == 'edge':
-        output_activation = nn.ReLU()
+        output_activation = nn.Sigmoid()
         output_nc = 1
     else:
         raise NotImplementedError()
@@ -1979,7 +1997,10 @@ def define_decoder_v2(opt):
     else:
         input_nc = opt.nof
 
-    decoder = Decoder_V2(input_nc=input_nc, output_nc=output_nc, input_size=opt.feat_size, nf=opt.nf, max_nf=opt.max_nf, nf_increase=opt.nf_increase, nups=opt.ndowns, start_fc=opt.decode_fc, norm_layer=norm_layer, activation=activation, output_activation=output_activation, gpu_ids=opt.gpu_ids)
+    
+    fc_output_size = opt.fine_size // (2**opt.ndowns)
+
+    decoder = Decoder_V2(input_nc=input_nc, output_nc=output_nc, fc_output_size=fc_output_size, nf=opt.nf, max_nf=opt.max_nf, nf_increase=opt.nf_increase, nups=opt.ndowns, start_fc=opt.decode_fc, norm_layer=norm_layer, activation=activation, output_activation=output_activation, gpu_ids=opt.gpu_ids)
     if opt.gpu_ids:
         decoder.cuda()
     init_weights(decoder, init_type=opt.init_type)
@@ -2023,7 +2044,7 @@ class Encoder_V2(nn.Module):
         if final_fc:
             feat_size = input_size // (2**ndowns)
             layers += [
-                nn.Conv2d(c_out, output_n, kernel_size=feat_size),
+                nn.Conv2d(c_out, output_nc, kernel_size=feat_size),
                 activation]
 
         self.net = nn.Sequential(*layers)
@@ -2035,11 +2056,10 @@ class Encoder_V2(nn.Module):
             return self.net(img)
 
 class Decoder_V2(nn.Module):
-    def __init__(self, input_nc, output_nc, input_size=8, nf=64, max_nf=512, nf_increase='exp', nups=5, start_fc=False, norm_layer=nn.BatchNorm2d, activation=nn.ReLU(True), output_activation=nn.Tanh(), gpu_ids=[]):
+    def __init__(self, input_nc, output_nc, fc_output_size=8, nf=64, max_nf=512, nf_increase='exp', nups=5, start_fc=False, norm_layer=nn.BatchNorm2d, activation=nn.ReLU(True), output_activation=nn.Tanh(), gpu_ids=[]):
         super(Decoder_V2, self).__init__()
         assert nf <= max_nf
 
-        self.input_size = input_size
         self.gpu_ids = gpu_ids
 
         if type(norm_layer) == functools.partial:
@@ -2055,7 +2075,7 @@ class Decoder_V2(nn.Module):
             else:
                 c_out = min(max_nf, nf*(nups+1))
             layers += [
-                nn.ConvTranspose2d(input_size, c_out, kernel_size=input_size),
+                nn.ConvTranspose2d(input_nc, c_out, kernel_size=fc_output_size),
                 norm_layer(c_out),
                 activation
             ]

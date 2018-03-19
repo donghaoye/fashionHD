@@ -30,11 +30,15 @@ class BaseEncoderDecoderOptions_V2(BaseOptions):
         parser.add_argument('--decode_fc', type=int, default=0, choices=[0,1])
         parser.add_argument('--decode_guide', type=int, default=0, choices=[0,1])
         parser.add_argument('--gf', type=int, default=256, help='# channels of decode guidance feature map')
-
+        ##############################
+        # Auxiliary Encoder Setting
+        ##############################
+        parser.add_argument('--use_guide_encoder', type=int, default=0, choices=[0,1])
+        parser.add_argument('--which_model_guide', type=str, default='EDV2_1.0.0')
         ##############################
         # data setting 1 fot gan dataset
         ##############################
-        parser.add_argument('--affine_aug', type=int, default=1, choices=[0,1], help='apply random affine transformation on the input of encoders to disentangle desired information from shape')
+        parser.add_argument('--affine_aug', type=int, default=0, choices=[0,1], help='apply random affine transformation on the input of encoders to disentangle desired information from shape')
         parser.add_argument('--affine_aug_scale', type=float, default=0.05, help='scale of random affine transformation augmentation')
         
         parser.add_argument('--shape_encode', type = str, default = 'seg', choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e', 'reduced_seg', 'flx_seg'], help = 'cloth shape encoding method')
@@ -73,6 +77,11 @@ class BaseEncoderDecoderOptions_V2(BaseOptions):
         if opt.decode_fc:
             assert opt.encode_fc
             assert opt.feat_size == 1
+        ###########################################
+        # Check guide encoder
+        ###########################################
+        if opt.decode_guide:
+            opt.use_guide_encoder = 1
 
         ###########################################
         # set dataset file path
@@ -133,7 +142,7 @@ class TrainEncoderDecoderOptions_V2(BaseEncoderDecoderOptions_V2):
         parser.add_argument('--lr_policy', type=str, default='step', choices = ['step', 'plateau', 'lambda'], help='learning rate policy: lambda|step|plateau')
         parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')
         parser.add_argument('--niter', type = int, default=9, help = '# of iter at starting learning rate')
-        parser.add_argument('--niter_decay', type=int, default=5, help='# of iter to linearly decay learning rate to zero')
+        parser.add_argument('--niter_decay', type=int, default=0, help='# of iter to linearly decay learning rate to zero')
         parser.add_argument('--lr_decay', type=int, default=3, help='multiply by a gamma every lr_decay_interval epochs')
         parser.add_argument('--lr_gamma', type = float, default = 0.1, help='lr decay rate')
         parser.add_argument('--display_freq', type = int, default = 10, help='frequency of showing training results on screen')
