@@ -44,6 +44,9 @@ def CreateDataset(opt, split):
     elif opt.dataset_mode in {'aligned_gan'}:
         from data.aligned_gan_dataset import AlignedGANDataset
         dataset = AlignedGANDataset()
+    elif opt.dataset_mode in {'gan_v2'}:
+        from data.gan_dataset_v2 import GANDataset_V2
+        dataset = GANDataset_V2()
     else:
         raise ValueError('Dataset mode [%s] not recognized.' % opt.dataset_mode)
 

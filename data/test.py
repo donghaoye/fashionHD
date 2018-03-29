@@ -122,9 +122,63 @@ def test_AlignedGANDataset():
             print('[%s]: %s' % (k, type(v)))
 
 
+def test_GANDataset_V2():
+    from data_loader import CreateDataLoader
+    import argparse
+    ################
+    # set opt
+    ################
+    opt = argparse.Namespace()
+    opt.debug = False
+    opt.is_train = True
+    opt.dataset_mode = 'gan_v2'
+    opt.batch_size = 4
+    opt.nThreads = 1
+    # path
+    opt.data_root = 'datasets/Zalando/'
+    opt.img_dir = 'Img/img_zalando_256/'
+    opt.seg_dir = 'Img/seg_zalando_256/'
+    opt.edge_dir = 'Img/edge_zalando_256_cloth/'
+    opt.fn_split = 'Split/zalando_split.json'
+    opt.fn_pose = 'Label/zalando_pose_label_256.pkl'
+    # shape
+    opt.seg_bin_size = 16
+    # edge
+    opt.edge_threshold = 0
+    # color
+    opt.color_gaussian_ksz = 15
+    opt.color_gaussian_sigma = 10.0
+    opt.color_bin_size = 16
+    opt.color_jitter = True
+    # pose
+    opt.pose_size = 11
+    # deformatin
+    opt.shape_deformation_scale = 0.1
+    opt.shape_deformation_flip = True
+
+    ################
+    # create dataset
+    ################
+    loader = CreateDataLoader(opt, 'train')
+    loader_iter = iter(loader)
+
+    ################
+    # visualize one mini batch
+    ################
+    data = loader_iter.next()
+    for k, v in data.iteritems():
+        if isinstance(v, torch.Tensor):
+            print('[%s]: (%s), %s' % (k,type(v), v.size()))
+        else:
+            print('[%s]: %s' % (k, type(v)))
+
+    torch.save(data, 'temp.pth')
+
+
 
 if __name__ == '__main__':
     # test_AttributeDataset()
     # test_EXPAttributeDataset()
     # test_GANDataset()
-    test_AlignedGANDataset()
+    # test_AlignedGANDataset()
+    test_GANDataset_V2()

@@ -64,6 +64,30 @@ def landmark_to_heatmap(img_sz, lm_label, cloth_type, delta = 15.):
 
     return heatmap.transpose([1,2,0]) # transpose to HxWxC
 
+def pose_to_heatmap(img_sz, label, size):
+    '''
+    generate a poose heatmap from pose label
+    Input:
+        im_sz:      size of image
+        label:   list of (x,y) with a lenght of C
+        size:       mark size
+    Output:
+        lm_heatmap: np.ndarray of size HxWxC
+    '''
+
+    num_channel = len(label)
+    w, h = img_sz
+    heat_map = np.zeros((h, w, num_channel), dtype = np.float32)
+    radius = int(size)//2
+
+    for i, p in enumerate(label):
+        x, y = int(p[0]), int(p[1])
+        if [x,y] != [-1,-1]:
+            heat_map[(y-radius):(y+radius), (x-radius):(x+radius), i] = 1
+
+    return heat_map
+
+
 def segmap_to_mask(seg_map, mask_type, cloth_type):
     '''
     Generate a mask from a segmentation map.
@@ -120,9 +144,15 @@ def segmap_to_mask(seg_map, mask_type, cloth_type):
         mask = np.stack(mask, axis=2).astype(np.float32)
     return mask
 
-def segmap_to_mask_v2(seg_map, nc = 7):
+def segmap_to_mask_v2(seg_map, nc = 7, bin_size=1):
     mask = [(seg_map == i) for i in range(nc)]
-    return np.concatenate(mask, axis=2).astype(np.float32)
+    mask = np.concatenate(mask, axis=2).astype(np.float32)
+    if bin_size > 1:
+        h, w = mask.shape[0:2]
+        dh, dw = h//bin_size, w//bin_size
+        mask = cv2.resize(mask, dsize=(dw,dh), interpolation=cv2.INTER_LINEAR)
+        mask = cv2.resize(mask, dsize=(w, h), interpolation=cv2.INTER_NEAREST)
+    return mask
 
 def trans_resize(img, size, interp = cv2.INTER_LINEAR):
     '''
@@ -162,6 +192,17 @@ def trans_random_horizontal_flip(img, coin=None):
             img = img[:,:,np.newaxis]
     return img
 
+def trans_random_horizontal_flip_pose(pose, coin=None):
+    # pose pair: 2-5, 3-6, 4-7, 8-11, 9-12, 10-13, 14-15 16-17 
+    if coin is None:
+        coin = np.random.rand()
+    if coin >= 0.5:
+        pose = cv2.flip(pose, flipCode = 1)
+        pose = pose[:,:,[0,1,5,6,7,2,3,4,11,12,13,8,9,10,15,14,17,16]]
+
+    return pose
+
+
 def trans_random_affine(input, scale=0.05):
     '''
     input: list of ndarray
@@ -188,6 +229,27 @@ def trans_random_affine(input, scale=0.05):
             output_mix.append(out)
         output_mix = np.concatenate(output_mix, axis=2)
 
+    output = []
+    for i in range(num_input):
+        output.append(output_mix[:,:,nc_cum[i]:nc_cum[i+1]])
+    return output
+
+
+def trans_random_perspective(input, scale=0.05):
+    '''
+    input: list of ndarray
+    scale: float
+    '''
+    num_input = len(input)
+    nc_cum = np.array([0]+[x.shape[2] for x in input], np.int).cumsum()
+    input = np.concatenate(input, axis=2)
+
+    w, h, c = input.shape[1], input.shape[0], input.shape[2]
+    keypoint_src = np.array([[0,0], [w,0], [0,h], [w,h]], dtype=np.float32)
+    offset = (np.random.rand(4,2)*2-1) * np.array([w,h])*scale
+    keypoint_dst = (keypoint_src + offset).astype(np.float32)
+    M = cv2.getPerspectiveTransform(keypoint_src, keypoint_dst)
+    output_mix = cv2.warpPerspective(input, M, dsize=(w,h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
     output = []
     for i in range(num_input):
         output.append(output_mix[:,:,nc_cum[i]:nc_cum[i+1]])

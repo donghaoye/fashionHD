@@ -2,9 +2,10 @@
 edge_dir='/data2/ynli/download/edges/';
 addpath(genpath(edge_dir));
 
-img_dir='/data2/ynli/datasets/DeepFashion/Fashion_design/Img/img_ca_256/';
-output_dir='/data2/ynli/datasets/DeepFashion/Fashion_design/Img/edge_ca_256/';
-
+%img_dir='/data2/ynli/datasets/DeepFashion/Fashion_design/Img/img_ca_256/';
+%output_dir='/data2/ynli/datasets/DeepFashion/Fashion_design/Img/edge_ca_256/';
+img_dir='/data2/ynli/datasets/Zalando/Img/img_zalando_256/';
+output_dir='/data2/ynli/datasets/Zalando/Img/edge_zalando_256/';
 
 %% load model
 opts=edgesTrain();                % default options (good settings)

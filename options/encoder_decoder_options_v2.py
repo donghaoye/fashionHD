@@ -14,7 +14,7 @@ class BaseEncoderDecoderOptions_V2(BaseOptions):
         ##############################
         # Encoder Setting
         ##############################
-        parser.add_argument('--input_type', type=str, default='seg', choices = ['image', 'seg', 'edge'], help='type of encoder input')
+        parser.add_argument('--input_type', type=str, default='shape', choices = ['image', 'seg', 'edge', 'shape'], help='type of encoder input')
         parser.add_argument('--nf', type=int, default=64)
         parser.add_argument('--nof', type=int, default=256)
         parser.add_argument('--max_nf', type=int, default=512)
@@ -22,7 +22,7 @@ class BaseEncoderDecoderOptions_V2(BaseOptions):
         parser.add_argument('--nf_increase', type=str, default='exp', choices=['exp', 'linear'])
         parser.add_argument('--encode_fc', type=int, default=0, choices=[0,1])
         parser.add_argument('--feat_size', type=int, default=8)
-        parser.add_argument('--block', type=str, default='residual', choices=['residual', 'conv'])
+        parser.add_argument('--block', type=str, default='conv', choices=['residual', 'conv'])
         ##############################
         # Decoder Setting
         ##############################
@@ -31,38 +31,40 @@ class BaseEncoderDecoderOptions_V2(BaseOptions):
         parser.add_argument('--decode_guide', type=int, default=0, choices=[0,1])
         parser.add_argument('--gf', type=int, default=256, help='# channels of decode guidance feature map')
         ##############################
-        # Auxiliary Encoder Setting
+        # Guide Encoder Setting
         ##############################
         parser.add_argument('--use_guide_encoder', type=int, default=0, choices=[0,1])
-        parser.add_argument('--which_model_guide', type=str, default='EDV2_1.0.0')
+        parser.add_argument('--which_model_guide', type=str, default='EDV2_3.0')
         ##############################
-        # data setting 1 fot gan dataset
+        # DFN
         ##############################
-        parser.add_argument('--affine_aug', type=int, default=0, choices=[0,1], help='apply random affine transformation on the input of encoders to disentangle desired information from shape')
-        parser.add_argument('--affine_aug_scale', type=float, default=0.05, help='scale of random affine transformation augmentation')
+        parser.add_argument('--dfn_nmid', type=int, default=64, help='mid-level channel number of DFN')
+        parser.add_argument('--dfn_local_size', type=int, default=3, help='local region size')
+        parser.add_argument('--dfn_detach', type=int, default=1, choices=[0,1], help='detach output feature from input feature in DFN')
+        ##############################
+        # data setting (dataset_mode == gan_v2)
+        ##############################
+        parser.add_argument('--dataset_mode', type=str, default='gan_v2', help='type of dataset. see data/data_loader.py')
+        parser.add_argument('--benchmark', type=str, default = 'zalando', help='which dataset [zalando|ca_upper]')
+        parser.add_argument('--debug', action='store_true', help='debug')
+        parser.add_argument('--data_root', type=str, default='./datasets/Zalando', help='data root path')
+        parser.add_argument('--img_dir', type=str, default='Img/img_zalando_256/')
+        parser.add_argument('--seg_dir', type=str, default='Img/seg_zalando_256/')
+        parser.add_argument('--edge_dir', type=str, default='Img/edge_zalando_256_cloth/')
+        parser.add_argument('--fn_split', type=str, default='Split/zalando_split.json')
+        parser.add_argument('--fn_pose', type=str, default='Label/zalando_pose_label_256.pkl')
+
+        parser.add_argument('--seg_bin_size', type=int, default=16, help='bin size of downsampled seg mask')
+        parser.add_argument('--pose_size', type=int, default=11, help='point size in pose heatmap')
+        parser.add_argument('--edge_threshold', type=int, default=0, help='edge score threshold')
+        parser.add_argument('--color_gaussian_ksz', type=int, default=15)
+        parser.add_argument('--color_gaussian_sigma', type=float, default=10.0)
+        parser.add_argument('--color_bin_size', type=int, default=16)
+        parser.add_argument('--color_jitter', type=int, default=1)
+        parser.add_argument('--shape_deformation_scale', type=float, default=0.1)
+        parser.add_argument('--shape_deformation_flip', type=int, default=1)
+
         
-        parser.add_argument('--shape_encode', type = str, default = 'seg', choices = ['lm', 'seg', 'lm+seg', 'seg+e', 'lm+seg+e', 'e', 'reduced_seg', 'flx_seg'], help = 'cloth shape encoding method')
-
-        parser.add_argument('--edge_mode', type=str, default='cloth', choices=['outer', 'inner', 'cloth'], help='outer: all edges; inner: edge inside the clothing mask, no contour; cloth: edge inside the clothing mask, with contour')
-        parser.add_argument('--edge_threshold', type=int, default=0, help='edge threshold to filter small edge [0-255]')
-
-        parser.add_argument('--color_jitter', type=int, default=1, choices=[0,1], help='use color jitter augmentation')
-        parser.add_argument('--color_gaussian_ksz', type=int, default=15, help='gaussian blur kernel size')
-        parser.add_argument('--color_gaussian_sigma', type=float, default=10.0, help='gaussian blur sigma')
-        parser.add_argument('--color_patch', type=int, default=1, choices=[0,1], help='use a patch inside the clothing region')
-        parser.add_argument('--color_patch_mode', type=str, default='crop5', choices=['center', 'crop5', 'single'], help='method to extract patch')
-
-        parser.add_argument('--benchmark', type = str, default = 'ca_upper', choices = ['ca', 'ca_upper', 'inshop', 'debug', 'user'], help = 'set benchmark [ca|ca_org|inshop|user|debug]')
-        parser.add_argument('--fn_sample', type = str, default = 'default', help = 'path of sample index file')
-        parser.add_argument('--fn_label', type = str, default = 'default', help = 'path of attribute label file')
-        parser.add_argument('--fn_entry', type = str, default = 'default', help = 'path of attribute entry file')
-        parser.add_argument('--fn_split', type = str, default = 'default', help = 'path of split file')
-        parser.add_argument('--fn_landmark', type = str, default = 'default', help = 'path of landmark label file')
-        parser.add_argument('--fn_seg_path', type = str, default = 'default', help = 'path of seg map')
-        parser.add_argument('--fn_flx_seg_path', type = str, default = 'default', help = 'path of uncertain seg map')
-        parser.add_argument('--fn_edge_path', type = str, default = 'default', help = 'path of edge map')
-        parser.add_argument('--fn_color_path', type = str, default = 'default', help = 'path of color map')
-
     def auto_set(self):
         super(BaseEncoderDecoderOptions_V2, self).auto_set()
         opt = self.opt
@@ -86,45 +88,8 @@ class BaseEncoderDecoderOptions_V2(BaseOptions):
         ###########################################
         # set dataset file path
         ###########################################
-        if opt.benchmark.startswith('ca'):
-            if opt.fn_sample == 'default':
-                opt.fn_sample = 'Label/ca_samples.json'
-            if opt.fn_label == 'default':
-                opt.fn_label = 'Label/ca_attr_label.pkl'
-            if opt.fn_entry == 'default':
-                opt.fn_entry = 'Label/attr_entry.json'
-            if opt.fn_landmark == 'default':
-                opt.fn_landmark = 'Label/ca_landmark_label_256.pkl'
-            if opt.fn_seg_path == 'default':
-                # opt.fn_seg_path = 'Label/ca_seg_paths.json'
-                opt.fn_seg_path = 'Label/ca_syn_seg_paths.json'
-            if opt.fn_flx_seg_path == 'default':
-                opt.fn_flx_seg_path = 'Label/ca_gan_flx_seg_paths.json'
-            if opt.fn_edge_path == 'default':
-                if opt.edge_mode == 'outer':
-                    opt.fn_edge_path = 'Label/ca_edge_paths.json'
-                elif opt.edge_mode == 'inner':
-                    opt.fn_edge_path = 'Label/ca_edge_inner_paths.json'
-                elif opt.edge_mode == 'cloth':
-                    opt.fn_edge_path = 'Label/ca_edge_cloth_paths.json'
-            if opt.fn_color_path == 'default':
-                opt.fn_color_path = 'Label/ca_edge_paths.json'# Todo: modify this temp setting
-            if opt.fn_split == 'default':
-                if opt.benchmark == 'ca':
-                    opt.fn_split = 'Split/ca_gan_split_trainval.json'
-                elif opt.benchmark == 'ca_upper':
-                    opt.fn_split = 'Split/ca_gan_split_trainval_upper.json'
-
-        elif opt.benchmark == 'debug':
-            opt.fn_sample = 'Label/debugca_gan_samples.json'
-            opt.fn_label = 'Label/debugca_gan_attr_label.pkl'
-            opt.fn_entry = 'Label/attr_entry.json'
-            opt.fn_split = 'Split/debugca_gan_split.json'
-            opt.fn_landmark = 'Label/debugca_gan_landmark_label.pkl'
-            opt.fn_seg_path = 'Label/debugca_seg_paths.json'
-            opt.fn_flx_seg_path = 'Label/debugca_gan_flx_seg_paths.json'
-            opt.fn_edge_path = 'Label/debugca_edge_paths.json'
-            opt.fn_color_path = 'Label/debugca_edge_paths.json' # Todo: modify this temp setting
+        
+        
 
 
 class TrainEncoderDecoderOptions_V2(BaseEncoderDecoderOptions_V2):
@@ -152,7 +117,8 @@ class TrainEncoderDecoderOptions_V2(BaseEncoderDecoderOptions_V2):
         parser.add_argument('--max_n_vis', type = int, default = 32, help='max number of visualized images')
         # loss weights
         parser.add_argument('--loss_weight_decode', type=float, default=1)
-
+        parser.add_argument('--loss_weight_trans', type=float, default=0.1)
+        parser.add_argument('--loss_weight_cycle', type=float, default=0.1)
         # set train
         self.is_train = True
 

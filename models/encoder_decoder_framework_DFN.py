@@ -19,12 +19,12 @@ import util.io as io
 
 from misc.visualizer import seg_to_rgb
 
-class EncoderDecoderFramework_V2(BaseModel):
+class EncoderDecoderFramework_DFN(BaseModel):
     def name(self):
-        return 'EncoderDecoderFramework_V2'
+        return 'EncoderDecoderFramework_DFN'
 
     def initialize(self, opt):
-        super(EncoderDecoderFramework_V2, self).initialize(opt)
+        super(EncoderDecoderFramework_DFN, self).initialize(opt)
         ###################################
         # define encoder
         ###################################
@@ -35,23 +35,26 @@ class EncoderDecoderFramework_V2(BaseModel):
         self.decoder = networks.define_decoder_v2(opt)
         ###################################
         # guide encoder
+        ###################################        
+        self.guide_encoder, self.opt_guide = networks.load_encoder_v2(opt, opt.which_model_guide)
+        self.guide_encoder.eval()
+        for p in self.guide_encoder.parameters():
+            p.requires_grad = False
         ###################################
-        if opt.use_guide_encoder:
-            self.guide_encoder = networks.load_encoder_v2(opt, opt.which_model_guide)
-            self.guide_encoder.eval()
-            for p in self.guide_encoder.parameters():
-                p.requires_grad = False
+        # DFN Modules
+        ###################################
+        self.dfn = networks.define_DFN_from_params(nf=opt.nof, ng=self.opt_guide.nof, nmid=opt.dfn_nmid, feat_size=opt.feat_size, local_size=opt.dfn_local_size, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
         ###################################
         # loss functions
         ###################################
         self.loss_functions = []
         self.schedulers = []
-        self.crit_image = networks.SmoothLoss(nn.L1Loss())
-        self.crit_seg = networks.SmoothLoss(nn.CrossEntropyLoss())
-        self.crit_edge = networks.SmoothLoss(nn.BCELoss())
+        self.crit_image = nn.L1Loss()
+        self.crit_seg = nn.CrossEntropyLoss()
+        self.crit_edge = nn.BCELoss()
         self.loss_functions += [self.crit_image, self.crit_seg, self.crit_edge]
 
-        self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
+        self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}, {'params': self.dfn.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
         self.optimizers = [self.optim]
         for optim in self.optimizers:
             self.schedulers.append(networks.get_scheduler(optim, opt))
@@ -78,25 +81,24 @@ class EncoderDecoderFramework_V2(BaseModel):
 
         self.input['id'] = data['id']
 
-
     def get_encoder_input(self, input_type = 'image', deformation=False):
         if not deformation:
             if input_type == 'image':
                 input = self.input['img']
             elif input_type == 'seg':
                 input = self.input['seg_mask']
-            elif self.opt.input_type == 'edge':
+            elif input_type == 'edge':
                 input = self.input['edge_map']
-            elif self.opt.input_type == 'shape':
+            elif input_type == 'shape':
                 input = torch.cat((self.input['seg_mask'], self.input['pose_map']), dim=1)
         else:
             if input_type == 'image':
                 input = self.input['img_def']
             elif input_type == 'seg':
                 input = self.input['seg_mask_def']
-            elif self.opt.input_type == 'edge':
+            elif input_type == 'edge':
                 input = self.input['edge_map_def']
-            elif self.opt.input_type == 'shape':
+            elif input_type == 'shape':
                 input = torch.cat((self.input['seg_mask_def'], self.input['pose_map_def']), dim=1)
         return input
 
@@ -107,7 +109,6 @@ class EncoderDecoderFramework_V2(BaseModel):
             output = self.input['seg_map']
         elif output_type == 'edge':
             output = self.input['edge_map']
-
         return output
 
     def mask_image(self, img, seg_map, img_ref):
@@ -123,53 +124,58 @@ class EncoderDecoderFramework_V2(BaseModel):
         else:
             raise ValueError('post_mask_mode invalid value: %s' % self.opt.post_mask_mode)
 
-    def forward(self, mode='normal'):
-        '''
-        mode:
-            - normal: only use normal input
-        '''
-        # set input
+    def compute_loss(self, output, target, output_type):
+        if output_type == 'image':
+            return self.crit_image(output, target)
+        elif output_type == 'seg':
+            out_flat = output.transpose(1,3).contiguous().view(-1,7)
+            tar_flat = target.transpose(1,3).contiguous().view(-1).long()
+            return self.crit_seg(out_flat, tar_flat)
+        elif output_type == 'edge':
+            return self.crit_edge(output, target)
+        else:
+            raise NotImplementedError()
+
+    def forward(self):
         self.output['input'] = self.get_encoder_input(self.opt.input_type, deformation = False)
+        self.output['input_def'] = self.get_encoder_input(self.opt.input_type, deformation = True)
         # encode
-        feat = self.encoder(self.output['input'])
-        if list(feat.size())[2:4] != [self.opt.feat_size, self.opt.feat_size]:
-            feat = F.upsample(feat, size=self.opt.feat_size, mode='bilinear')
-        self.output['feat'] = feat
-
+        feat_A = self.encoder(self.output['input'])
+        feat_B = self.encoder(self.output['input_def'])
         # guide
-        if self.opt.decode_guide:
-            feat_guide = self.guide_encoder(self.get_encoder_input(input_type = 'seg', deformation=False))
-            if list(feat_guide.size())[2:4] != [self.opt.feat_size, self.opt.feat_size]:
-                feat_guide = F.upsample(feat_guide, size=self.opt.feat_size, mode='bilinear')
-            self.output['feat_guide'] = feat_guide
-            self.output['feat'] = torch.cat((self.output['feat'], self.output['feat_guide']), dim=1)
-
+        guide_A = self.guide_encoder(self.get_encoder_input(input_type=self.opt_guide.input_type, deformation=False))
+        guide_B = self.guide_encoder(self.get_encoder_input(input_type=self.opt_guide.input_type, deformation=True))
+        # DFN
+        if self.opt.dfn_detach:
+            feat_B2A, _ = self.dfn(feat_B.detach(), guide_B, guide_A)
+            feat_A2B, _ = self.dfn(feat_A.detach(), guide_A, guide_B)
+            feat_A2A, _ = self.dfn(feat_A2B, guide_B, guide_A)
+        else:
+            feat_B2A, _ = self.dfn(feat_B, guide_B, guide_A)
+            feat_A2B, _ = self.dfn(feat_A, guide_A, guide_B)
+            feat_A2A, _ = self.dfn(feat_A2B, guide_B, guide_A)
         # decode
-        self.output['output'] = self.decoder(self.output['feat'])
+        self.output['output'] = self.decoder(feat_A)
+        self.output['output_trans'] = self.decoder(feat_B2A)
+        self.output['output_cycle'] = self.decoder(feat_A2A)
         # set target
         self.output['tar'] = self.get_decoder_target(self.opt.output_type)
+        # compute loss
+        self.output['loss_decode'] = self.compute_loss(self.output['output'], self.output['tar'], self.opt.output_type)
+        self.output['loss_trans'] = self.compute_loss(self.output['output_trans'], self.output['tar'], self.opt.output_type)
+        self.output['loss_cycle'] = self.compute_loss(self.output['output_cycle'], self.output['tar'], self.opt.output_type)
+        self.output['loss'] = self.output['loss_decode'] * self.opt.loss_weight_decode + self.output['loss_trans'] * self.opt.loss_weight_trans + self.output['loss_cycle'] * self.opt.loss_weight_cycle
 
-        self.output['loss'] = 0
-        if self.opt.output_type == 'image':
-            self.output['loss_decode'] = self.crit_image(self.output['output'], self.output['tar'])
-        elif self.opt.output_type == 'seg':
-            out_flat = self.output['output'].transpose(1,3).contiguous().view(-1, 7)
-            tar_flat = self.output['tar'].transpose(1,3).contiguous().view(-1).long()
-            self.output['loss_decode'] = self.crit_seg(out_flat, tar_flat)
-        elif self.opt.output_type == 'edge':
-            self.output['loss_decode'] = self.crit_edge(self.output['output'], self.output['tar'])
-        self.output['loss'] += self.output['loss_decode'] * self.opt.loss_weight_decode
-
-    def test(self, mode='normal'):
+    def test(self):
         if float(torch.__version__[0:3]) >= 0.4:
             with torch.no_grad():
-                self.forward(mode)
+                self.forward()
         else:
             for k,v in self.input.iteritems():
                 if isinstance(v, Variable):
                     v.volatile = True
-            self.forward(mode)
-    
+            self.forward()
+
     def optimize_parameters(self):
         self.optim.zero_grad()
         self.forward()
@@ -178,14 +184,14 @@ class EncoderDecoderFramework_V2(BaseModel):
 
     def get_current_errors(self):
         errors = OrderedDict([
-            ('loss_image', self.crit_image.smooth_loss(clear=True)),
-            ('loss_seg', self.crit_seg.smooth_loss(clear=True)),
-            ('loss_edge', self.crit_edge.smooth_loss(clear=True))
+            ('loss_decode', self.output['loss_decode'].data.item()),
+            ('loss_trans', self.output['loss_trans'].data.item()),
+            ('loss_cycle', self.output['loss_cycle'].data.item())
             ])
 
         return errors
 
-    def get_current_visuals(self):        
+    def get_current_visuals(self):
         # output visual type
         if self.opt.output_type == 'image':
             output_vtype = 'rgb'
@@ -199,12 +205,18 @@ class EncoderDecoderFramework_V2(BaseModel):
             ('pose', (self.input['pose_map'].data.cpu(), 'pose')),
             ('seg', (self.input['seg_mask'].data.cpu(), 'seg')),
             ('color', (self.input['color_map'].data.cpu(), 'color')),
+            ('image_def', (self.input['img_def'].data.cpu(), 'rgb')),
+            ('target', (self.output['tar'].data.cpu(), output_vtype)),
             ('output', (self.output['output'].data.cpu(), output_vtype)),
-            ('target', (self.output['tar'].data.cpu(), output_vtype))
+            ('output_trans', (self.output['output_trans'].data.cpu(), output_vtype)),
+            ('output_cycle', (self.output['output_cycle'].data.cpu(), output_vtype))
             ])
 
         return visuals
 
+
+
     def save(self, label):
         self.save_network(self.encoder, 'encoder', label, self.gpu_ids)
         self.save_network(self.decoder, 'decoder', label, self.gpu_ids)
+        self.save_network(self.dfn, 'dfn', label, self.gpu_ids)

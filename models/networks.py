@@ -1622,7 +1622,9 @@ class DownsampleEncoderBlock(nn.Module):
         if norm_layer is not None:
             layers.append(norm_layer(output_nc))
         if activation is not None:
-            layers.append(activation())
+            if not isinstance(activation, nn.Module):
+                activation = activation()
+            layers.append(activation)
         self.model = nn.Sequential(*layers)
     def forward(self, input):
         return self.model(input)
@@ -1951,7 +1953,7 @@ def load_encoder_v2(opt, which_model):
 
     model = define_encoder_v2(opt_load)
     model.load_state_dict(torch.load(os.path.join('checkpoints', which_model, 'latest_net_encoder.pth')))
-    return model
+    return model, opt_load
 
 def define_encoder_v2(opt):
     norm_layer = get_norm_layer(opt.norm)
@@ -1964,6 +1966,8 @@ def define_encoder_v2(opt):
         input_nc = 7
     elif opt.input_type == 'edge':
         input_nc = 1
+    elif opt.input_type == 'shape':
+        input_nc = 7 + 18
     else:
         raise NotImplementedError()
 
@@ -2112,4 +2116,77 @@ class Decoder_V2(nn.Module):
             return nn.parallel.data_parallel(self.net, feat)
         else:
             return self.net(feat)
+
+def define_DFN_from_params(nf, ng, nmid, feat_size, local_size, gpu_ids, init_type):
+    dfn = DFNModule(nf, ng, nmid, feat_size, local_size, gpu_ids)
+    init_weights(dfn, init_type)
+    dfn.net[-2].bias.data.fill_(-1)
+    dfn.net[-2].bias.data[local_size*local_size//2] = 1
+    if gpu_ids:
+        dfn.cuda()
+    return dfn
+
+class DFNModule(nn.Module):
+    def __init__(self, nf, ng, nmid = 128, feat_size=8, local_size=3, gpu_ids=[]):
+        super(DFNModule, self).__init__()
+        self.nf = nf
+        self.ng = ng
+        self.nmid = nmid
+        self.feat_size = feat_size
+        self.local_size = local_size
+        self.gpu_ids = gpu_ids
+
+        self.net = nn.Sequential(
+            nn.Conv2d(ng*2 + local_size*local_size, nmid, kernel_size=local_size, stride=1, padding=(local_size-1)//2),
+            nn.ReLU(True),
+            nn.Conv2d(nmid, local_size*local_size, kernel_size=local_size, stride=1, padding=(local_size-1)//2),
+            nn.Softmax(dim=1),            
+            )
+
+    def compute_correlation(self, g1, g2):
+
+        ng1 = F.normalize(g1)
+        ng2 = F.normalize(g2)
+
+        max_shift = (self.local_size - 1) // 2
+        pad = [max_shift] * 4
+        ng2p = F.pad(ng2, pad, 'constant')
+        corr = []
+
+        for dh in range(-max_shift, max_shift+1):
+            for dx in range(-max_shift, max_shift+1):
+                ng2s = ng2p[:,:,(dh+max_shift):(dh+max_shift+self.feat_size), (dx+max_shift):(dx+max_shift+self.feat_size)]
+                # corr += F.cosine_similarity(g1, g2s)
+                corr.append((ng1 * ng2s).sum(dim=1))
+        corr = torch.stack(corr, dim=1)
+        return corr
+
+    def apply_filter(self, x, coef):
+        max_shift = (self.local_size-1)//2
+        pad = [max_shift] * 4
+        xp = F.pad(x, pad, 'constant')
+        output = 0
+
+        n = 0
+        for dh in range(-max_shift, max_shift+1):
+            for dx in range(-max_shift, max_shift+1):
+                xs = xp[:,:,(dh+max_shift):(dh+max_shift+self.feat_size), (dx+max_shift):(dx+max_shift+self.feat_size)]
+                c = coef[:,n:(n+1)]
+                output += xs * c
+                n += 1
+
+        return output
+        
+    def forward(self, x, g1, g2, single_device=False):
+        if len(self.gpu_ids) > 1 and not single_device:
+            assert g1.is_same_size(g2)
+            assert g1.size()[2] == g1.size(3) == self.feat_size
+            return nn.parallel.data_parallel(self, (x, g1, g2), module_kwargs={'single_device': True})
+        else:
+            corr = self.compute_correlation(g1, g2)
+            guide = torch.cat((g1, g2, corr), dim=1)
+            coef = self.net(guide)
+            output = self.apply_filter(x, coef)
+            return output, coef
+
 

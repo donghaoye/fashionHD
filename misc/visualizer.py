@@ -493,6 +493,9 @@ class GANVisualizer_V3(BaseVisualizer):
             elif vis_type == 'color':
                 if vis.size(1) == 6:
                     vis = vis[:,0:3] + vis[:,3::]
+            elif vis_type == 'pose':
+                vis = vis.max(dim=1, keepdim=True)[0].expand(vis.size(0), 3, vis.size(2),vis.size(3))
+                
             imgs.append(vis.cpu())
             vis_list.append(name)
 
