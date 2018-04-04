@@ -44,6 +44,10 @@ class BaseEncoderDecoderOptions_V2(BaseOptions):
         parser.add_argument('--dfn_detach', type=int, default=1, choices=[0,1], help='detach output feature from input feature in DFN')
         parser.add_argument('--dfn_nblocks', type=int, default=0, help='number of resnet blocks following the DFN network')
         ##############################
+        # GAN
+        ##############################
+        parser.add_argument('--D_cond', type=int, default=0, choices=[0,1], help='use conditioned discriminator')
+        ##############################
         # data setting (dataset_mode == gan_v2)
         ##############################
         parser.add_argument('--dataset_mode', type=str, default='gan_v2', help='type of dataset. see data/data_loader.py')

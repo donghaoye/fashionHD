@@ -52,7 +52,11 @@ class EncoderDecoderFramework_DFN(BaseModel):
         ###################################
         self.use_GAN = opt.loss_weight_gan > 0
         if self.use_GAN > 0:
-            self.netD = networks.define_D_from_params(input_nc=self.decoder.output_nc, ndf=64, which_model_netD='n_layers', n_layers_D=3, norm=opt.norm, which_gan='dcgan', init_type=opt.init_type, gpu_ids=opt.gpu_ids)
+            if not self.opt.D_cond:
+                input_nc = self.decoder.output_nc
+            else:
+                input_nc = self.decoder.output_nc + self.encoder.input_nc
+            self.netD = networks.define_D_from_params(input_nc=input_nc, ndf=64, which_model_netD='n_layers', n_layers_D=3, norm=opt.norm, which_gan='dcgan', init_type=opt.init_type, gpu_ids=opt.gpu_ids)
         else:
             self.netD = None
         ###################################
@@ -202,8 +206,15 @@ class EncoderDecoderFramework_DFN(BaseModel):
 
 
     def backward_D(self):
-        loss_D_fake = self.crit_GAN(self.netD(self.output['output_trans'].detach()), False)
-        loss_D_real = self.crit_GAN(self.netD(self.output['tar'].detach()), True)
+        if self.opt.D_cond:
+            D_input_fake = torch.cat((self.output['output_trans'].detach(), self.output['input']), dim=1)
+            D_input_real = torch.cat((self.output['tar'], self.output['input']), dim=1)
+        else:
+            D_input_fake = self.output['output_trans'].detach()
+            D_input_real = self.output['tar']
+
+        loss_D_fake = self.crit_GAN(self.netD(D_input_fake), False)
+        loss_D_real = self.crit_GAN(self.netD(D_input_real), True)
         self.output['loss_D'] = 0.5 * (loss_D_fake + loss_D_real)
         (self.output['loss_D'] * self.opt.loss_weight_gan).backward()
 
@@ -214,7 +225,11 @@ class EncoderDecoderFramework_DFN(BaseModel):
         self.output['loss'] = self.output['loss_decode'] * self.opt.loss_weight_decode + self.output['loss_trans'] * self.opt.loss_weight_trans + self.output['loss_cycle'] * self.opt.loss_weight_cycle
         # gan loss
         if self.use_GAN:
-            self.output['loss_G'] = self.crit_GAN(self.netD(self.output['output_trans']), True)
+            if self.opt.D_cond:
+                D_input = torch.cat((self.output['output_trans'], self.output['input']), dim=1)
+            else:
+                D_input = self.output['output_trans']
+            self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             self.output['loss'] += self.output['loss_G'] * self.opt.loss_weight_gan
         self.output['loss'].backward()
 
@@ -280,4 +295,5 @@ class EncoderDecoderFramework_DFN(BaseModel):
     def save(self, label):
         self.save_network(self.encoder, 'encoder', label, self.gpu_ids)
         self.save_network(self.decoder, 'decoder', label, self.gpu_ids)
-        self.save_network(self.dfn, 'dfn', label, self.gpu_ids)
+        if self.opt.use_dfn:
+            self.save_network(self.dfn, 'dfn', label, self.gpu_ids)

@@ -2015,6 +2015,8 @@ class Encoder_V2(nn.Module):
         super(Encoder_V2, self).__init__()
         assert nf <= max_nf
         assert 2**ndowns < input_size, '%dx%d input image can not be reduced by stride-2 convolution for ndowns=%d times' % (input_size, input_size, ndowns)
+        self.input_nc = input_nc
+        self.output_nc = output_nc
         self.input_size = input_size
         self.gpu_ids = gpu_ids
 
