@@ -1982,7 +1982,6 @@ def define_decoder_v2(opt):
     activation = nn.ReLU(True)
 
     # output_nc
-    
     if opt.output_type == 'image':
         output_activation = nn.Tanh()
         output_nc = 3
@@ -1997,7 +1996,7 @@ def define_decoder_v2(opt):
 
     # input_nc
     if opt.decode_guide:
-        input_nc = opt.nof + opt.gf
+        input_nc = opt.nof + opt.decode_gf
     else:
         input_nc = opt.nof
 

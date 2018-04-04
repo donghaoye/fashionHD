@@ -43,7 +43,10 @@ class EncoderDecoderFramework_DFN(BaseModel):
         ###################################
         # DFN Modules
         ###################################
-        self.dfn = networks.define_DFN_from_params(nf=opt.nof, ng=self.opt_guide.nof, nmid=opt.dfn_nmid, feat_size=opt.feat_size, local_size=opt.dfn_local_size, nblocks=opt.dfn_nblocks, norm=opt.norm, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+        if self.opt.use_dfn:
+            self.dfn = networks.define_DFN_from_params(nf=opt.nof, ng=self.opt_guide.nof, nmid=opt.dfn_nmid, feat_size=opt.feat_size, local_size=opt.dfn_local_size, nblocks=opt.dfn_nblocks, norm=opt.norm, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+        else:
+            self.dfn = None
         ###################################
         # Discriminator
         ###################################
@@ -61,7 +64,10 @@ class EncoderDecoderFramework_DFN(BaseModel):
         self.crit_seg = nn.CrossEntropyLoss()
         self.crit_edge = nn.BCELoss()
         self.loss_functions += [self.crit_image, self.crit_seg, self.crit_edge]
-        self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}, {'params': self.dfn.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
+        if self.opt.use_dfn:
+            self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}, {'params': self.dfn.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
+        else:
+            self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
         self.optimizers = [self.optim]
         # GAN loss and optimizers
         if self.use_GAN > 0:
@@ -150,6 +156,14 @@ class EncoderDecoderFramework_DFN(BaseModel):
         else:
             raise NotImplementedError()
 
+    def decode(self, feat, guide=None):
+        if self.opt.decode_guide:
+            assert guide is not None
+            return self.decoder(torch.cat((feat, guide), dim=1))
+        else:
+            return self.decoder(feat)
+
+
     def forward(self):
         self.output['input'] = self.get_encoder_input(self.opt.input_type, deformation = False)
         self.output['input_def'] = self.get_encoder_input(self.opt.input_type, deformation = True)
@@ -160,21 +174,32 @@ class EncoderDecoderFramework_DFN(BaseModel):
         guide_A = self.guide_encoder(self.get_encoder_input(input_type=self.opt_guide.input_type, deformation=False))
         guide_B = self.guide_encoder(self.get_encoder_input(input_type=self.opt_guide.input_type, deformation=True))
         # DFN
-        if self.opt.dfn_detach:
-            feat_B2A, _ = self.dfn(feat_B.detach(), guide_B, guide_A)
-            feat_A2B, _ = self.dfn(feat_A.detach(), guide_A, guide_B)
-            feat_A2A, _ = self.dfn(feat_A2B, guide_B, guide_A)
+        if self.opt.use_dfn:
+            if self.opt.dfn_detach:
+                feat_B2A, _ = self.dfn(feat_B.detach(), guide_B, guide_A)
+                feat_A2B, _ = self.dfn(feat_A.detach(), guide_A, guide_B)
+                feat_A2A, _ = self.dfn(feat_A2B, guide_B, guide_A)
+            else:
+                feat_B2A, _ = self.dfn(feat_B, guide_B, guide_A)
+                feat_A2B, _ = self.dfn(feat_A, guide_A, guide_B)
+                feat_A2A, _ = self.dfn(feat_A2B, guide_B, guide_A)
+            # decode
+            self.output['output'] = self.decode(feat_A)
+            self.output['output_trans'] = self.decode(feat_B2A)
+            self.output['output_cycle'] = self.decode(feat_A2A)
         else:
-            feat_B2A, _ = self.dfn(feat_B, guide_B, guide_A)
-            feat_A2B, _ = self.dfn(feat_A, guide_A, guide_B)
-            feat_A2A, _ = self.dfn(feat_A2B, guide_B, guide_A)
-        # decode
-        self.output['output'] = self.decoder(feat_A)
-        self.output['output_trans'] = self.decoder(feat_B2A)
-        self.output['output_cycle'] = self.decoder(feat_A2A)
+            # use shape guided decoder, instead of DFN module
+            feat_A = F.upsample(feat_A, size=self.opt.feat_size, mode='bilinear')
+            feat_B = F.upsample(feat_B, size=self.opt.feat_size, mode='bilinear')
+            guide_A = F.upsample(guide_A, size=self.opt.feat_size, mode='bilinear')
+            guide_B = F.upsample(guide_B, size=self.opt.feat_size, mode='bilinear')
+            self.output['output'] = self.decode(feat_A, guide_A)
+            self.output['output_trans'] = self.decode(feat_B, guide_A)
+            self.output['output_cycle'] = self.output['output'] # a fake output_cycle. this output will not affect the loss value.
         # set target
         self.output['tar'] = self.get_decoder_target(self.opt.output_type)
         # compute loss
+
 
     def backward_D(self):
         loss_D_fake = self.crit_GAN(self.netD(self.output['output_trans'].detach()), False)
