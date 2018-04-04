@@ -180,7 +180,7 @@ class EncoderDecoderFramework_DFN(BaseModel):
         loss_D_fake = self.crit_GAN(self.netD(self.output['output_trans'].detach()), False)
         loss_D_real = self.crit_GAN(self.netD(self.output['tar'].detach()), True)
         self.output['loss_D'] = 0.5 * (loss_D_fake + loss_D_real)
-        (self.output['loss_D'] * self.loss_weight_gan).backward()
+        (self.output['loss_D'] * self.opt.loss_weight_gan).backward()
 
     def backward(self):            
         self.output['loss_decode'] = self.compute_loss(self.output['output'], self.output['tar'], self.opt.output_type)
@@ -189,7 +189,7 @@ class EncoderDecoderFramework_DFN(BaseModel):
         self.output['loss'] = self.output['loss_decode'] * self.opt.loss_weight_decode + self.output['loss_trans'] * self.opt.loss_weight_trans + self.output['loss_cycle'] * self.opt.loss_weight_cycle
         # gan loss
         if self.use_GAN:
-            self.output['loss_G'] = self.crit_GAN(self.netD(self.output['output_trans'], True))
+            self.output['loss_G'] = self.crit_GAN(self.netD(self.output['output_trans']), True)
             self.output['loss'] += self.output['loss_G'] * self.opt.loss_weight_gan
         self.output['loss'].backward()
 
