@@ -121,12 +121,12 @@ class GANDataset_V2(BaseDataset):
         ######################
 
         # flip
-        if self.opt.shape_deformation_flip:
+        if (self.split == 'test') or (self.split == 'train' and self.opt.is_train and self.opt.shape_deformation_flip):
             img_def = trans_random_horizontal_flip(img, coin=1.)
             edge_def = trans_random_horizontal_flip(edge, coin=1.)
             seg_def = trans_random_horizontal_flip(seg, coin=1.)
             color_def = trans_random_horizontal_flip(color, coin=1.)
-            pose_def = trans_random_horizontal_flip_pose(pose, coin=1.0)
+            pose_def = trans_random_horizontal_flip_pose(pose, coin=1.)
         else:
             img_def, edge_def, seg_def, color_def, pose_def = img, edge, seg, color, pose
 

@@ -2016,9 +2016,9 @@ class Encoder_V2(nn.Module):
         super(Encoder_V2, self).__init__()
         assert nf <= max_nf
         assert 2**ndowns < input_size, '%dx%d input image can not be reduced by stride-2 convolution for ndowns=%d times' % (input_size, input_size, ndowns)
-
         self.input_size = input_size
         self.gpu_ids = gpu_ids
+
 
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
@@ -2063,7 +2063,8 @@ class Decoder_V2(nn.Module):
     def __init__(self, input_nc, output_nc, fc_output_size=8, nf=64, max_nf=512, nf_increase='exp', nups=5, start_fc=False, norm_layer=nn.BatchNorm2d, activation=nn.ReLU(True), output_activation=nn.Tanh(), gpu_ids=[]):
         super(Decoder_V2, self).__init__()
         assert nf <= max_nf
-
+        self.input_nc = input_nc
+        self.output_nc = output_nc
         self.gpu_ids = gpu_ids
 
         if type(norm_layer) == functools.partial:
@@ -2117,8 +2118,8 @@ class Decoder_V2(nn.Module):
         else:
             return self.net(feat)
 
-def define_DFN_from_params(nf, ng, nmid, feat_size, local_size, gpu_ids, init_type):
-    dfn = DFNModule(nf, ng, nmid, feat_size, local_size, gpu_ids)
+def define_DFN_from_params(nf, ng, nmid, feat_size, local_size, nblocks, norm, gpu_ids, init_type):
+    dfn = DFNModule(nf, ng, nmid, feat_size, local_size, nblocks, norm, gpu_ids)
     init_weights(dfn, init_type)
     dfn.net[-2].bias.data.fill_(-1)
     dfn.net[-2].bias.data[local_size*local_size//2] = 1
@@ -2127,7 +2128,7 @@ def define_DFN_from_params(nf, ng, nmid, feat_size, local_size, gpu_ids, init_ty
     return dfn
 
 class DFNModule(nn.Module):
-    def __init__(self, nf, ng, nmid = 128, feat_size=8, local_size=3, gpu_ids=[]):
+    def __init__(self, nf, ng, nmid = 128, feat_size=8, local_size=3, nblocks=0, norm='instance', gpu_ids=[]):
         super(DFNModule, self).__init__()
         self.nf = nf
         self.ng = ng
@@ -2135,6 +2136,7 @@ class DFNModule(nn.Module):
         self.feat_size = feat_size
         self.local_size = local_size
         self.gpu_ids = gpu_ids
+        self.nblocks = nblocks
 
         self.net = nn.Sequential(
             nn.Conv2d(ng*2 + local_size*local_size, nmid, kernel_size=local_size, stride=1, padding=(local_size-1)//2),
@@ -2142,6 +2144,13 @@ class DFNModule(nn.Module):
             nn.Conv2d(nmid, local_size*local_size, kernel_size=local_size, stride=1, padding=(local_size-1)//2),
             nn.Softmax(dim=1),            
             )
+        if nblocks > 0:
+            blocks = []
+            norm_layer = get_norm_layer(norm)
+            use_bias = not (norm == 'batch')
+            for i in range(nblocks):
+                blocks += [ResidualEncoderBlock(nf, nf, norm_layer, nn.ReLU(True), use_bias, 1)]
+            self.res_blocks = nn.Sequential(*blocks)
 
     def compute_correlation(self, g1, g2):
 
@@ -2187,6 +2196,8 @@ class DFNModule(nn.Module):
             guide = torch.cat((g1, g2, corr), dim=1)
             coef = self.net(guide)
             output = self.apply_filter(x, coef)
+            if self.nblocks > 0:
+                output = self.res_blocks(output)
             return output, coef
 
 

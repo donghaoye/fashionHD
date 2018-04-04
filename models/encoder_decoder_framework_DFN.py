@@ -43,7 +43,15 @@ class EncoderDecoderFramework_DFN(BaseModel):
         ###################################
         # DFN Modules
         ###################################
-        self.dfn = networks.define_DFN_from_params(nf=opt.nof, ng=self.opt_guide.nof, nmid=opt.dfn_nmid, feat_size=opt.feat_size, local_size=opt.dfn_local_size, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+        self.dfn = networks.define_DFN_from_params(nf=opt.nof, ng=self.opt_guide.nof, nmid=opt.dfn_nmid, feat_size=opt.feat_size, local_size=opt.dfn_local_size, nblocks=opt.dfn_nblocks, norm=opt.norm, gpu_ids=opt.gpu_ids, init_type=opt.init_type)
+        ###################################
+        # Discriminator
+        ###################################
+        self.use_GAN = opt.loss_weight_gan > 0
+        if self.use_GAN > 0:
+            self.netD = networks.define_D_from_params(input_nc=self.decoder.output_nc, ndf=64, which_model_netD='n_layers', n_layers_D=3, norm=opt.norm, which_gan='dcgan', init_type=opt.init_type, gpu_ids=opt.gpu_ids)
+        else:
+            self.netD = None
         ###################################
         # loss functions
         ###################################
@@ -53,9 +61,15 @@ class EncoderDecoderFramework_DFN(BaseModel):
         self.crit_seg = nn.CrossEntropyLoss()
         self.crit_edge = nn.BCELoss()
         self.loss_functions += [self.crit_image, self.crit_seg, self.crit_edge]
-
         self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}, {'params': self.dfn.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
         self.optimizers = [self.optim]
+        # GAN loss and optimizers
+        if self.use_GAN > 0:
+            self.crit_GAN = networks.GANLoss(use_lsgan=False, tensor=self.Tensor)
+            self.optim_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr_D, betas=(0.5, 0.999))
+            self.loss_functions += [self.crit_GAN]
+            self.optimizers += [self.optim_D]
+
         for optim in self.optimizers:
             self.schedulers.append(networks.get_scheduler(optim, opt))
 
@@ -161,10 +175,24 @@ class EncoderDecoderFramework_DFN(BaseModel):
         # set target
         self.output['tar'] = self.get_decoder_target(self.opt.output_type)
         # compute loss
+
+    def backward_D(self):
+        loss_D_fake = self.crit_GAN(self.netD(self.output['output_trans'].detach()), False)
+        loss_D_real = self.crit_GAN(self.netD(self.output['tar'].detach()), True)
+        self.output['loss_D'] = 0.5 * (loss_D_fake + loss_D_real)
+        (self.output['loss_D'] * self.loss_weight_gan).backward()
+
+    def backward(self):            
         self.output['loss_decode'] = self.compute_loss(self.output['output'], self.output['tar'], self.opt.output_type)
         self.output['loss_trans'] = self.compute_loss(self.output['output_trans'], self.output['tar'], self.opt.output_type)
         self.output['loss_cycle'] = self.compute_loss(self.output['output_cycle'], self.output['tar'], self.opt.output_type)
         self.output['loss'] = self.output['loss_decode'] * self.opt.loss_weight_decode + self.output['loss_trans'] * self.opt.loss_weight_trans + self.output['loss_cycle'] * self.opt.loss_weight_cycle
+        # gan loss
+        if self.use_GAN:
+            self.output['loss_G'] = self.crit_GAN(self.netD(self.output['output_trans'], True))
+            self.output['loss'] += self.output['loss_G'] * self.opt.loss_weight_gan
+        self.output['loss'].backward()
+
 
     def test(self):
         if float(torch.__version__[0:3]) >= 0.4:
@@ -177,9 +205,14 @@ class EncoderDecoderFramework_DFN(BaseModel):
             self.forward()
 
     def optimize_parameters(self):
-        self.optim.zero_grad()
         self.forward()
-        self.output['loss'].backward()
+        if self.use_GAN:
+            self.optim_D.zero_grad()
+            self.backward_D()
+            self.optim_D.step()
+
+        self.optim.zero_grad()
+        self.backward()
         self.optim.step()
 
     def get_current_errors(self):
@@ -188,6 +221,9 @@ class EncoderDecoderFramework_DFN(BaseModel):
             ('loss_trans', self.output['loss_trans'].data.item()),
             ('loss_cycle', self.output['loss_cycle'].data.item())
             ])
+        if self.use_GAN:
+            errors['loss_G'] = self.output['loss_G'].data.item()
+            errors['loss_D'] = self.output['loss_D'].data.item()
 
         return errors
 

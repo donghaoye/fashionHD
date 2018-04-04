@@ -41,6 +41,7 @@ class BaseEncoderDecoderOptions_V2(BaseOptions):
         parser.add_argument('--dfn_nmid', type=int, default=64, help='mid-level channel number of DFN')
         parser.add_argument('--dfn_local_size', type=int, default=3, help='local region size')
         parser.add_argument('--dfn_detach', type=int, default=1, choices=[0,1], help='detach output feature from input feature in DFN')
+        parser.add_argument('--dfn_nblocks', type=int, default=0, help='number of resnet blocks following the DFN network')
         ##############################
         # data setting (dataset_mode == gan_v2)
         ##############################
@@ -101,6 +102,7 @@ class TrainEncoderDecoderOptions_V2(BaseEncoderDecoderOptions_V2):
         parser.add_argument('--continue_train', action = 'store_true', default = False, help = 'coninue training from saved model')
         # optimizer
         parser.add_argument('--lr', type = float, default = 1e-4, help = 'initial learning rate')
+        parser.add_argument('--lr_D', type = float, default = 1e-5, help = 'only use lr_D for netD when loss_weight_gan > 0')
         parser.add_argument('--beta1', type = float, default = 0.9, help = 'momentum1 term for Adam')
         parser.add_argument('--beta2', type = float, default = 0.999, help = 'momentum2 term for Adam')
         # scheduler
@@ -119,6 +121,7 @@ class TrainEncoderDecoderOptions_V2(BaseEncoderDecoderOptions_V2):
         parser.add_argument('--loss_weight_decode', type=float, default=1)
         parser.add_argument('--loss_weight_trans', type=float, default=0.1)
         parser.add_argument('--loss_weight_cycle', type=float, default=0.1)
+        parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
         # set train
         self.is_train = True
 
