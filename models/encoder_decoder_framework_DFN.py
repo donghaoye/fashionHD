@@ -52,11 +52,17 @@ class EncoderDecoderFramework_DFN(BaseModel):
         ###################################
         self.use_GAN = opt.loss_weight_gan > 0
         if self.use_GAN > 0:
-            if not self.opt.D_cond:
+            # if not self.opt.D_cond:
+            #     input_nc = self.decoder.output_nc
+            # else:
+            #     input_nc = self.decoder.output_nc + self.encoder.input_nc
+            if self.opt.gan_level == 'image':
                 input_nc = self.decoder.output_nc
-            else:
-                input_nc = self.decoder.output_nc + self.encoder.input_nc
-            self.netD = networks.define_D_from_params(input_nc=input_nc, ndf=64, which_model_netD='n_layers', n_layers_D=3, norm=opt.norm, which_gan='dcgan', init_type=opt.init_type, gpu_ids=opt.gpu_ids)
+            elif self.opt.gan_level == 'feature':
+                input_nc = self.opt.nof
+            if self.opt.D_cond:
+                input_nc += self.encoder.input_nc
+            self.netD = networks.define_D_from_params(input_nc=input_nc, ndf=64, which_model_netD='n_layers', n_layers_D=3, norm=opt.norm, which_gan=opt.which_gan, init_type=opt.init_type, gpu_ids=opt.gpu_ids)
         else:
             self.netD = None
         ###################################
@@ -75,7 +81,7 @@ class EncoderDecoderFramework_DFN(BaseModel):
         self.optimizers = [self.optim]
         # GAN loss and optimizers
         if self.use_GAN > 0:
-            self.crit_GAN = networks.GANLoss(use_lsgan=False, tensor=self.Tensor)
+            self.crit_GAN = networks.GANLoss(use_lsgan=opt.which_gan=='lsgan', tensor=self.Tensor)
             self.optim_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr_D, betas=(0.5, 0.999))
             self.loss_functions += [self.crit_GAN]
             self.optimizers += [self.optim_D]
@@ -191,6 +197,8 @@ class EncoderDecoderFramework_DFN(BaseModel):
             self.output['output'] = self.decode(feat_A)
             self.output['output_trans'] = self.decode(feat_B2A)
             self.output['output_cycle'] = self.decode(feat_A2A)
+            self.output['feat_A'] = feat_A
+            self.output['feat_B2A'] = feat_B2A
         else:
             # use shape guided decoder, instead of DFN module
             feat_A = F.upsample(feat_A, size=self.opt.feat_size, mode='bilinear')
@@ -206,12 +214,18 @@ class EncoderDecoderFramework_DFN(BaseModel):
 
 
     def backward_D(self):
-        if self.opt.D_cond:
-            D_input_fake = torch.cat((self.output['output_trans'].detach(), self.output['input']), dim=1)
-            D_input_real = torch.cat((self.output['tar'], self.output['input']), dim=1)
-        else:
+        if self.opt.gan_level == 'image':
             D_input_fake = self.output['output_trans'].detach()
             D_input_real = self.output['tar']
+        else:
+            feat_fake = F.upsample(self.output['feat_B2A'], size=self.opt.fine_size, mode='bilinear')
+            feat_real = F.upsample(self.output['feat_A'], size=self.opt.fine_size, mode='bilinear')
+            
+            D_input_fake = feat_fake.detach()
+            D_input_real = feat_real.detach()
+        if self.opt.D_cond:
+            D_input_fake = torch.cat((D_input_fake, self.output['input']), dim=1)
+            D_input_real = torch.cat((D_input_real, self.output['input']), dim=1)
 
         loss_D_fake = self.crit_GAN(self.netD(D_input_fake), False)
         loss_D_real = self.crit_GAN(self.netD(D_input_real), True)
@@ -225,10 +239,13 @@ class EncoderDecoderFramework_DFN(BaseModel):
         self.output['loss'] = self.output['loss_decode'] * self.opt.loss_weight_decode + self.output['loss_trans'] * self.opt.loss_weight_trans + self.output['loss_cycle'] * self.opt.loss_weight_cycle
         # gan loss
         if self.use_GAN:
-            if self.opt.D_cond:
-                D_input = torch.cat((self.output['output_trans'], self.output['input']), dim=1)
-            else:
+            if self.opt.gan_level == 'image':
                 D_input = self.output['output_trans']
+            else:
+                D_input = F.upsample(self.output['feat_B2A'], size=self.opt.fine_size, mode='bilinear')
+            if self.opt.D_cond:
+                D_input = torch.cat((D_input, self.output['input']), dim=1)
+
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             self.output['loss'] += self.output['loss_G'] * self.opt.loss_weight_gan
         self.output['loss'].backward()
