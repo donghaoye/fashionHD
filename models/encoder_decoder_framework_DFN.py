@@ -50,44 +50,58 @@ class EncoderDecoderFramework_DFN(BaseModel):
         ###################################
         # Discriminator
         ###################################
-        self.use_GAN = opt.loss_weight_gan > 0
-        if self.use_GAN > 0:
-            # if not self.opt.D_cond:
-            #     input_nc = self.decoder.output_nc
-            # else:
-            #     input_nc = self.decoder.output_nc + self.encoder.input_nc
-            if self.opt.gan_level == 'image':
-                input_nc = self.decoder.output_nc
-            elif self.opt.gan_level == 'feature':
-                input_nc = self.opt.nof
-            if self.opt.D_cond:
-                input_nc += self.encoder.input_nc
-            self.netD = networks.define_D_from_params(input_nc=input_nc, ndf=64, which_model_netD='n_layers', n_layers_D=3, norm=opt.norm, which_gan=opt.which_gan, init_type=opt.init_type, gpu_ids=opt.gpu_ids)
-        else:
-            self.netD = None
+        self.use_GAN = self.is_train and opt.loss_weight_gan > 0
+        if self.is_train:
+            if self.use_GAN:
+                # if not self.opt.D_cond:
+                #     input_nc = self.decoder.output_nc
+                # else:
+                #     input_nc = self.decoder.output_nc + self.encoder.input_nc
+                if self.opt.gan_level == 'image':
+                    input_nc = self.decoder.output_nc
+                elif self.opt.gan_level == 'feature':
+                    input_nc = self.opt.nof
+                if self.opt.D_cond:
+                    if self.opt.D_cond_type == 'cond':
+                        input_nc += self.encoder.input_nc
+                    elif self.opt.D_cond_type == 'pair':
+                        input_nc += input_nc
+                self.netD = networks.define_D_from_params(input_nc=input_nc, ndf=64, which_model_netD='n_layers', n_layers_D=3, norm=opt.norm, which_gan=opt.which_gan, init_type=opt.init_type, gpu_ids=opt.gpu_ids)
+            else:
+                self.netD = None
         ###################################
         # loss functions
         ###################################
-        self.loss_functions = []
-        self.schedulers = []
-        self.crit_image = nn.L1Loss()
-        self.crit_seg = nn.CrossEntropyLoss()
-        self.crit_edge = nn.BCELoss()
-        self.loss_functions += [self.crit_image, self.crit_seg, self.crit_edge]
-        if self.opt.use_dfn:
-            self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}, {'params': self.dfn.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
-        else:
-            self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
-        self.optimizers = [self.optim]
-        # GAN loss and optimizers
-        if self.use_GAN > 0:
-            self.crit_GAN = networks.GANLoss(use_lsgan=opt.which_gan=='lsgan', tensor=self.Tensor)
-            self.optim_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr_D, betas=(0.5, 0.999))
-            self.loss_functions += [self.crit_GAN]
-            self.optimizers += [self.optim_D]
+        if self.is_train:
+            self.loss_functions = []
+            self.schedulers = []
+            self.crit_image = nn.L1Loss()
+            self.crit_seg = nn.CrossEntropyLoss()
+            self.crit_edge = nn.BCELoss()
+            self.loss_functions += [self.crit_image, self.crit_seg, self.crit_edge]
+            if self.opt.use_dfn:
+                self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}, {'params': self.dfn.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
+            else:
+                self.optim = torch.optim.Adam([{'params': self.encoder.parameters()}, {'params': self.decoder.parameters()}], lr=opt.lr, betas=(opt.beta1, opt.beta2))
+            self.optimizers = [self.optim]
+            # GAN loss and optimizers
+            if self.use_GAN > 0:
+                self.crit_GAN = networks.GANLoss(use_lsgan=opt.which_gan=='lsgan', tensor=self.Tensor)
+                self.optim_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr_D, betas=(0.5, 0.999))
+                self.loss_functions += [self.crit_GAN]
+                self.optimizers += [self.optim_D]
 
-        for optim in self.optimizers:
-            self.schedulers.append(networks.get_scheduler(optim, opt))
+            for optim in self.optimizers:
+                self.schedulers.append(networks.get_scheduler(optim, opt))
+
+        ###################################
+        # load trained model
+        ###################################
+        if not self.is_train:
+            self.load_network(self.encoder, 'encoder', opt.which_epoch)
+            self.load_network(self.decoder, 'decoder', opt.which_epoch)
+            if opt.use_dfn:
+                self.load_network(self.dfn, 'dfn', opt.which_epoch)
 
     def set_input(self, data):
         input_list = [
@@ -132,13 +146,21 @@ class EncoderDecoderFramework_DFN(BaseModel):
                 input = torch.cat((self.input['seg_mask_def'], self.input['pose_map_def']), dim=1)
         return input
 
-    def get_decoder_target(self, output_type = 'image'):
-        if output_type == 'image':
-            output = self.input['img']
-        elif output_type == 'seg':
-            output = self.input['seg_map']
-        elif output_type == 'edge':
-            output = self.input['edge_map']
+    def get_decoder_target(self, output_type = 'image', deformation=False):
+        if not deformation:
+            if output_type == 'image':
+                output = self.input['img']
+            elif output_type == 'seg':
+                output = self.input['seg_map']
+            elif output_type == 'edge':
+                output = self.input['edge_map']
+        else:
+            if output_type == 'image':
+                output = self.input['img_def']
+            elif output_type == 'seg':
+                output = self.input['seg_map_def']
+            elif output_type == 'edge':
+                output = self.input['edge_map_def']
         return output
 
     def mask_image(self, img, seg_map, img_ref):
@@ -209,23 +231,31 @@ class EncoderDecoderFramework_DFN(BaseModel):
             self.output['output_trans'] = self.decode(feat_B, guide_A)
             self.output['output_cycle'] = self.output['output'] # a fake output_cycle. this output will not affect the loss value.
         # set target
-        self.output['tar'] = self.get_decoder_target(self.opt.output_type)
-        # compute loss
+        self.output['tar'] = self.get_decoder_target(self.opt.output_type, deformation=False)
+        self.output['tar_def'] = self.get_decoder_target(self.opt.output_type, deformation=True)
 
 
     def backward_D(self):
         if self.opt.gan_level == 'image':
             D_input_fake = self.output['output_trans'].detach()
             D_input_real = self.output['tar']
+            if self.opt.D_cond and self.opt.D_cond_type == 'pair':
+                D_input_dual = self.output['tar_def']
         else:
             feat_fake = F.upsample(self.output['feat_B2A'], size=self.opt.fine_size, mode='bilinear')
             feat_real = F.upsample(self.output['feat_A'], size=self.opt.fine_size, mode='bilinear')
-            
             D_input_fake = feat_fake.detach()
             D_input_real = feat_real.detach()
+            if self.opt.D_cond and self.opt.D_cond_type == 'pair':
+                D_input_dual = F.upsample(self.output['feat_B'], size=self.opt.fine_size, mode='bilinear').detach()
+
         if self.opt.D_cond:
-            D_input_fake = torch.cat((D_input_fake, self.output['input']), dim=1)
-            D_input_real = torch.cat((D_input_real, self.output['input']), dim=1)
+            if self.opt.D_cond_type == 'cond':
+                D_input_fake = torch.cat((D_input_fake, self.output['input']), dim=1)
+                D_input_real = torch.cat((D_input_real, self.output['input']), dim=1)
+            else:
+                D_input_fake = torch.cat((D_input_fake, D_input_dual), dim=1)
+                D_input_real = torch.cat((D_input_real, D_input_dual), dim=1)
 
         loss_D_fake = self.crit_GAN(self.netD(D_input_fake), False)
         loss_D_real = self.crit_GAN(self.netD(D_input_real), True)
@@ -314,3 +344,5 @@ class EncoderDecoderFramework_DFN(BaseModel):
         self.save_network(self.decoder, 'decoder', label, self.gpu_ids)
         if self.opt.use_dfn:
             self.save_network(self.dfn, 'dfn', label, self.gpu_ids)
+        if self.use_GAN:
+            self.save_network(self.netD, 'netD', label, self.gpu_ids)

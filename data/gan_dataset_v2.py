@@ -119,9 +119,8 @@ class GANDataset_V2(BaseDataset):
         ######################
         # geometricall transformation
         ######################
-
         # flip
-        if (self.split == 'test') or (self.split == 'train' and self.opt.is_train and self.opt.shape_deformation_flip):
+        if (self.split == 'test') or (self.split == 'train' and self.opt.is_train and self.opt.shape_deformation_flip and np.random.rand()>0.5):
             img_def = trans_random_horizontal_flip(img, coin=1.)
             edge_def = trans_random_horizontal_flip(edge, coin=1.)
             seg_def = trans_random_horizontal_flip(seg, coin=1.)
