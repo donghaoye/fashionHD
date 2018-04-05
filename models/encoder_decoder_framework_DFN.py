@@ -253,7 +253,7 @@ class EncoderDecoderFramework_DFN(BaseModel):
             if self.opt.D_cond_type == 'cond':
                 D_input_fake = torch.cat((D_input_fake, self.output['input']), dim=1)
                 D_input_real = torch.cat((D_input_real, self.output['input']), dim=1)
-            else:
+            elif self.opt.D_cond_type == 'pair':
                 D_input_fake = torch.cat((D_input_fake, D_input_dual), dim=1)
                 D_input_real = torch.cat((D_input_real, D_input_dual), dim=1)
 
@@ -273,8 +273,15 @@ class EncoderDecoderFramework_DFN(BaseModel):
                 D_input = self.output['output_trans']
             else:
                 D_input = F.upsample(self.output['feat_B2A'], size=self.opt.fine_size, mode='bilinear')
+            
             if self.opt.D_cond:
-                D_input = torch.cat((D_input, self.output['input']), dim=1)
+                if self.opt.D_cond_type == 'cond':
+                    D_input = torch.cat((D_input, self.output['input']), dim=1)
+                elif self.opt.D_cond_type == 'pair':
+                    if self.opt.gan_level == 'image':
+                        D_input = torch.cat((D_input, self.output['tar_def']), dim=1)
+                    elif self.opt.gan_level == 'feature':
+                        D_input = torch.cat((D_input, self.output['feat_B']), dim=1)
 
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             self.output['loss'] += self.output['loss_G'] * self.opt.loss_weight_gan
