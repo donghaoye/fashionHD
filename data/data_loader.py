@@ -47,6 +47,9 @@ def CreateDataset(opt, split):
     elif opt.dataset_mode in {'gan_v2'}:
         from data.gan_dataset_v2 import GANDataset_V2
         dataset = GANDataset_V2()
+    elif opt.dataset_mode in {'pose_transfer'}:
+        from data.pose_transfer_dataset import PoseTransferDataset
+        dataset = PoseTransferDataset()        
     else:
         raise ValueError('Dataset mode [%s] not recognized.' % opt.dataset_mode)
 

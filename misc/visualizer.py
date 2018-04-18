@@ -538,10 +538,13 @@ class GANVisualizer_V3(BaseVisualizer):
         torchvision.utils.save_image(imgs, fn_img, nrow = n_col, normalize = True)
 
 
-    def pavi_log(self, phase, iter_num, outputs):
-        # upper_list = ['D_real', 'D_fake', '']
-        upper_list = ['G_GAN_rec', 'G_GAN_gen']
-        lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'G_seg_rec', 'G_seg_gen', 'PSNR']
+    def pavi_log(self, phase, iter_num, outputs, upper_list=None, lower_list=None):
+        # # upper_list = ['D_real', 'D_fake', '']
+        if upper_list is None:
+            upper_list = ['G_GAN_rec', 'G_GAN_gen']
+        if lower_list is None:
+            lower_list = ['D_GAN', 'G_GAN', 'G_L1', 'G_VGG', 'G_seg_rec', 'G_seg_gen', 'PSNR']
+
 
         new_outputs = {}
         for k,v in outputs.iteritems():

@@ -975,7 +975,6 @@ class UnetSkipConnectionBlock(nn.Module):
         self.model = nn.Sequential(*model)
 
     def forward(self, x):
-        print(x.size())
         if self.outermost:
             return self.model(x)
         else:
@@ -1008,6 +1007,40 @@ class UnetGenerator(nn.Module):
         else:
             return self.model(input)
 
+class UnetGenerator_v2(nn.Module):
+    def __init__(self, input_nc, output_nc, num_downs, ngf=64,
+                 norm_layer=nn.BatchNorm2d, use_dropout=False, gpu_ids=[]):
+        super(UnetGenerator_v2, self).__init__()
+        self.gpu_ids = gpu_ids
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+        # construct unet structure
+        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer, innermost=True)
+        for i in range(num_downs - 4):
+            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout)
+        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+        unet_block = UnetSkipConnectionBlock(ngf * 1, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+
+        # self.model = unet_block
+        model = [
+            nn.Conv2d(input_nc, ngf, kernel_size=7, padding=3, bias=use_bias),
+            norm_layer(ngf),
+            unet_block,
+            nn.ReLU(True),
+            nn.Conv2d(2*ngf, output_nc, kernel_size=7, padding=3),
+            nn.Tanh()
+        ]
+
+        self.model = nn.Sequential(*model)
+
+    def forward(self, input):
+        if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
+            return nn.parallel.data_parallel(self.model, input)
+        else:
+            return self.model(input)
 
 # Defines the PatchGAN discriminator with the specified arguments.
 class NLayerDiscriminator(nn.Module):
@@ -2164,8 +2197,8 @@ class DFNModule(nn.Module):
         corr = []
 
         for dh in range(-max_shift, max_shift+1):
-            for dx in range(-max_shift, max_shift+1):
-                ng2s = ng2p[:,:,(dh+max_shift):(dh+max_shift+self.feat_size), (dx+max_shift):(dx+max_shift+self.feat_size)]
+            for dw in range(-max_shift, max_shift+1):
+                ng2s = ng2p[:,:,(dh+max_shift):(dh+max_shift+self.feat_size), (dw+max_shift):(dw+max_shift+self.feat_size)]
                 # corr += F.cosine_similarity(g1, g2s)
                 corr.append((ng1 * ng2s).sum(dim=1))
         corr = torch.stack(corr, dim=1)
@@ -2179,8 +2212,8 @@ class DFNModule(nn.Module):
 
         n = 0
         for dh in range(-max_shift, max_shift+1):
-            for dx in range(-max_shift, max_shift+1):
-                xs = xp[:,:,(dh+max_shift):(dh+max_shift+self.feat_size), (dx+max_shift):(dx+max_shift+self.feat_size)]
+            for dw in range(-max_shift, max_shift+1):
+                xs = xp[:,:,(dh+max_shift):(dh+max_shift+self.feat_size), (dw+max_shift):(dw+max_shift+self.feat_size)]
                 c = coef[:,n:(n+1)]
                 output += xs * c
                 n += 1

@@ -175,10 +175,49 @@ def test_GANDataset_V2():
     torch.save(data, 'temp.pth')
 
 
+def test_PoseTransferDataset():
+    from data_loader import CreateDataLoader
+    import argparse
+    ################
+    # set opt
+    ################
+    opt = argparse.Namespace()
+    opt.debug = False
+    opt.is_train = True
+    opt.dataset_mode = 'pose_transfer'
+    opt.batch_size = 4
+    opt.nThreads = 1
+    # path
+    opt.data_root = 'datasets/DF_Pose/'
+    opt.fn_split = 'Label/pair_split.json'
+    opt.img_dir = 'Img/img_df/'
+    opt.sge_dir = 'Img/seg_df/'
+    opt.fn_pose = 'Label/pose_label.pkl'
+    # pose
+    opt.pose_radius = 5
+    
+    ################
+    # create dataset
+    ################
+    loader = CreateDataLoader(opt, 'train')
+    loader_iter = iter(loader)
+    ################
+    # visualize one mini batch
+    ################
+    data = loader_iter.next()
+    for k, v in data.iteritems():
+        if isinstance(v, torch.Tensor):
+            print('[%s]: (%s), %s' % (k,type(v), v.size()))
+        else:
+            print('[%s]: %s' % (k, type(v)))
+
+
+
 
 if __name__ == '__main__':
     # test_AttributeDataset()
     # test_EXPAttributeDataset()
     # test_GANDataset()
     # test_AlignedGANDataset()
-    test_GANDataset_V2()
+    # test_GANDataset_V2()
+    test_PoseTransferDataset()

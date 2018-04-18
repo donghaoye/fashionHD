@@ -208,11 +208,13 @@ class EncoderDecoderFramework_DFN(BaseModel):
         # DFN
         if self.opt.use_dfn:
             if self.opt.dfn_detach:
-                feat_B2A, _ = self.dfn(feat_B.detach(), guide_B, guide_A)
+                feat_B2A, coef_B2A = self.dfn(feat_B.detach(), guide_B, guide_A)
                 feat_A2B, _ = self.dfn(feat_A.detach(), guide_A, guide_B)
                 feat_A2A, _ = self.dfn(feat_A2B, guide_B, guide_A)
             else:
-                feat_B2A, _ = self.dfn(feat_B, guide_B, guide_A)
+                # print('set DFN input feature to 0')
+                # feat_B.fill_(0)
+                feat_B2A, coef_B2A = self.dfn(feat_B, guide_B, guide_A)
                 feat_A2B, _ = self.dfn(feat_A, guide_A, guide_B)
                 feat_A2A, _ = self.dfn(feat_A2B, guide_B, guide_A)
             # decode
@@ -221,6 +223,7 @@ class EncoderDecoderFramework_DFN(BaseModel):
             self.output['output_cycle'] = self.decode(feat_A2A)
             self.output['feat_A'] = feat_A
             self.output['feat_B2A'] = feat_B2A
+            self.output['coef_trans'] = coef_B2A
         else:
             # use shape guided decoder, instead of DFN module
             feat_A = F.upsample(feat_A, size=self.opt.feat_size, mode='bilinear')

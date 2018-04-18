@@ -66,7 +66,7 @@ def landmark_to_heatmap(img_sz, lm_label, cloth_type, delta = 15.):
 
 def pose_to_heatmap(img_sz, label, size):
     '''
-    generate a poose heatmap from pose label
+    generate a pose heatmap from pose label
     Input:
         im_sz:      size of image
         label:   list of (x,y) with a lenght of C
@@ -86,6 +86,27 @@ def pose_to_heatmap(img_sz, label, size):
             heat_map[(y-radius):(y+radius), (x-radius):(x+radius), i] = 1
 
     return heat_map
+
+def pose_to_map(img_sz, label, mode='gaussian', radius=5):
+    '''
+    pose keypoint cordinates to spatial map
+    mode: 'gaussian', 'binary'
+    '''
+    w, h = img_sz
+    x_grid, y_grid = np.meshgrid(range(w), range(h), indexing = 'xy')
+    m = []
+    for x, y in label:
+        if x == -1 or y == -1:
+            m.append(np.zeros((h, w)).astype(np.float32))
+        else:
+            if mode == 'gaussian':
+                m.append(np.exp(-((x_grid - x)**2 + (y_grid - y)**2)/(radius**2)).astype(np.float32))
+            elif mode == 'binary':
+                m.append(((x_grid-x)**2 + (y_grid-y)**2 <= radius**2).astype(np.float32))
+            else:
+                raise NotImplementedError()
+    m = np.stack(m, axis=2)
+    return m
 
 
 def segmap_to_mask(seg_map, mask_type, cloth_type):
