@@ -430,9 +430,11 @@ class VGGLoss_v2(nn.Module):
         #     features_x.append(feat[0:bsz])
         #     features_y.append(feat[bsz::])
         if len(self.gpu_ids) > 1:
+            print('vgg_v2 multi-gpu')
             features_x = nn.parallel.data_parallel(self.vgg, X)
             features_y = nn.parallel.data_parallel(self.vgg, Y)
         else:
+            print('vgg_v2 single-gpu')
             features_x = self.vgg(X)
             features_y = self.vgg(Y)
         # compute content loss
