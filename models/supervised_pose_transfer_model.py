@@ -75,8 +75,8 @@ class SupervisedPoseTransferModel(BaseModel):
             self.optimizers =[]
             
             self.crit_L1 = nn.L1Loss()
-            self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
-            self.crit_vgg_old = networks.VGGLoss(self.gpu_ids)
+            # self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
+            self.crit_vgg = networks.VGGLoss(self.gpu_ids)
             self.crit_psnr = networks.PSNR()
             self.crit_ssim = networks.SSIM()
             self.loss_functions += [self.crit_L1, self.crit_vgg]
@@ -193,11 +193,8 @@ class SupervisedPoseTransferModel(BaseModel):
         self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
         # VGG
-        print('compute vgg content loss')
         self.output['loss_vgg'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
-        print('compute vgg content loss done!')
         loss += self.output['loss_vgg'] * self.opt.loss_weight_vgg
-        self.output['loss_vgg_old'] = self.crit_vgg_old(self.output['img_out'], self.output['img_tar'])
         # GAN
         if self.use_GAN:
             if self.opt.D_cond:
@@ -305,7 +302,6 @@ class SupervisedPoseTransferModel(BaseModel):
             ('SSIM', self.output['SSIM'].data.item()),
             ('loss_L1', self.output['loss_L1'].data.item()),
             ('loss_vgg', self.output['loss_vgg'].data.item()),
-            ('loss_vgg_old', self.output['loss_vgg_old'].data.item()),
             ])
         if self.use_GAN:
             errors['loss_G'] = self.output['loss_G'].data.item()

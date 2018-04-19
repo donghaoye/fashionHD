@@ -65,8 +65,8 @@ class PoseTransferDataset(BaseDataset):
         img_2 = self.read_image(sid_2)
         pose_c_1 = self.pose_label[sid_1]
         pose_c_2 = self.pose_label[sid_2]
-        pose_1 = pose_to_map(img_sz=(img_1.shape[1], img_1.shape[0]), label=pose_c_1, radius=self.opt.joint_radius)
-        pose_2 = pose_to_map(img_sz=(img_2.shape[1], img_2.shape[0]), label=pose_c_2, radius=self.opt.joint_radius)
+        pose_1 = pose_to_map(img_sz=(img_1.shape[1], img_1.shape[0]), label=pose_c_1, mode=self.opt.joint_mode, radius=self.opt.joint_radius)
+        pose_2 = pose_to_map(img_sz=(img_2.shape[1], img_2.shape[0]), label=pose_c_2, mode=self.opt.joint_mode, radius=self.opt.joint_radius)
         seg_1 = self.read_seg(sid_1)
         seg_2 = self.read_seg(sid_2)
         ######################

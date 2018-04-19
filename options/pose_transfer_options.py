@@ -15,7 +15,8 @@ class BasePoseTransferOptions(BaseOptions):
         # Pose Setting
         ##############################
         parser.add_argument('--pose_type', type=str, default='joint', choices=['joint', 'joint+seg'], help='pose format')
-        parser.add_argument('--joint_radius', type=int, default=10, help='radius of joint map')
+        parser.add_argument('--joint_radius', type=int, default=8, help='radius of joint map')
+        parser.add_argument('--joint_mode', type=str, default='binary', choices=['binary', 'gaussian'])
         parser.add_argument('--seg_bin_size', type=int, default=16, help='bin size of downsampled seg mask')        
         ##############################
         # Transformer Setting
