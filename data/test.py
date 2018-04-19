@@ -191,10 +191,11 @@ def test_PoseTransferDataset():
     opt.data_root = 'datasets/DF_Pose/'
     opt.fn_split = 'Label/pair_split.json'
     opt.img_dir = 'Img/img_df/'
-    opt.sge_dir = 'Img/seg_df/'
+    opt.seg_dir = 'Img/seg_df/'
     opt.fn_pose = 'Label/pose_label.pkl'
     # pose
-    opt.pose_radius = 5
+    opt.joint_radius = 5
+    opt.seg_bin_size = 16
     
     ################
     # create dataset
@@ -211,7 +212,8 @@ def test_PoseTransferDataset():
         else:
             print('[%s]: %s' % (k, type(v)))
 
-
+    print(type(data['pose_c_1'][0]))
+    print(data['pose_c_1'])
 
 
 if __name__ == '__main__':

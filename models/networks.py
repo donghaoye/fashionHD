@@ -314,7 +314,7 @@ class GANLoss(nn.Module):
 
 
 # Vgg19 and VGGLoss is borrowed from pix2pixHD
-class Vgg19(torch.nn.Module):
+class Vgg19(nn.Module):
     def __init__(self, requires_grad=False):
         super(Vgg19, self).__init__()
         vgg_pretrained_features = torchvision.models.vgg19(pretrained=True).features
@@ -366,6 +366,100 @@ class VGGLoss(nn.Module):
             return nn.parallel.data_parallel(self.vgg, (x, y)).mean()
         else:
             return self.vgg(x, y).mean()
+
+
+class Vgg19_v2(nn.Module):
+    def __init__(self, requires_grad=False):
+        super(Vgg19_v2, self).__init__()
+        vgg_pretrained_features = torchvision.models.vgg19(pretrained=True).features
+        self.slice1 = torch.nn.Sequential()
+        self.slice2 = torch.nn.Sequential()
+        self.slice3 = torch.nn.Sequential()
+        self.slice4 = torch.nn.Sequential()
+        self.slice5 = torch.nn.Sequential()
+        for x in range(2):
+            self.slice1.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(2, 7):
+            self.slice2.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(7, 12):
+            self.slice3.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(12, 21):
+            self.slice4.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(21, 30):
+            self.slice5.add_module(str(x), vgg_pretrained_features[x])
+        if not requires_grad:
+            for param in self.parameters():
+                param.requires_grad = False
+
+    def forward(self, X):
+        h_relu1 = self.slice1(X)
+        h_relu2 = self.slice2(h_relu1)
+        h_relu3 = self.slice3(h_relu2)
+        h_relu4 = self.slice4(h_relu3)
+        h_relu5 = self.slice5(h_relu4)
+        out = [h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]
+        return out
+
+class VGGLoss_v2(nn.Module):
+    def __init__(self, gpu_ids):
+        super(VGGLoss_v2, self).__init__()
+        self.gpu_ids = gpu_ids
+        self.vgg = Vgg19_v2()
+        self.content_weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
+        self.style_weights = [0, 0, 1, 0, 0] # use relu-3 layer feature to compure style loss
+        self.crit_l1 = nn.L1Loss()
+        self.crit_l2 = nn.MSELoss()
+
+        if len(gpu_ids) > 0:
+            self.vgg.cuda()
+
+    def forward(self, X, Y, loss_type='content'):
+        '''
+        loss_type: 'all', 'content', 'style'
+        '''
+        # compure feature
+        # bsz = X.size(0)
+        # input = torch.cat((X,Y))
+        # if len(self.gpu_ids) > 1:
+        #     features = nn.parallel.data_parallel(self.vgg, input)
+        # else:
+        #     features = self.vgg(input)
+        # features_x = []
+        # features_y = []
+        # for feat in features:
+        #     features_x.append(feat[0:bsz])
+        #     features_y.append(feat[bsz::])
+        if len(self.gpu_ids) > 1:
+            features_x = nn.parallel.data_parallel(self.vgg, X)
+            features_y = nn.parallel.data_parallel(self.vgg, Y)
+        else:
+            features_x = self.vgg(X)
+            features_y = self.vgg(Y)
+        # compute content loss
+        if loss_type in {'all', 'content'}:
+            loss_content = 0
+            for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
+                loss_content += self.content_weights[i] * self.crit_l1(feat_x, feat_y)
+        # compute style loss
+        if loss_type in {'all', 'style'}:
+            loss_style = 0
+            for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
+                if self.style_weights[i] > 0:
+                    loss_style += self.style_weights[i] * self.crit_l2(self.gram_matrix(feat_x), self.gram_matrix(feat_y))
+
+        if loss_type == 'content':
+            return loss_content
+        elif loss_type == 'style':
+            return loss_style
+        elif loss_type == 'all':
+            return loss_content, loss_style
+
+    def gram_matrix(self, feat):
+        bsz, c, h, w = feat.size()
+        feat = feat.view(bsz, c, h*w)
+        feat_T = feat.transpose(1,2)
+        g = torch.matmul(feat_T, feat) / (c*h*w)
+        return g
 
 
 class TotalVariationLoss(nn.Module):

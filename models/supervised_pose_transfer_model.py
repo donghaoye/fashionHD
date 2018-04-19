@@ -75,7 +75,8 @@ class SupervisedPoseTransferModel(BaseModel):
             self.optimizers =[]
             
             self.crit_L1 = nn.L1Loss()
-            self.crit_vgg = networks.VGGLoss(self.gpu_ids)
+            self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
+            self.crit_vgg_old = networks.VGGLoss(self.gpu_ids)
             self.crit_psnr = networks.PSNR()
             self.crit_ssim = networks.SSIM()
             self.loss_functions += [self.crit_L1, self.crit_vgg]
@@ -116,26 +117,10 @@ class SupervisedPoseTransferModel(BaseModel):
             self.input[name] = Variable(self.Tensor(data[name].size()).copy_(data[name]))
 
         self.input['id'] = zip(data['id_1'], data['id_2'])
+        self.input['pose_c_1'] = data['pose_c_1']
+        self.input['pose_c_2'] = data['pose_c_2']
         # torch.save(data, 'data.pth')
         # exit(0)
-
-    def get_pose_dim(self, pose_type):
-        if pose_type == 'joint':
-            dim = 18
-        elif pose_type == 'joint+seg':
-            dim = 18 + 7
-
-        return dim
-
-    def get_pose(self, pose_type, index='1'):
-        assert index in {'1', '2'}
-        pose = self.input['pose_%s' % index]
-        seg_mask = self.input['seg_mask_%s' % index]
-
-        if pose_type == 'joint':
-            return pose
-        elif pose_type == 'joint+seg':
-            return torch.cat((pose, seg_mask), dim=1)
 
     def forward(self):
         img_ref = self.input['img_1']
@@ -185,9 +170,8 @@ class SupervisedPoseTransferModel(BaseModel):
             # L1 loss
             self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
             # vgg loss
-            self.output['loss_vgg'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'])
+            self.output['loss_vgg'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
             
-
     def backward_D(self):
         if self.opt.D_cond:
             D_input_fake = torch.cat((self.output['img_out'].detach(), self.output['pose_tar']), dim=1)
@@ -209,8 +193,11 @@ class SupervisedPoseTransferModel(BaseModel):
         self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
         # VGG
-        self.output['loss_vgg'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'])
+        print('compute vgg content loss')
+        self.output['loss_vgg'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
+        print('compute vgg content loss done!')
         loss += self.output['loss_vgg'] * self.opt.loss_weight_vgg
+        self.output['loss_vgg_old'] = self.crit_vgg_old(self.output['img_out'], self.output['img_tar'])
         # GAN
         if self.use_GAN:
             if self.opt.D_cond:
@@ -232,12 +219,93 @@ class SupervisedPoseTransferModel(BaseModel):
         self.backward()
         self.optim.step()
 
+    def get_pose_dim(self, pose_type):
+        if pose_type == 'joint':
+            dim = 18
+        elif pose_type == 'joint+seg':
+            dim = 18 + 7
+
+        return dim
+
+    def get_pose(self, pose_type, index='1'):
+        assert index in {'1', '2'}
+        pose = self.input['pose_%s' % index]
+        seg_mask = self.input['seg_mask_%s' % index]
+
+        if pose_type == 'joint':
+            return pose
+        elif pose_type == 'joint+seg':
+            return torch.cat((pose, seg_mask), dim=1)
+
+    def get_patch(self, images, c, patch_size=32):
+        '''
+        image_batch: images (bsz, c, h, w)
+        c: coordinates of joint points (bsz, 18, 2)
+        '''
+        bsz, c, h, w = images.size()
+
+        # use 0-None for face area, ignore [14-REye, 15-LEye, 16-REar, 17-LEar]
+        joint_index = [0,1,2,3,4,5,6,7,8,9,10,11,12,13]
+        patches = []
+
+        for i in joint_index:
+            patch = []
+            for j in range(bsz):
+                img = images[j]
+                x = int(c[j, i, 0].item())
+                y = int(c[j, i, 1].item())
+                if x < 0 or y < 0:
+                    patch = img.new(c, patch_size, patch_size).fill_(0)
+                else:
+                    left    = x-(patch_size//2)
+                    right   = x-(patch_size//2)+patch_size
+                    top     = y-(patch_size//2)
+                    bottom  = y-(patch_size//2)+patch_size
+
+                    left, p_l   = (left, 0) if left >= 0 else (0, -left)
+                    right, p_r  = (right, 0) if right <= w else (w, right-w)
+                    top, p_t    = (top, 0) if top >= 0 else (0, -top)
+                    bottom, p_b = (bottom, 0) if bottom <= h else (h, bottom-h)
+
+                    p = img[:, top:bottom, left:right]
+                    if not (p_l == p_r == p_t == p_b == 0):
+                        p = F.pad(p, pad=(p_l, p_r, p_t, p_b), mode='reflect')
+
+                patch.append(p)
+            patch = torch.stack(patch)
+            patches.append(patch)
+        return patches
+
+    def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32):
+        '''
+        images_1: (bsz, h, w, h)
+        images_2: (bsz, h, w, h)
+        c_1: (bsz, 18, 2) # patch center coordinates of images_1
+        c_2: (bsz, 18, 2) # patch center coordinates of images_2
+        '''
+        bsz = images_1.size(0)
+        # remove invalid joint point
+        c_invalid = (c_1 < 0) | (c_2 < 0)
+        vc_1 = c_1.clone()
+        vc_2 = c_2.clone()
+        vc_1[c_invalid] = -1
+        vc_2[c_invalid] = -1
+        # get patches
+        patches_1 = self.get_patch(images_1, c_1, patch_size) # list: [patch_c1, patch_c2, ...]
+        patches_2 = self.get_patch(images_2, c_2, patch_size)
+        # compute style loss
+        patches_1 = torch.cat(patches_1, dim=0)
+        patches_2 = torch.cat(patches_2, dim=0)
+        loss_style = self.crit_vgg(patches_1, patches_2, 'style')
+        return loss_style
+
     def get_current_errors(self):
         errors = OrderedDict([
             ('PSNR', self.output['PSNR'].data.item()),
             ('SSIM', self.output['SSIM'].data.item()),
             ('loss_L1', self.output['loss_L1'].data.item()),
             ('loss_vgg', self.output['loss_vgg'].data.item()),
+            ('loss_vgg_old', self.output['loss_vgg_old'].data.item()),
             ])
         if self.use_GAN:
             errors['loss_G'] = self.output['loss_G'].data.item()
