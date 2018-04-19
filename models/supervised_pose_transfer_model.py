@@ -77,6 +77,7 @@ class SupervisedPoseTransferModel(BaseModel):
             self.crit_L1 = nn.L1Loss()
             self.crit_vgg = networks.VGGLoss(self.gpu_ids)
             self.crit_psnr = networks.PSNR()
+            self.crit_ssim = networks.SSIM()
             self.loss_functions += [self.crit_L1, self.crit_vgg]
             self.optim = torch.optim.Adam(self.netT.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
             self.optimizers += [self.optim]
@@ -144,6 +145,8 @@ class SupervisedPoseTransferModel(BaseModel):
         self.output['img_tar'] = self.input['img_2']
         self.output['pose_tar'] = pose_tar
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
+        self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
+        # self.output['SSIM'] = self.crit_ssim(self.output['img_out'], self.output['img_tar'])
 
     def test(self, compute_loss=False):
         if float(torch.__version__[0:3]) >= 0.4:
@@ -154,6 +157,9 @@ class SupervisedPoseTransferModel(BaseModel):
                 if isinstance(v, Variable):
                     v.volatile = True
             self.forward()
+        
+        # compure ssim
+        self.output['SSIM'] = self.crit_ssim(self.output['img_out'], self.output['img_tar'])
 
         # compute loss
         if compute_loss:
@@ -211,7 +217,7 @@ class SupervisedPoseTransferModel(BaseModel):
                 D_input = torch.cat((self.output['img_out'], self.output['pose_tar']), dim=1)
             else:
                 D_input = self.output['img_out']
-            self.output['loss_G'] = self.crit_GAN(D_input_real, True)
+            self.output['loss_G'] = self.crit_GAN(D_input, True)
             loss  += self.output['loss_G'] * self.opt.loss_weight_gan
 
         loss.backward()
@@ -229,6 +235,7 @@ class SupervisedPoseTransferModel(BaseModel):
     def get_current_errors(self):
         errors = OrderedDict([
             ('PSNR', self.output['PSNR'].data.item()),
+            ('SSIM', self.output['SSIM'].data.item()),
             ('loss_L1', self.output['loss_L1'].data.item()),
             ('loss_vgg', self.output['loss_vgg'].data.item()),
             ])

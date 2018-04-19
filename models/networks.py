@@ -13,6 +13,7 @@ from resnet_wrapper import create_resnet_conv_layers
 import os
 import numpy as np
 import functools
+from skimage.measure import compare_ssim, compare_psnr
 
 import util.io as io
 
@@ -179,21 +180,47 @@ class SmoothLoss():
             self.clear()
         return loss
 
-class PSNR(nn.Module):
+class PSNR_old(nn.Module):
     def __init__(self):
-        super(PSNR, self).__init__()
+        super(PSNR_old, self).__init__()
         self.Kr = .299
         self.Kg = .587
         self.Kb = .114
         self.lg10 = float(np.log(10))
 
-    def forward(self, img_1, img_2):
-        y_1 = self.Kr * img_1[:,0] + self.Kg * img_1[:,1] + self.Kb * img_1[:,2]
-        y_2 = self.Kr * img_2[:,0] + self.Kg * img_2[:,1] + self.Kb * img_2[:,2]
+    def forward(self, images_1, images_2):
+        y_1 = self.Kr * images_1[:,0] + self.Kg * images_1[:,1] + self.Kb * images_1[:,2]
+        y_2 = self.Kr * images_2[:,0] + self.Kg * images_2[:,1] + self.Kb * images_2[:,2]
         y_d = (y_1 - y_2).view(y_1.size(0), -1)
         rmse = y_d.pow(2).mean(dim = 1).sqrt().clamp(0, 1)
         psnr = 20 / self.lg10 * (1/rmse).log().mean()
         return psnr
+
+class PSNR(nn.Module):
+    def forward(self, images_1, images_2):
+        images_np_1 = images_1.data.cpu().numpy().transpose(0,2,3,1)
+        images_np_2 = images_2.data.cpu().numpy().transpose(0,2,3,1)
+        psnr_score = []
+        data_range = 2 # [-1, 1]
+
+        for img_1, img_2 in zip(images_np_1, images_np_2):
+            psnr_score.append(compare_psnr(img_2, img_1, data_range=data_range))
+
+        return Variable(images_1.data.new(1).fill_(np.mean(psnr_score)))
+
+
+class SSIM(nn.Module):
+    def forward(self, images_1, images_2):
+        images_np_1 = images_1.data.cpu().numpy().transpose(0,2,3,1)
+        images_np_2 = images_2.data.cpu().numpy().transpose(0,2,3,1)
+        ssim_score = []
+        data_range = 2 # [-1, 1]
+
+        for img_1, img_2 in zip(images_np_1, images_np_2):
+            ssim_score.append(compare_ssim(img_1, img_2, data_range=data_range, multichannel=True))
+
+        return Variable(images_1.data.new(1).fill_(np.mean(ssim_score)))
+        
 
 class WeightedBCELoss(nn.Module):
     '''

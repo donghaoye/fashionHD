@@ -58,7 +58,7 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--continue_train', action = 'store_true', default = False, help = 'coninue training from saved model')
         # optimizer
         parser.add_argument('--lr', type = float, default = 2e-4, help = 'initial learning rate')
-        parser.add_argument('--lr_D', type = float, default = 2e-5, help = 'only use lr_D for netD when loss_weight_gan > 0')
+        parser.add_argument('--lr_D', type = float, default = 1e-4, help = 'only use lr_D for netD when loss_weight_gan > 0')
         parser.add_argument('--beta1', type = float, default = 0.5, help = 'momentum1 term for Adam')
         parser.add_argument('--beta2', type = float, default = 0.999, help = 'momentum2 term for Adam')
         # scheduler

@@ -24,8 +24,8 @@ val_loader = CreateDataLoader(opt, split = 'test')
 # create visualizer
 visualizer = GANVisualizer_V3(opt)
 
-pavi_upper_list = ['PSNR']
-pavi_lower_list = ['loss_L1', 'loss_vgg', 'loss_gan', 'loss_pose']
+pavi_upper_list = ['PSNR', 'SSIM']
+pavi_lower_list = ['loss_L1', 'loss_vgg', 'loss_G', 'loss_D', 'loss_pose']
 
 total_steps = 0
 

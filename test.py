@@ -1,15 +1,22 @@
 from __future__ import division
-import torch
-import torch.nn as nn
-from torch.autograd import Variable
-import util.inception_score
-import util.io as io
-import util.image as image
+from skimage.measure import compare_psnr, compare_ssim
+import time
+import cv2
 
-design_root = 'datasets/DeepFashion/Fashion_design/'
+img1 = cv2.imread('demo.jpg')
+img2 = cv2.GaussianBlur(img1, (5,5), 1)
 
-id_list = io.load_json(design_root + 'Split/ca_gan_split_trainval_upper.json')['train']
-imgs = [image.imread(design_root + 'Img/img_ca_256/' + s_id + '.jpg') for s_id in id_list[0:1000]]
+N = 100
+t = time.time()
+for i in range(N):
+    compare_psnr(img1, img2)
+t_psnr = (time.time() - t)/N
 
-s,v = util.inception_score.get_inception_score(imgs)
-print s, v
+t = time.time()
+for i in range(N):
+    compare_ssim(img1, img2, multichannel=True)
+t_ssim = (time.time() - t)/N
+
+print('psnr time: %f'%t_psnr)
+print('ssim time: %f'%t_ssim)
+
