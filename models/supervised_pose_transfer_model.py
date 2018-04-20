@@ -201,7 +201,7 @@ class SupervisedPoseTransferModel(BaseModel):
                 D_input = torch.cat((self.output['img_out'], self.output['pose_tar']), dim=1)
             else:
                 D_input = self.output['img_out']
-            self.output['loss_G'] = self.crit_GAN(D_input, True)
+            self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             loss  += self.output['loss_G'] * self.opt.loss_weight_gan
 
         loss.backward()

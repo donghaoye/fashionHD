@@ -740,6 +740,8 @@ def define_D_from_params(input_nc, ndf, which_model_netD, n_layers_D, norm, whic
     use_sigmoid = (which_gan == 'dcgan')
     output_bias = (which_gan != 'wgan')
     norm_layer = get_norm_layer(norm)
+    # print(which_gan)
+    # print(use_sigmoid)
 
     if use_gpu:
         assert(torch.cuda.is_available())
