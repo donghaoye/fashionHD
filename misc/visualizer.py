@@ -130,12 +130,12 @@ class BaseVisualizer(object):
         print(log, file = self.f_log)
         self.clock = time.time()
 
-    def print_error(self, result):
+    def print_error(self, error):
         '''
-        Display result info on screen
+        Display error info on screen
         '''
         log = '[%s] Test [Epoch: %s]\n' % (self.opt.id, self.opt.which_epoch)
-        log += '\n'.join(['%s: %.6f' % (k,v) for k,v in result.iteritems()])
+        log += '\n'.join(['%s: %.6f' % (k,v) for k,v in error.iteritems()])
         log = '\n'.join(['', '#'*50, log, '#'*50, ''])
         print(log)
 

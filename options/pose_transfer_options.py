@@ -18,6 +18,7 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--joint_radius', type=int, default=8, help='radius of joint map')
         parser.add_argument('--joint_mode', type=str, default='binary', choices=['binary', 'gaussian'])
         parser.add_argument('--seg_bin_size', type=int, default=16, help='bin size of downsampled seg mask')        
+        parser.add_argument('--patch_size', type=int, default=32, help='size of the local pathch for computing style loss')
         ##############################
         # Transformer Setting
         ##############################
@@ -73,10 +74,12 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--test_epoch_freq', type = int, default = 1, help='frequency of testing model')
         parser.add_argument('--save_epoch_freq', type = int, default = 5, help='frequency of saving model to disk' )
         parser.add_argument('--vis_epoch_freq', type = int, default = 1, help='frequency of visualizing generated images')
+        parser.add_argument('--check_grad_freq', type = int, default = 100, help = 'frequency of checking gradient of each loss')
         parser.add_argument('--max_n_vis', type = int, default = 32, help='max number of visualized images')
         # loss weights
         parser.add_argument('--loss_weight_L1', type=float, default=1)
-        parser.add_argument('--loss_weight_vgg', type=float, default=1)
+        parser.add_argument('--loss_weight_content', type=float, default=1)
+        parser.add_argument('--loss_weight_style', type=float, default=1)
         parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
         # set train
         self.is_train = True

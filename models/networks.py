@@ -180,48 +180,6 @@ class SmoothLoss():
             self.clear()
         return loss
 
-class PSNR_old(nn.Module):
-    def __init__(self):
-        super(PSNR_old, self).__init__()
-        self.Kr = .299
-        self.Kg = .587
-        self.Kb = .114
-        self.lg10 = float(np.log(10))
-
-    def forward(self, images_1, images_2):
-        y_1 = self.Kr * images_1[:,0] + self.Kg * images_1[:,1] + self.Kb * images_1[:,2]
-        y_2 = self.Kr * images_2[:,0] + self.Kg * images_2[:,1] + self.Kb * images_2[:,2]
-        y_d = (y_1 - y_2).view(y_1.size(0), -1)
-        rmse = y_d.pow(2).mean(dim = 1).sqrt().clamp(0, 1)
-        psnr = 20 / self.lg10 * (1/rmse).log().mean()
-        return psnr
-
-class PSNR(nn.Module):
-    def forward(self, images_1, images_2):
-        images_np_1 = images_1.data.cpu().numpy().transpose(0,2,3,1)
-        images_np_2 = images_2.data.cpu().numpy().transpose(0,2,3,1)
-        psnr_score = []
-        data_range = 2 # [-1, 1]
-
-        for img_1, img_2 in zip(images_np_1, images_np_2):
-            psnr_score.append(compare_psnr(img_2, img_1, data_range=data_range))
-
-        return Variable(images_1.data.new(1).fill_(np.mean(psnr_score)))
-
-
-class SSIM(nn.Module):
-    def forward(self, images_1, images_2):
-        images_np_1 = images_1.data.cpu().numpy().transpose(0,2,3,1)
-        images_np_2 = images_2.data.cpu().numpy().transpose(0,2,3,1)
-        ssim_score = []
-        data_range = 2 # [-1, 1]
-
-        for img_1, img_2 in zip(images_np_1, images_np_2):
-            ssim_score.append(compare_ssim(img_1, img_2, data_range=data_range, multichannel=True))
-
-        return Variable(images_1.data.new(1).fill_(np.mean(ssim_score)))
-        
-
 class WeightedBCELoss(nn.Module):
     '''
     Binary Cross Entropy Loss for multilabel classification task. For each class, the positive and negative samples
@@ -404,55 +362,80 @@ class VGGLoss_v2(nn.Module):
     def __init__(self, gpu_ids):
         super(VGGLoss_v2, self).__init__()
         self.gpu_ids = gpu_ids
-        self.vgg = Vgg19_v2()
         self.content_weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
         self.style_weights = [0, 0, 1, 0, 0] # use relu-3 layer feature to compure style loss
-        self.crit_l1 = nn.L1Loss()
-        self.crit_l2 = nn.MSELoss()
+        # define vgg
+        vgg_pretrained_features = torchvision.models.vgg19(pretrained=True).features
+        self.slice1 = torch.nn.Sequential()
+        self.slice2 = torch.nn.Sequential()
+        self.slice3 = torch.nn.Sequential()
+        self.slice4 = torch.nn.Sequential()
+        self.slice5 = torch.nn.Sequential()
+        for x in range(2):
+            self.slice1.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(2, 7):
+            self.slice2.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(7, 12):
+            self.slice3.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(12, 21):
+            self.slice4.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(21, 30):
+            self.slice5.add_module(str(x), vgg_pretrained_features[x])
+        for param in self.parameters():
+            param.requires_grad = False
 
         if len(gpu_ids) > 0:
-            self.vgg.cuda()
+            self.cuda()
 
-    def forward(self, X, Y, loss_type='content'):
+    def compute_feature(self, X):
+        h_relu1 = self.slice1(X)
+        h_relu2 = self.slice2(h_relu1)
+        h_relu3 = self.slice3(h_relu2)
+        h_relu4 = self.slice4(h_relu3)
+        h_relu5 = self.slice5(h_relu4)
+        out = [h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]
+        return out
+
+    def forward(self, X, Y, loss_type='content', device_mode=None):
         '''
         loss_type: 'all', 'content', 'style'
+        device_mode: multi, single, sub
         '''
-        # compure feature
-        # bsz = X.size(0)
-        # input = torch.cat((X,Y))
-        # if len(self.gpu_ids) > 1:
-        #     features = nn.parallel.data_parallel(self.vgg, input)
-        # else:
-        #     features = self.vgg(input)
-        # features_x = []
-        # features_y = []
-        # for feat in features:
-        #     features_x.append(feat[0:bsz])
-        #     features_y.append(feat[bsz::])
-        if len(self.gpu_ids) > 1:
-            features_x = nn.parallel.data_parallel(self.vgg, X)
-            features_y = nn.parallel.data_parallel(self.vgg, Y)
-        else:
-            features_x = self.vgg(X)
-            features_y = self.vgg(Y)
-        # compute content loss
-        if loss_type in {'all', 'content'}:
-            loss_content = 0
-            for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
-                loss_content += self.content_weights[i] * self.crit_l1(feat_x, feat_y)
-        # compute style loss
-        if loss_type in {'all', 'style'}:
-            loss_style = 0
-            for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
-                if self.style_weights[i] > 0:
-                    loss_style += self.style_weights[i] * self.crit_l2(self.gram_matrix(feat_x), self.gram_matrix(feat_y))
+        bsz = X.size(0)
+        if device_mode is None:
+            device_mode = 'multi' if len(self.gpu_ids) > 1 else 'single'
 
-        if loss_type == 'content':
-            return loss_content
-        elif loss_type == 'style':
-            return loss_style
-        elif loss_type == 'all':
-            return loss_content, loss_style
+        if device_mode == 'multi':
+            if loss_type != 'all':
+                return nn.parallel.data_parallel(self, (X, Y), module_kwargs={'loss_type': loss_type, 'device_mode': 'sub'}).mean(dim=0)
+            else:
+                loss_content, loss_style = nn.parallel.data_parallel(self, (X, Y), module_kwargs={'loss_type': loss_type, 'device_mode': 'sub'})
+                return loss_content.mean(dim=0), loss_style.mean(dim=0)
+        else:
+            features_x = self.compute_feature(X)
+            features_y = self.compute_feature(Y)
+            # compute content loss
+            if loss_type in {'all', 'content'}:
+                loss_content = 0
+                for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
+                    loss_content += self.content_weights[i] * F.l1_loss(feat_x, feat_y, reduce=False).view(bsz, -1).mean(dim=1)
+                if device_mode == 'single':
+                    loss_content = loss_content.mean(dim=0)
+            # compute style loss
+            if loss_type in {'all', 'style'}:
+                loss_style = 0
+                for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
+                    if self.style_weights[i] > 0:
+                        loss_style += self.style_weights[i] * F.mse_loss(self.gram_matrix(feat_x), self.gram_matrix(feat_y), reduce=False).view(bsz, -1).mean(dim=1)
+                if device_mode == 'single':
+                    loss_style = loss_style.mean(dim=0)
+
+            if loss_type == 'content':
+                return loss_content
+            elif loss_type == 'style':
+                return loss_style
+            elif loss_type == 'all':
+                return loss_content, loss_style
 
     def gram_matrix(self, feat):
         bsz, c, h, w = feat.size()
@@ -472,6 +455,46 @@ class TotalVariationLoss(nn.Module):
 ###############################################################################
 # Metrics
 ###############################################################################
+class PSNR_old(nn.Module):
+    def __init__(self):
+        super(PSNR_old, self).__init__()
+        self.Kr = .299
+        self.Kg = .587
+        self.Kb = .114
+        self.lg10 = float(np.log(10))
+
+    def forward(self, images_1, images_2):
+        y_1 = self.Kr * images_1[:,0] + self.Kg * images_1[:,1] + self.Kb * images_1[:,2]
+        y_2 = self.Kr * images_2[:,0] + self.Kg * images_2[:,1] + self.Kb * images_2[:,2]
+        y_d = (y_1 - y_2).view(y_1.size(0), -1)
+        rmse = y_d.pow(2).mean(dim = 1).sqrt().clamp(0, 1)
+        psnr = 20 / self.lg10 * (1/rmse).log().mean()
+        return psnr
+
+class PSNR(nn.Module):
+    def forward(self, images_1, images_2):
+        images_np_1 = images_1.data.cpu().numpy().transpose(0,2,3,1)
+        images_np_2 = images_2.data.cpu().numpy().transpose(0,2,3,1)
+        psnr_score = []
+        data_range = 2 # [-1, 1]
+
+        for img_1, img_2 in zip(images_np_1, images_np_2):
+            psnr_score.append(compare_psnr(img_2, img_1, data_range=data_range))
+
+        return Variable(images_1.data.new(1).fill_(np.mean(psnr_score)))
+
+
+class SSIM(nn.Module):
+    def forward(self, images_1, images_2):
+        images_np_1 = images_1.data.cpu().numpy().transpose(0,2,3,1)
+        images_np_2 = images_2.data.cpu().numpy().transpose(0,2,3,1)
+        ssim_score = []
+        data_range = 2 # [-1, 1]
+
+        for img_1, img_2 in zip(images_np_1, images_np_2):
+            ssim_score.append(compare_ssim(img_1, img_2, data_range=data_range, multichannel=True))
+
+        return Variable(images_1.data.new(1).fill_(np.mean(ssim_score)))
 
 class MeanAP():
     '''
@@ -1609,7 +1632,11 @@ class DecoderGenerator(nn.Module):
                 output_1 = torch.cat((output_1, input_2), dim=1)
             return self.upsample_2(output_1)
 
-
+###############################################################################
+# GAN V3
+###############################################################################
+class VariationalUnet(nn.Module):
+    pass
 
 ###############################################################################
 # Feature Spatial Transformer

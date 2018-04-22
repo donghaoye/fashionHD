@@ -75,8 +75,8 @@ class SupervisedPoseTransferModel(BaseModel):
             self.optimizers =[]
             
             self.crit_L1 = nn.L1Loss()
-            # self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
-            self.crit_vgg = networks.VGGLoss(self.gpu_ids)
+            self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
+            # self.crit_vgg_old = networks.VGGLoss(self.gpu_ids)
             self.crit_psnr = networks.PSNR()
             self.crit_ssim = networks.SSIM()
             self.loss_functions += [self.crit_L1, self.crit_vgg]
@@ -170,7 +170,7 @@ class SupervisedPoseTransferModel(BaseModel):
             # L1 loss
             self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
             # vgg loss
-            self.output['loss_vgg'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
+            self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
             
     def backward_D(self):
         if self.opt.D_cond:
@@ -192,9 +192,14 @@ class SupervisedPoseTransferModel(BaseModel):
         # L1
         self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
-        # VGG
-        self.output['loss_vgg'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
-        loss += self.output['loss_vgg'] * self.opt.loss_weight_vgg
+        # content
+        self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
+        loss += self.output['loss_content'] * self.opt.loss_weight_content
+        self.output['loss_content_old'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
+        # style
+        self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['pose_c_2'], self.output['img_tar'], self.input['pose_c_2'], self.opt.patch_size)
+        loss += self.output['loss_style'] * self.opt.loss_weight_style
+
         # GAN
         if self.use_GAN:
             if self.opt.D_cond:
@@ -203,17 +208,54 @@ class SupervisedPoseTransferModel(BaseModel):
                 D_input = self.output['img_out']
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             loss  += self.output['loss_G'] * self.opt.loss_weight_gan
-
         loss.backward()
 
-    def optimize_parameters(self):
+    def backward_checkgrad(self):
+        self.output['img_out'].retain_grad()
+        loss = 0
+        # L1
+        self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
+        (self.output['loss_L1'] * self.opt.loss_weight_L1).backward(retain_graph=True)
+        loss += self.output['loss_L1'] * self.opt.loss_weight_L1
+        self.output['grad_L1'] = self.output['img_out'].grad.norm()
+        grad = self.output['img_out'].grad.clone()
+        # content loss
+        self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
+        (self.output['loss_content'] * self.opt.loss_weight_content).backward(retain_graph=True)
+        loss += self.output['loss_content'] * self.opt.loss_weight_content
+        self.output['grad_content'] = (self.output['img_out'].grad - grad).norm()
+        grad = self.output['img_out'].grad.clone()
+        # style loss
+        self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['pose_c_2'], self.output['img_tar'], self.input['pose_c_2'], self.opt.patch_size)
+        (self.output['loss_style'] * self.opt.loss_weight_style).backward(retain_graph=True)
+        loss += self.output['loss_style'] * self.opt.loss_weight_style
+        self.output['grad_style'] = (self.output['img_out'].grad - grad).norm()
+        grad = self.output['img_out'].grad.clone()
+        # gan loss
+        if self.use_GAN:
+            if self.opt.D_cond:
+                D_input = torch.cat((self.output['img_out'], self.output['pose_tar']), dim=1)
+            else:
+                D_input = self.output['img_out']
+            self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
+            (self.output['loss_G'] * self.opt.loss_weight_gan).backward()
+            loss += self.output['loss_G'] * self.opt.loss_weight_gan
+            self.output['grad_gan'] = (self.output['img_out'].grad - grad).norm()
+
+
+    def optimize_parameters(self, check_grad=False):
+        # clear previous output
+        self.output = {}
         self.forward()
         if self.use_GAN:
             self.optim_D.zero_grad()
             self.backward_D()
             self.optim_D.step()
         self.optim.zero_grad()
-        self.backward()
+        if check_grad:
+            self.backward_checkgrad()
+        else:
+            self.backward()
         self.optim.step()
 
     def get_pose_dim(self, pose_type):
@@ -234,10 +276,10 @@ class SupervisedPoseTransferModel(BaseModel):
         elif pose_type == 'joint+seg':
             return torch.cat((pose, seg_mask), dim=1)
 
-    def get_patch(self, images, c, patch_size=32):
+    def get_patch(self, images, coords, patch_size=32):
         '''
         image_batch: images (bsz, c, h, w)
-        c: coordinates of joint points (bsz, 18, 2)
+        coord: coordinates of joint points (bsz, 18, 2)
         '''
         bsz, c, h, w = images.size()
 
@@ -249,10 +291,10 @@ class SupervisedPoseTransferModel(BaseModel):
             patch = []
             for j in range(bsz):
                 img = images[j]
-                x = int(c[j, i, 0].item())
-                y = int(c[j, i, 1].item())
+                x = int(coords[j, i, 0].item())
+                y = int(coords[j, i, 1].item())
                 if x < 0 or y < 0:
-                    patch = img.new(c, patch_size, patch_size).fill_(0)
+                    p = img.new(1, c, patch_size, patch_size).fill_(0)
                 else:
                     left    = x-(patch_size//2)
                     right   = x-(patch_size//2)+patch_size
@@ -264,12 +306,12 @@ class SupervisedPoseTransferModel(BaseModel):
                     top, p_t    = (top, 0) if top >= 0 else (0, -top)
                     bottom, p_b = (bottom, 0) if bottom <= h else (h, bottom-h)
 
-                    p = img[:, top:bottom, left:right]
+                    p = img[:, top:bottom, left:right].unsqueeze(dim=0)
                     if not (p_l == p_r == p_t == p_b == 0):
                         p = F.pad(p, pad=(p_l, p_r, p_t, p_b), mode='reflect')
 
                 patch.append(p)
-            patch = torch.stack(patch)
+            patch = torch.cat(patch, dim=0)
             patches.append(patch)
         return patches
 
@@ -288,8 +330,8 @@ class SupervisedPoseTransferModel(BaseModel):
         vc_1[c_invalid] = -1
         vc_2[c_invalid] = -1
         # get patches
-        patches_1 = self.get_patch(images_1, c_1, patch_size) # list: [patch_c1, patch_c2, ...]
-        patches_2 = self.get_patch(images_2, c_2, patch_size)
+        patches_1 = self.get_patch(images_1, vc_1, patch_size) # list: [patch_c1, patch_c2, ...]
+        patches_2 = self.get_patch(images_2, vc_2, patch_size)
         # compute style loss
         patches_1 = torch.cat(patches_1, dim=0)
         patches_2 = torch.cat(patches_2, dim=0)
@@ -297,15 +339,11 @@ class SupervisedPoseTransferModel(BaseModel):
         return loss_style
 
     def get_current_errors(self):
-        errors = OrderedDict([
-            ('PSNR', self.output['PSNR'].data.item()),
-            ('SSIM', self.output['SSIM'].data.item()),
-            ('loss_L1', self.output['loss_L1'].data.item()),
-            ('loss_vgg', self.output['loss_vgg'].data.item()),
-            ])
-        if self.use_GAN:
-            errors['loss_G'] = self.output['loss_G'].data.item()
-            errors['loss_D'] = self.output['loss_D'].data.item()
+        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_G', 'loss_D', 'grad_L1', 'grad_content', 'grad_style', 'grad_gan']
+        errors = OrderedDict()
+        for item in error_list:
+            if item in self.output:
+                errors[item] = self.output[item].data.item()
         return errors
 
     def get_current_visuals(self):

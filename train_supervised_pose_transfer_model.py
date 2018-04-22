@@ -25,7 +25,7 @@ val_loader = CreateDataLoader(opt, split = 'test')
 visualizer = GANVisualizer_V3(opt)
 
 pavi_upper_list = ['PSNR', 'SSIM']
-pavi_lower_list = ['loss_L1', 'loss_vgg', 'loss_G', 'loss_D', 'loss_pose']
+pavi_lower_list = ['loss_L1', 'loss_content', 'loss_style', 'loss_G', 'loss_D', 'loss_pose']
 
 total_steps = 0
 
@@ -35,7 +35,7 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
         total_steps += 1
         model.set_input(data)
         model.forward()
-        model.optimize_parameters()
+        model.optimize_parameters(check_grad=(total_steps%opt.check_grad_freq==0))
 
         if total_steps % opt.display_freq == 0:
             train_error = model.get_current_errors()
