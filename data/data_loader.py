@@ -49,7 +49,10 @@ def CreateDataset(opt, split):
         dataset = GANDataset_V2()
     elif opt.dataset_mode in {'pose_transfer'}:
         from data.pose_transfer_dataset import PoseTransferDataset
-        dataset = PoseTransferDataset()        
+        dataset = PoseTransferDataset()
+    # elif opt.dataset_mode in {'unsupervised_pose_transfer'}:
+    #     from data.pose_transfer_dataset import UnsupervisedPoseTransferDataset
+    #     dataset = UnsupervisedPoseTransferDataset()
     else:
         raise ValueError('Dataset mode [%s] not recognized.' % opt.dataset_mode)
 

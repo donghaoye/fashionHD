@@ -1380,9 +1380,9 @@ class FeatureTransformNetwork(nn.Module):
     def forward(self, feat, input_guide, output_guide, single_device=False):
         if not (input_guide.size(2) == input_guide.size(3) == self.feat_size):
             # input_guide = F.upsample(input_guide, self.feat_size, mode='bilinear')
-            input_guide = F.adaptive_avg_pool(input_guide, self.feat_size)
+            input_guide = F.adaptive_avg_pool2d(input_guide, self.feat_size)
         if not (output_guide.size(2) == output_guide.size(3) == self.feat_size):
-            output_guide = F.adaptive_avg_pool(output_guide, self.feat_size)
+            output_guide = F.adaptive_avg_pool2d(output_guide, self.feat_size)
 
         if len(self.gpu_ids) > 1 and not single_device:
             return nn.parallel.data_parallel(self, (feat, input_guide, output_guide), module_kwargs={'single_device': True})
@@ -1635,8 +1635,435 @@ class DecoderGenerator(nn.Module):
 ###############################################################################
 # GAN V3
 ###############################################################################
+class VUnetResidualBlock(nn.Module):
+    def __init__(self, dim_1, dim_2, norm_layer, use_bias, activation=nn.ReLU(True), use_dropout=False):
+        super(VUnetResidualBlock, self).__init__()
+        self.dim_1 = dim_1
+        self.dim_2 = dim_2
+        self.use_dropout = use_dropout
+        if norm_layer is None:
+            use_bias = True
+        if dim_2 <= 0:
+            self.conv = nn.Conv2d(dim_1, dim_1, kernel_size=3, padding=1, bias=use_bias)
+            self.norm_layer = norm_layer(dim_1) if norm_layer is not None else None
+        else:
+            self.conv = nn.Conv2d(2 * dim_1, dim_1, kernel_size=3, padding=1, bias=use_bias)
+            self.norm_layer = norm_layer(dim_1) if norm_layer is not None else None
+            self.conv_2 = nn.Conv2d(dim_2, dim_1, kernel_size=1, padding=0, bias=use_bias)
+            self.norm_layer_2 = norm_layer(2 * dim_1) if norm_layer is not None else None
+        self.activation = activation
+
+    def forward(self, x, a=None):
+        if a is None:
+            residual = self.activation(x)
+        else:
+            assert self.dim_2 > 0
+            a = self.conv_2(self.activation(a))
+            residual = torch.cat((x, a), dim=1)
+            if self.norm_layer_2 is not None:
+                residual = self.norm_layer_2(residual)
+            residual = self.activation(residual)
+
+        if self.use_dropout:
+            residual = F.dropout(residual, p=0.5, training=True)
+
+        residual = self.conv(residual)
+        if self.norm_layer is not None:
+            residual = self.norm_layer(residual)
+
+        out = x + residual
+        return out
+
+
 class VariationalUnet(nn.Module):
-    pass
+    def __init__(self, input_nc_dec, input_nc_enc, output_nc, nf, max_nf, input_size, n_latent_scales, bottleneck_factor, box_factor, n_residual_blocks, norm_layer, activation, use_dropout, gpu_ids):
+        super(VariationalUnet, self).__init__()
+        self.gpu_ids = gpu_ids
+        self.output_nc = output_nc
+        self.input_nc_dec = input_nc_dec
+        self.input_size_dec = input_size
+        self.n_scales_dec = 1 + int(np.round(np.log2(input_size))) - bottleneck_factor
+
+        self.input_nc_enc = input_nc_enc
+        self.input_size_enc = input_size // 2**box_factor
+        self.n_scales_enc = self.n_scales_dec - box_factor
+
+        self.n_latent_scales = n_latent_scales
+        self.bottleneck_factor = bottleneck_factor
+        self.box_factor = box_factor
+        self.n_residual_blocks = n_residual_blocks
+
+        if type(norm_layer) == functools.partial:
+            self.use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            self.use_bias = norm_layer == nn.InstanceNorm2d
+        # define enc_up network
+        c_in = min(nf*2**box_factor, max_nf)
+        hidden_c = [] # hidden space dims
+        self.enc_up_pre_conv = nn.Sequential(
+            nn.Conv2d(input_nc_enc, c_in, kernel_size=1),
+            norm_layer(c_in))
+
+        for l in range(self.n_scales_enc):
+            spatial_shape = self.input_size_enc / 2**l
+            nl = None if spatial_shape == 1 else norm_layer
+            for i in range(n_residual_blocks):
+                self.__setattr__('enc_up_%d_res_%d' % (l, i), VUnetResidualBlock(c_in, 0, nl, self.use_bias, activation, use_dropout))
+                hidden_c.append(c_in)
+            if l + 1 < self.n_scales_enc:
+                c_out = min(2*c_in, max_nf)
+                if spatial_shape <= 2:
+                    downsample = nn.Sequential(
+                        activation,
+                        nn.Conv2d(c_in, c_out, kernel_size=3, stride=2, padding=1, bias=True)
+                        )
+                else:
+                    downsample = nn.Sequential(
+                        activation,
+                        nn.Conv2d(c_in, c_out, kernel_size=3, stride=2, padding=1, bias=self.use_bias),
+                        norm_layer(c_out)
+                        )
+                self.__setattr__('enc_up_%d_downsample'%l, downsample)
+                c_in = c_out
+        # define enc_down network
+        self.enc_down_pre_conv = nn.Conv2d(c_in, c_in, kernel_size=1)
+        for l in range(n_latent_scales):
+            spatial_shape = self.input_size_enc / 2**(self.n_scales_enc - l - 1)
+            nl = None if spatial_shape == 1 else norm_layer
+            for i in range(n_residual_blocks//2):
+                c_a = hidden_c.pop()
+                self.__setattr__('enc_down_%d_res_%d' % (l, i), VUnetResidualBlock(c_in, c_a, nl, self.use_bias, activation, use_dropout))
+
+            self.__setattr__('enc_down_%d_latent'%l, nn.Conv2d(c_in, c_in, kernel_size=3, padding=1, bias=True))
+
+            for i in range(n_residual_blocks//2, n_residual_blocks):
+                c_a = c_in + hidden_c.pop()
+                self.__setattr__('enc_down_%d_res_%d' % (l, i), VUnetResidualBlock(c_in, c_a, nl, self.use_bias, activation, use_dropout))
+
+            if l + 1 < n_latent_scales:
+                c_out = hidden_c[-1]
+                upsample = nn.Sequential(
+                    activation,
+                    nn.Conv2d(c_in, c_out*4, kernel_size=3, padding=1, bias=self.use_bias),
+                    nn.PixelShuffle(2),
+                    norm_layer(c_out)
+                    )
+                self.__setattr__('enc_down_%d_upsample'%l, upsample)
+                c_in = c_out
+        # define dec_up network
+        c_in = nf
+        hidden_c = []
+        self.dec_up_pre_conv = nn.Sequential(
+            nn.Conv2d(input_nc_dec, c_in, kernel_size=1),
+            norm_layer(c_in))
+        for l in range(self.n_scales_dec):
+            spatial_shape = self.input_size_dec / 2**l
+            nl = None if spatial_shape==1 else norm_layer
+            for i in range(n_residual_blocks):
+                self.__setattr__('dec_up_%d_res_%d'%(l, i), VUnetResidualBlock(c_in, 0, nl, self.use_bias, activation, use_dropout))
+                hidden_c.append(c_in)
+            if l + 1 < self.n_scales_dec:
+                c_out = min(2*c_in, max_nf)
+                if spatial_shape <= 2:
+                    downsample = nn.Sequential(
+                        activation,
+                        nn.Conv2d(c_in, c_out, kernel_size=3, stride=2, padding=1, bias=True)
+                        )
+                else:
+                    downsample = nn.Sequential(
+                        activation,
+                        nn.Conv2d(c_in, c_out, kernel_size=3, stride=2, padding=1, bias=self.use_bias),
+                        norm_layer(c_out)
+                        )
+                self.__setattr__('dec_up_%d_downsample'%l, downsample)
+                c_in = c_out
+        # define dec_down network
+        self.dec_down_pre_conv = nn.Conv2d(c_in, c_in, kernel_size=1)
+        for l in range(self.n_scales_dec):
+            spatial_shape = self.input_size_dec / 2**(self.n_scales_dec - l - 1)
+            nl = None if spatial_shape==1 else norm_layer
+            for i in range(n_residual_blocks//2):
+                c_a = hidden_c.pop()
+                self.__setattr__('dec_down_%d_res_%d' % (l, i), VUnetResidualBlock(c_in, c_a, nl, self.use_bias, activation, use_dropout))
+            if l < n_latent_scales:
+                if spatial_shape == 1:
+                    # no spatial correlation
+                    self.__setattr__('dec_down_%d_latent'%l, nn.Conv2d(c_in, c_in, kernel_size=3, padding=1, bias=True))
+                else:
+                    # four autoregressively modeled groups
+                    for j in range(4):
+                        self.__setattr__('dec_down_%d_latent_%d'%(l,j), nn.Conv2d(c_in*4, c_in, kernel_size=3, padding=1, bias=True))
+                        if j + 1 < 4:
+                            self.__setattr__('dec_down_%d_ar_%d'%(l,j), VUnetResidualBlock(c_in*4, c_in, None, self.use_bias, activation, use_dropout))
+                for i in range(n_residual_blocks//2, n_residual_blocks):
+                    if spatial_shape == 1:
+                        nin = nn.Conv2d(c_in*2, c_in, kernel_size=1, bias=True)
+                    else:
+                        nin = nn.Sequential(nn.Conv2d(c_in*2, c_in, kernel_size=1, bias=self.use_bias), norm_layer(c_in))
+                    self.__setattr__('dec_down_%d_nin_%d'%(l,i), nin)
+                    c_a = hidden_c.pop()
+                    self.__setattr__('dec_down_%d_res_%d'%(l,i), VUnetResidualBlock(c_in, c_a, nl, self.use_bias, activation, use_dropout))
+            else:
+                for i in range(n_residual_blocks//2, n_residual_blocks):
+                    c_a = hidden_c.pop()
+                    self.__setattr__('dec_down_%d_res_%d'%(l,i), VUnetResidualBlock(c_in, c_a, nl, self.use_bias, activation, use_dropout))
+
+            if l+1 < self.n_scales_dec:
+                c_out = hidden_c[-1]
+                upsample = nn.Sequential(
+                    activation,
+                    nn.Conv2d(c_in, c_out*4, kernel_size=3, padding=1, bias=self.use_bias),
+                    nn.PixelShuffle(2),
+                    norm_layer(c_out)
+                    )
+                self.__setattr__('dec_down_%d_upsample'%l, upsample)
+                c_in = c_out
+        # define final decode layer
+        self.dec_output = nn.Sequential(
+            nn.Conv2d(c_in, output_nc, kernel_size=3, padding=1, bias=True),
+            nn.Tanh()
+            )
+
+    def enc_up(self, x, c):
+        '''
+        Input:
+            x: appearance input (rgb image)
+            c: pose input (heat map)
+        Output:
+            hs: hidden units
+        '''
+        # according to the paper, xc=[x, c]. while in the code they use xc=x.
+        # xc = torch.cat((x, c), dim=1)
+        xc = x
+        assert x.size(1) == self.input_nc_enc
+        if not xc.size(2)==xc.size(3)==self.input_size_enc:
+            xc = F.adaptive_avg_pool2d(xc, self.input_size_enc)
+
+        hs = []
+        h = self.enc_up_pre_conv(xc)
+        for l in range(self.n_scales_enc):
+            for i in range(self.n_residual_blocks):
+                h = self.__getattr__('enc_up_%d_res_%d' % (l, i))(h)
+                hs.append(h)
+            if l + 1 < self.n_scales_enc:
+                h = self.__getattr__('enc_up_%d_downsample'%l)(h)
+        return hs
+
+    def enc_down(self, gs):
+        '''
+        Input:
+            gs: input hiddent units
+        Output:
+            hs: hidden units
+            qs: posteriors
+            zs: samples from posterior
+        '''
+        hs = []
+        qs = []
+        zs = []
+
+        h = self.enc_down_pre_conv(gs[-1])
+        for l in range(self.n_latent_scales):
+            for i in range(self.n_residual_blocks//2):
+                h = self.__getattr__('enc_down_%d_res_%d'%(l, i))(h, gs.pop())
+                hs.append(h)
+            # posterior
+            q = self.__getattr__('enc_down_%d_latent'%l)(h)
+            qs.append(q)
+            # posterior sample
+            z = self.latent_sample(q)
+            zs.append(z)
+            # sample feedback
+            for j in range(self.n_residual_blocks//2, self.n_residual_blocks):
+                gz = torch.cat((gs.pop(), z), dim=1)
+                h = self.__getattr__('enc_down_%d_res_%d'%(l, j))(h, gz)
+                hs.append(h)
+            # up sample
+            if l + 1 < self.n_latent_scales:
+                h = self.__getattr__('enc_down_%d_upsample'%l)(h)
+
+        return hs, qs, zs
+
+    def dec_up(self, c):
+        '''
+        Input:
+            c: pose input
+        Output:
+            hs: hidden units
+        '''
+        if not c.size(2)==c.size(3)==self.input_size_dec:
+            c = F.adaptive_avg_pool2d(c, self.input_size_dec)
+        assert c.size(1) == self.input_nc_dec
+
+        hs = []
+        h = self.dec_up_pre_conv(c)
+        for l in range(self.n_scales_dec):
+            for i in range(self.n_residual_blocks):
+                h = self.__getattr__('dec_up_%d_res_%d' % (l, i))(h)
+                hs.append(h)
+            if l + 1 < self.n_scales_dec:
+                h = self.__getattr__('dec_up_%d_downsample'%l)(h)
+        return hs
+
+    def dec_down(self, gs, zs_posterior, training):
+        '''
+        Input:
+            gs: input hidden units
+            zs_posterior: samples from posterior. from LR layer to HR layer
+        Output:
+            hs: hidden units
+            ps: prior
+            zs: samples from prior            
+        '''
+        hs = []
+        ps = []
+        zs = []
+        h = self.dec_down_pre_conv(gs[-1])
+        for l in range(self.n_scales_dec):
+            for i in range(self.n_residual_blocks//2):
+                h = self.__getattr__('dec_down_%d_res_%d'%(l,i))(h, gs.pop())
+                hs.append(h)
+            if l < self.n_latent_scales:
+                spatial_shape = self.input_size_dec / 2**(self.n_scales_dec - l - 1)
+                # n_h_channels = hs[-1].size(1)
+                if spatial_shape == 1:
+                    p = self.__getattr__('dec_down_%d_latent'%l)(h)
+                    ps.append(p)
+                    z_prior = self.latent_sample(p)
+                    zs.append(z_prior)
+                else:
+                    # four autoregressively modeled groups
+                    if training:
+                        z_posterior_groups = self.space_to_depth(zs_posterior[0], scale=2) # the or of zs_posterior is from LR to HR
+                        split_size = z_posterior_groups.size(1)//4
+                        z_posterior_groups = list(z_posterior_groups.split(split_size, dim=1))
+                    p_groups = []
+                    z_groups = []
+                    p_feat = self.space_to_depth(h, scale=2)
+                    for i in range(4):
+                        p_group = self.__getattr__('dec_down_%d_latent_%d'%(l,i))(p_feat)
+                        p_groups.append(p_group)
+                        z_group = self.latent_sample(p_group)
+                        z_groups.append(z_group)
+                        # ar feedback sampled from
+                        if training:
+                            feedback = z_posterior_groups.pop(0)
+                        else:
+                            feedback = z_group
+                        if i + 1 < 4:
+                            p_feat = self.__getattr__('dec_down_%d_ar_%d'%(l,i))(p_feat, feedback)
+                    if training:
+                        assert not z_posterior_groups
+                    p = self.depth_to_space(torch.cat(p_groups, dim=1), scale=2)
+                    ps.append(p)
+                    z_prior = self.depth_to_space(torch.cat(z_groups, dim=1), scale=2)
+                    zs.append(z_prior)
+                # vae feedback sampled from
+                if training:
+                    # posterior
+                    z = zs_posterior.pop(0)
+                else:
+                    # prior
+                    z = z_prior
+                for i in range(self.n_residual_blocks//2, self.n_residual_blocks):
+                    h = torch.cat((h, z), dim=1)
+                    h = self.__getattr__('dec_down_%d_nin_%d'%(l,i))(h)
+                    h = self.__getattr__('dec_down_%d_res_%d'%(l,i))(h, gs.pop())
+                    hs.append(h)
+            else:
+                for i in range(self.n_residual_blocks//2, self.n_residual_blocks):
+                    h = self.__getattr__('dec_down_%d_res_%d'%(l,i))(h, gs.pop())
+                    hs.append(h)
+
+            if l + 1 < self.n_scales_dec:
+                h = self.__getattr__('dec_down_%d_upsample'%(l))(h)
+
+        assert not gs
+        if training:
+            assert not zs_posterior
+        return hs, ps, zs
+
+    def dec_to_image(self, h):
+        return self.dec_output(h)
+    
+    def latent_sample(self, p):
+        mean = p
+        stddev = 1.0
+        z = p + stddev * p.new(p.size()).normal_()
+        return z
+
+    def latent_kl(self, p, q):
+        n = p.size(0)
+        kl = 0.5 * (p-q)*(p-q)
+        kl = kl.view(n, -1)
+        kl = kl.sum(dim=1).mean()
+        return kl
+    
+    def depth_to_space(self, x, scale=2):
+        ''' from [n,c*scale^2,h,w] to [n,c,h*scale,w*scale]'''
+        return F.pixel_shuffle(x, scale)
+
+    def space_to_depth(self, x, scale=2):
+        ''' from [n,c,h*scale,w*scale] to [n,c*scale^2,h,w]'''
+        n, c, h, w = x.size()
+        assert h%scale==0 and w%scale==0
+        nh, nw = h//scale, w//scale
+        x = x.unfold(2,scale,scale).unfold(3,scale,scale).contiguous()
+        x = x.view(n,c,nh,nw,scale*scale).transpose(3,4).transpose(2,3).contiguous()
+        x = x.view(n,c*scale*scale,nh,nw)
+        return x
+
+    def train_forward_pass(self, x_ref, c_ref, c_tar):
+        # encoder
+        hs = self.enc_up(x_ref, c_ref)
+        es, qs, zs_posterior = self.enc_down(hs)
+        # decoder
+        gs = self.dec_up(c_tar)
+        ds, ps, zs_prior = self.dec_down(gs, zs_posterior, training=True)
+        img = self.dec_to_image(ds[-1])
+
+        return img, qs, ps
+
+    def test_forward_pass(self, c_tar):
+        # decoder
+        gs = self.dec_up(c_tar)
+        ds, ps, zs_prior = self.dec_down(gs, [], training=False)
+        img = self.dec_to_image(ds[-1])
+        return img
+
+    def transfer_pass(self, x_ref, c_ref, c_tar):
+        use_mean = True
+        # infer latent code
+        hs = self.enc_up(x_ref, c_ref)
+        es, qs, zs_posterior = self.enc_down(hs)
+        zs_mean = qs
+        gs = self.dec_up(c_tar)
+
+        if use_mean:
+            ds, ps, zs_prior = self.dec_down(gs, zs_mean, training=True)
+        else:
+            ds, ps, zs_prior = self.dec_down(gs, zs_posterior, training=True)
+        img = self.dec_to_image(ds[-1])
+        return img, qs, ps
+
+    def forward(self, x_ref, c_ref, c_tar, mode='train', single_device=False):
+        if len(self.gpu_ids) > 1 and not single_device:
+            return nn.parallel.data_parallel(self, (x_ref, c_ref, c_tar), module_kwargs={'mode':mode, 'single_device':True})
+        else:
+            if mode == 'train':
+                # return: img, qs, ps
+                return self.train_forward_pass(x_ref, c_ref, c_tar)
+            elif mode == 'test':
+                # return: img
+                return self.test_forward_pass(c_tar)
+            elif mode == 'transfer':
+                # return: img
+                return self.transfer_pass(x_ref, c_ref, c_tar)
+            else:
+                raise NotImplementedError()
+
+
+
 
 ###############################################################################
 # Feature Spatial Transformer

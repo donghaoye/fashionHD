@@ -1,7 +1,6 @@
 from __future__ import division, print_function
 
 import torch
-from models.supervised_pose_transfer_model import SupervisedPoseTransferModel
 from data.data_loader import CreateDataLoader
 from options.pose_transfer_options import TrainPoseTransferOptions
 from misc.visualizer import GANVisualizer_V3
@@ -16,7 +15,15 @@ from collections import OrderedDict
 
 opt = TrainPoseTransferOptions().parse()
 # create model
-model = SupervisedPoseTransferModel()
+if opt.which_model_T in {'unet', 'resnet'}:
+    from models.supervised_pose_transfer_model import SupervisedPoseTransferModel
+    model = SupervisedPoseTransferModel()
+elif opt.which_model_T == 'vunet':
+    from models.vunet_pose_transfer_model import VUnetPoseTransferModel
+    model = VUnetPoseTransferModel()
+else:
+    raise NotImplementedError()
+
 model.initialize(opt)
 # create data loader
 train_loader = CreateDataLoader(opt, split = 'train')
@@ -25,7 +32,7 @@ val_loader = CreateDataLoader(opt, split = 'test')
 visualizer = GANVisualizer_V3(opt)
 
 pavi_upper_list = ['PSNR', 'SSIM']
-pavi_lower_list = ['loss_L1', 'loss_content', 'loss_style', 'loss_G', 'loss_D', 'loss_pose']
+pavi_lower_list = ['loss_L1', 'loss_content', 'loss_style', 'loss_G', 'loss_D', 'loss_pose', 'loss_kl']
 
 total_steps = 0
 

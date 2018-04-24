@@ -17,36 +17,31 @@ from collections import OrderedDict
 import argparse
 import util.io as io
 
-class SupervisedPoseTransferModel(BaseModel):
+class VUnetPoseTransferModel(BaseModel):
     def name(self):
-        return 'SupervisedPoseTransferModel'
+        return 'VUnetPoseTransferModel'
 
     def initialize(self, opt):
-        super(SupervisedPoseTransferModel, self).initialize(opt)
+        super(VUnetPoseTransferModel, self).initialize(opt)
         ###################################
         # define transformer
         ###################################
-        if opt.which_model_T == 'resnet':
-            self.netT = networks.ResnetGenerator(
-                input_nc=3+self.get_pose_dim(opt.pose_type),
-                output_nc=3,
-                ngf=opt.T_nf, 
-                norm_layer=networks.get_norm_layer(opt.norm),
-                use_dropout=not opt.no_dropout,
-                n_blocks=9,
-                gpu_ids=opt.gpu_ids)
-        elif opt.which_model_T == 'unet':
-            self.netT = networks.UnetGenerator_v2(
-                input_nc=3+self.get_pose_dim(opt.pose_type),
-                output_nc=3,
-                num_downs=8,
-                ngf=opt.T_nf,
-                norm_layer=networks.get_norm_layer(opt.norm),
-                use_dropout=not opt.no_dropout,
-                gpu_ids=opt.gpu_ids)
-        else:
-            raise NotImplementedError()
-
+        self.netT = networks.VariationalUnet(
+            input_nc_dec = self.get_pose_dim(opt.pose_type),
+            input_nc_enc = 3,
+            output_nc = 3,
+            nf = opt.vunet_nf,
+            max_nf = opt.vunet_max_nf,
+            input_size = opt.fine_size,
+            n_latent_scales = opt.vunet_n_latent_scales,
+            bottleneck_factor = opt.vunet_bottleneck_factor,
+            box_factor = opt.vunet_box_factor,
+            n_residual_blocks = 2,
+            norm_layer = networks.get_norm_layer(opt.norm),
+            activation = nn.ReLU(True),
+            use_dropout = False,
+            gpu_ids = opt.gpu_ids,
+            )
         if opt.gpu_ids:
             self.netT.cuda()
         networks.init_weights(self.netT, init_type=opt.init_type)
@@ -73,7 +68,6 @@ class SupervisedPoseTransferModel(BaseModel):
             self.loss_functions = []
             self.schedulers = []
             self.optimizers =[]
-            
             self.crit_L1 = nn.L1Loss()
             self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
             # self.crit_vgg_old = networks.VGGLoss(self.gpu_ids)
@@ -91,7 +85,6 @@ class SupervisedPoseTransferModel(BaseModel):
             # todo: add pose loss
             for optim in self.optimizers:
                 self.schedulers.append(networks.get_scheduler(optim, opt))
-
             self.fake_pool = ImagePool(opt.pool_size)
 
         ###################################
@@ -119,33 +112,36 @@ class SupervisedPoseTransferModel(BaseModel):
         self.input['id'] = zip(data['id_1'], data['id_2'])
         self.input['pose_c_1'] = data['pose_c_1']
         self.input['pose_c_2'] = data['pose_c_2']
-        # torch.save(data, 'data.pth')
-        # exit(0)
 
-    def forward(self):
-        img_ref = self.input['img_1']
-        pose_tar = self.get_pose(self.opt.pose_type, index='2')
-        self.output['img_out'] = self.netT(torch.cat((img_ref, pose_tar), dim=1))
+    def compute_kl_loss(self, ps, qs):
+        assert len(ps) == len(qs)
+        kl_loss = 0
+        for p, q in zip(ps, qs):
+            kl_loss += self.netT.latent_kl(p, q)
+        return kl_loss
 
-        self.output['img_tar'] = self.input['img_2']
+    def forward(self, mode='train'):
+        ''' mode in {'train', 'transfer'} '''
+        if self.opt.supervised or mode == 'transfer':
+            img_ref = self.input['img_1']
+            pose_ref = self.get_pose(self.opt.pose_type, index='1')
+            img_tar = self.input['img_2']
+            pose_tar = self.get_pose(self.opt.pose_type, index='2')
+        else:
+            img_ref = img_tar = self.input['img_1']
+            pose_ref = pose_tar = self.get_pose(self.opt.pose_type, index='1')
+
+        self.output['img_out'], self.output['ps'], self.output['qs'] = self.netT(img_ref, pose_ref, pose_tar, mode)
+        self.output['img_tar'] = img_tar
         self.output['pose_tar'] = pose_tar
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
         self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
-        # self.output['SSIM'] = self.crit_ssim(self.output['img_out'], self.output['img_tar'])
 
     def test(self, compute_loss=False):
-        if float(torch.__version__[0:3]) >= 0.4:
-            with torch.no_grad():
-                self.forward()
-        else:
-            for k,v in self.input.iteritems():
-                if isinstance(v, Variable):
-                    v.volatile = True
-            self.forward()
-        
+        with torch.no_grad():
+            self.forward(mode='transfer')
         # compute ssim
         self.output['SSIM'] = self.crit_ssim(self.output['img_out'], self.output['img_tar'])
-
         # compute loss
         if compute_loss:
             if self.use_GAN:
@@ -167,6 +163,8 @@ class SupervisedPoseTransferModel(BaseModel):
                 else:
                     D_input = self.output['img_out']
                 self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
+            # KL loss
+            self.output['loss_kl'] = self.compute_kl_loss(self.output['qs'], self.output['ps'])
             # L1 loss
             self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
             # content loss
@@ -175,7 +173,8 @@ class SupervisedPoseTransferModel(BaseModel):
             if self.opt.loss_weight_style > 0:
                 self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['pose_c_2'], self.output['img_tar'], self.input['pose_c_2'], self.opt.patch_size)
                 loss += self.output['loss_style'] * self.opt.loss_weight_style
-            
+        
+
     def backward_D(self):
         if self.opt.D_cond:
             D_input_fake = torch.cat((self.output['img_out'].detach(), self.output['pose_tar']), dim=1)
@@ -193,6 +192,9 @@ class SupervisedPoseTransferModel(BaseModel):
 
     def backward(self):
         loss = 0
+        # KL
+        self.output['loss_kl'] = self.compute_kl_loss(self.output['qs'], self.output['ps'])
+        loss += self.output['loss_kl'] * self.opt.loss_weight_kl
         # L1
         self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
@@ -241,9 +243,11 @@ class SupervisedPoseTransferModel(BaseModel):
             else:
                 D_input = self.output['img_out']
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
-            (self.output['loss_G'] * self.opt.loss_weight_gan).backward()
+            (self.output['loss_G'] * self.opt.loss_weight_gan).backward(retain_graph=True)
             self.output['grad_gan'] = (self.output['img_out'].grad - grad).norm()
-
+        # KL loss
+        self.output['loss_kl'] = self.compute_kl_loss()
+        (self.output['loss_kl' * self.opt.loss_weight_kl]).backward()
 
     def optimize_parameters(self, check_grad=False):
         # clear previous output
@@ -260,12 +264,12 @@ class SupervisedPoseTransferModel(BaseModel):
             self.backward()
         self.optim.step()
 
+
     def get_pose_dim(self, pose_type):
         if pose_type == 'joint':
             dim = 18
         elif pose_type == 'joint+seg':
             dim = 18 + 7
-
         return dim
 
     def get_pose(self, pose_type, index='1'):
@@ -341,7 +345,7 @@ class SupervisedPoseTransferModel(BaseModel):
         return loss_style
 
     def get_current_errors(self):
-        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_G', 'loss_D', 'grad_L1', 'grad_content', 'grad_style', 'grad_gan']
+        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_kl', 'loss_G', 'loss_D', 'grad_L1', 'grad_content', 'grad_style', 'grad_gan']
         errors = OrderedDict()
         for item in error_list:
             if item in self.output:
@@ -353,7 +357,7 @@ class SupervisedPoseTransferModel(BaseModel):
             ('img_ref', (self.input['img_1'].data.cpu(), 'rgb')),
             # ('poes_tar', (self.output['pose_tar'].data.cpu(), 'pose')),
             ('poes_tar', (self.input['pose_2'].data.cpu(), 'pose')),
-            ('seg_tar', (self.input['seg_mask_2'].data.cpu(), 'seg')),
+            # ('seg_tar', (self.input['seg_mask_2'].data.cpu(), 'seg')),
             ('img_tar', (self.output['img_tar'].data.cpu(), 'rgb')),
             ('img_out', (self.output['img_out'].data.cpu(), 'rgb'))
             ])
@@ -363,3 +367,5 @@ class SupervisedPoseTransferModel(BaseModel):
         self.save_network(self.netT, 'netT', label, self.gpu_ids)
         if self.use_GAN:
             self.save_network(self.netD, 'netD', label, self.gpu_ids)
+
+

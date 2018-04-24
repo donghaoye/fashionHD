@@ -22,8 +22,16 @@ class BasePoseTransferOptions(BaseOptions):
         ##############################
         # Transformer Setting
         ##############################
-        parser.add_argument('--which_model_T', type=str, default='unet', choices=['unet', 'resnet'], help='pose transfer network architecture')
+        parser.add_argument('--which_model_T', type=str, default='vunet', choices=['unet', 'resnet', 'vunet'], help='pose transfer network architecture')
         parser.add_argument('--T_nf', type=int, default=64, help='output channel number of the first conv layer in netT')
+        ##############################
+        # Transformer Setting - VUnet
+        ##############################
+        parser.add_argument('--vunet_nf', type=int, default=32, help='vunet setting: channel number of the first conv layer')
+        parser.add_argument('--vunet_max_nf', type=int, default=128, help='vunet setting: max channel number of mid-level conv layers')
+        parser.add_argument('--vunet_n_latent_scales', type=int, default=2, help='vunet setting: layer number of latent space')
+        parser.add_argument('--vunet_bottleneck_factor', type=int, default=2, help='vunet setting: the bottlenect resolution will be 2**vunet_bottleneck_factor')
+        parser.add_argument('--vunet_box_factor', type=int, default=2, help='vunet setting: the spatial shape ratio of pose encoder to appearance encoder')
         ##############################
         # Discriminator Setting
         ##############################
@@ -58,6 +66,7 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser = self.parser
         # basic
         parser.add_argument('--continue_train', action = 'store_true', default = False, help = 'coninue training from saved model')
+        parser.add_argument('--supervised', type=int, default=1, choices=[0,1], help='supervised: img_ref=img_1, pose_tar=pose_2, img_tar=img_2; unsupervised: img_ref=img_tar=img_1, pose_tar=pose_1')
         # optimizer
         parser.add_argument('--lr', type = float, default = 2e-4, help = 'initial learning rate')
         parser.add_argument('--lr_D', type = float, default = 1e-4, help = 'only use lr_D for netD when loss_weight_gan > 0')
@@ -77,10 +86,12 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--check_grad_freq', type = int, default = 100, help = 'frequency of checking gradient of each loss')
         parser.add_argument('--max_n_vis', type = int, default = 32, help='max number of visualized images')
         # loss weights
-        parser.add_argument('--loss_weight_L1', type=float, default=1)
-        parser.add_argument('--loss_weight_content', type=float, default=1)
-        parser.add_argument('--loss_weight_style', type=float, default=1)
+        parser.add_argument('--loss_weight_L1', type=float, default=1.)
+        parser.add_argument('--loss_weight_content', type=float, default=1.)
+        parser.add_argument('--loss_weight_style', type=float, default=0., help='set loss_weight_style > 0 to enable patch style loss')
         parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
+        parser.add_argument('--loss_weight_kl', type=float, default=0., help='vunet setting: kl loss weight')
+        
         # set train
         self.is_train = True
 
