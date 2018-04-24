@@ -1636,7 +1636,7 @@ class DecoderGenerator(nn.Module):
 # GAN V3
 ###############################################################################
 class VUnetResidualBlock(nn.Module):
-    def __init__(self, dim_1, dim_2, norm_layer, use_bias, activation=nn.ReLU(True), use_dropout=False):
+    def __init__(self, dim_1, dim_2, norm_layer, use_bias, activation=nn.ReLU(False), use_dropout=False):
         super(VUnetResidualBlock, self).__init__()
         self.dim_1 = dim_1
         self.dim_2 = dim_2
@@ -1655,15 +1655,15 @@ class VUnetResidualBlock(nn.Module):
 
     def forward(self, x, a=None):
         if a is None:
-            residual = self.activation(x)
+            residual = x
         else:
             assert self.dim_2 > 0
             a = self.conv_2(self.activation(a))
             residual = torch.cat((x, a), dim=1)
             if self.norm_layer_2 is not None:
                 residual = self.norm_layer_2(residual)
-            residual = self.activation(residual)
-
+        
+        residual = self.activation(residual)
         if self.use_dropout:
             residual = F.dropout(residual, p=0.5, training=True)
 

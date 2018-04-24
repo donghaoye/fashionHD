@@ -38,7 +38,7 @@ class VUnetPoseTransferModel(BaseModel):
             box_factor = opt.vunet_box_factor,
             n_residual_blocks = 2,
             norm_layer = networks.get_norm_layer(opt.norm),
-            activation = nn.ReLU(True),
+            activation = nn.ReLU(False),
             use_dropout = False,
             gpu_ids = opt.gpu_ids,
             )
@@ -164,7 +164,7 @@ class VUnetPoseTransferModel(BaseModel):
                     D_input = self.output['img_out']
                 self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             # KL loss
-            self.output['loss_kl'] = self.compute_kl_loss(self.output['qs'], self.output['ps'])
+            self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
             # L1 loss
             self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
             # content loss
@@ -193,7 +193,7 @@ class VUnetPoseTransferModel(BaseModel):
     def backward(self):
         loss = 0
         # KL
-        self.output['loss_kl'] = self.compute_kl_loss(self.output['qs'], self.output['ps'])
+        self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
         loss += self.output['loss_kl'] * self.opt.loss_weight_kl
         # L1
         self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
@@ -246,7 +246,7 @@ class VUnetPoseTransferModel(BaseModel):
             (self.output['loss_G'] * self.opt.loss_weight_gan).backward(retain_graph=True)
             self.output['grad_gan'] = (self.output['img_out'].grad - grad).norm()
         # KL loss
-        self.output['loss_kl'] = self.compute_kl_loss()
+        self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
         (self.output['loss_kl' * self.opt.loss_weight_kl]).backward()
 
     def optimize_parameters(self, check_grad=False):
