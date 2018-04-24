@@ -247,7 +247,7 @@ class VUnetPoseTransferModel(BaseModel):
             self.output['grad_gan'] = (self.output['img_out'].grad - grad).norm()
         # KL loss
         self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
-        (self.output['loss_kl' * self.opt.loss_weight_kl]).backward()
+        (self.output['loss_kl'] * self.opt.loss_weight_kl).backward()
 
     def optimize_parameters(self, check_grad=False):
         # clear previous output

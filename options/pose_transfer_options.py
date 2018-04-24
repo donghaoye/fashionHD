@@ -90,7 +90,7 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--loss_weight_content', type=float, default=1.)
         parser.add_argument('--loss_weight_style', type=float, default=0., help='set loss_weight_style > 0 to enable patch style loss')
         parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
-        parser.add_argument('--loss_weight_kl', type=float, default=0., help='vunet setting: kl loss weight')
+        parser.add_argument('--loss_weight_kl', type=float, default=1e-5, help='vunet setting: kl loss weight')
         
         # set train
         self.is_train = True

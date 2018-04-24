@@ -1820,7 +1820,8 @@ class VariationalUnet(nn.Module):
                 c_in = c_out
         # define final decode layer
         self.dec_output = nn.Sequential(
-            nn.Conv2d(c_in, output_nc, kernel_size=3, padding=1, bias=True),
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(c_in, output_nc, kernel_size=7, padding=0, bias=True),
             nn.Tanh()
             )
 
@@ -2036,7 +2037,7 @@ class VariationalUnet(nn.Module):
         # infer latent code
         hs = self.enc_up(x_ref, c_ref)
         es, qs, zs_posterior = self.enc_down(hs)
-        zs_mean = qs
+        zs_mean = [q.clone() for q in qs]
         gs = self.dec_up(c_tar)
 
         if use_mean:
