@@ -63,10 +63,10 @@ class PoseTransferDataset(BaseDataset):
         ######################
         img_1 = self.read_image(sid_1)
         img_2 = self.read_image(sid_2)
-        pose_c_1 = self.pose_label[sid_1]
-        pose_c_2 = self.pose_label[sid_2]
-        pose_1 = pose_to_map(img_sz=(img_1.shape[1], img_1.shape[0]), label=pose_c_1, mode=self.opt.joint_mode, radius=self.opt.joint_radius)
-        pose_2 = pose_to_map(img_sz=(img_2.shape[1], img_2.shape[0]), label=pose_c_2, mode=self.opt.joint_mode, radius=self.opt.joint_radius)
+        joint_c_1 = self.pose_label[sid_1]
+        joint_c_2 = self.pose_label[sid_2]
+        pose_1 = pose_to_map(img_sz=(img_1.shape[1], img_1.shape[0]), label=joint_c_1, mode=self.opt.joint_mode, radius=self.opt.joint_radius)
+        pose_2 = pose_to_map(img_sz=(img_2.shape[1], img_2.shape[0]), label=joint_c_2, mode=self.opt.joint_mode, radius=self.opt.joint_radius)
         seg_1 = self.read_seg(sid_1)
         seg_2 = self.read_seg(sid_2)
         ######################
@@ -77,32 +77,37 @@ class PoseTransferDataset(BaseDataset):
             coin = np.random.rand()
             img_1 = trans_random_horizontal_flip(img_1, coin)
             seg_1 = trans_random_horizontal_flip(seg_1, coin)
-            pose_1 = trans_random_horizontal_flip_pose(pose_1, coin)
-            pose_c_1 = trans_random_horizontal_flip_pose_c(pose_c_1, (img_1.shape[1], img_1.shape[2]), coin)
+            joint_c_1 = trans_random_horizontal_flip_pose_c(joint_c_1, (img_1.shape[1], img_1.shape[2]), coin)
             # flip img_2
             coin = np.random.rand()
             img_2 = trans_random_horizontal_flip(img_2, coin)
             seg_2 = trans_random_horizontal_flip(seg_2, coin)
-            pose_2 = trans_random_horizontal_flip_pose(pose_2, coin)
-            pose_c_1 = trans_random_horizontal_flip_pose_c(pose_c_2, (img_2.shape[1], img_2.shape[2]), coin)
+            joint_c_1 = trans_random_horizontal_flip_pose_c(joint_c_2, (img_2.shape[1], img_2.shape[2]), coin)
             # swap img_1 and img_2
             coin = np.random.rand()
             if coin > 0.5:
                 sid_1, sid_2 = sid_2, sid_1
                 img_1, img_2 = img_2, img_1
-                pose_c_1, pose_c_2 = pose_c_2, pose_c_1
-                pose_1, pose_2 = pose_2, pose_1
+                joint_c_1, joint_c_2 = joint_c_2, joint_c_1
                 seg_1, seg_2 = seg_2, seg_1
-
+        ######################
+        # create pose representation
+        ######################
+        joint_1 = pose_to_map(img_sz=(img_1.shape[1], img_1.shape[0]), label=joint_c_1, mode=self.opt.joint_mode, radius=self.opt.joint_radius)
+        joint_2 = pose_to_map(img_sz=(img_2.shape[1], img_2.shape[0]), label=joint_c_2, mode=self.opt.joint_mode, radius=self.opt.joint_radius)
+        stickman_1 = pose_to_stickman(img_sz=(img_1.shape[1], img_1.shape[0]), label=joint_c_1)
+        stickman_2 = pose_to_stickman(img_sz=(img_2.shape[1], img_2.shape[0]), label=joint_c_2)
         ######################
         # convert to tensor
         ######################
         t_img_1 = self.tensor_normalize_std(self.to_tensor(img_1))
         t_img_2 = self.tensor_normalize_std(self.to_tensor(img_2))
-        t_pose_c_1 = torch.Tensor(pose_c_1)
-        t_pose_c_2 = torch.Tensor(pose_c_2)
-        t_pose_1 = self.to_tensor(pose_1)
-        t_pose_2 = self.to_tensor(pose_2)
+        t_joint_c_1 = torch.Tensor(joint_c_1)
+        t_joint_c_2 = torch.Tensor(joint_c_2)
+        t_joint_1 = self.to_tensor(joint_1)
+        t_joint_2 = self.to_tensor(joint_2)
+        t_stickman_1 = self.to_tensor(stickman_1)
+        t_stickman_2 = self.to_tensor(stickman_2)
         t_seg_1 = self.to_tensor(seg_1)
         t_seg_2 = self.to_tensor(seg_2)
         t_seg_mask_1 = self.to_tensor(segmap_to_mask_v2(seg_1, nc=7, bin_size=self.opt.seg_bin_size))
@@ -113,10 +118,12 @@ class PoseTransferDataset(BaseDataset):
         data = {
             'img_1': t_img_1,
             'img_2': t_img_2,
-            'pose_c_1': t_pose_c_1,
-            'pose_c_2': t_pose_c_2,
-            'pose_1': t_pose_1,
-            'pose_2': t_pose_2,
+            'joint_c_1': t_joint_c_1,
+            'joint_c_2': t_joint_c_2,
+            'joint_1': t_joint_1,
+            'joint_2': t_joint_2,
+            'stickman_1': t_stickman_1,
+            'stickman_2': t_stickman_2,
             'seg_1': t_seg_1,
             'seg_2': t_seg_2,
             'seg_mask_1': t_seg_mask_1,

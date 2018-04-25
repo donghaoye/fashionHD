@@ -14,7 +14,8 @@ class BasePoseTransferOptions(BaseOptions):
         ##############################
         # Pose Setting
         ##############################
-        parser.add_argument('--pose_type', type=str, default='joint', choices=['joint', 'joint+seg'], help='pose format')
+        # parser.add_argument('--pose_type', type=str, default='joint', choices=['joint', 'joint+seg'], help='pose format')
+        parser.add_argument('--pose_type', type=str, default='joint', help='pose format')
         parser.add_argument('--joint_radius', type=int, default=8, help='radius of joint map')
         parser.add_argument('--joint_mode', type=str, default='binary', choices=['binary', 'gaussian'])
         parser.add_argument('--seg_bin_size', type=int, default=16, help='bin size of downsampled seg mask')        
@@ -32,10 +33,11 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--vunet_n_latent_scales', type=int, default=2, help='vunet setting: layer number of latent space')
         parser.add_argument('--vunet_bottleneck_factor', type=int, default=2, help='vunet setting: the bottlenect resolution will be 2**vunet_bottleneck_factor')
         parser.add_argument('--vunet_box_factor', type=int, default=2, help='vunet setting: the spatial shape ratio of pose encoder to appearance encoder')
+        parser.add_argument('--vnet_activation', type=str, default='relu', choices=['relu', 'elu'], help='activation type')
         ##############################
         # Discriminator Setting
         ##############################
-        parser.add_argument('--which_gan', type=str, default='lsgan', choices=['dcgan', 'lsgan'], help='gan loss type')
+        parser.add_argument('--which_gan', type=str, default='dcgan', choices=['dcgan', 'lsgan'], help='gan loss type')
         parser.add_argument('--D_nf', type=int, default=64, help='output channel number of the first conv layer in netD')
         parser.add_argument('--D_cond', type=int, default=0, choices=[0,1], help='use conditioned discriminator')
         parser.add_argument('--pool_size', type=int, default=50, help='size of fake pool')
@@ -90,7 +92,7 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--loss_weight_content', type=float, default=1.)
         parser.add_argument('--loss_weight_style', type=float, default=0., help='set loss_weight_style > 0 to enable patch style loss')
         parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
-        parser.add_argument('--loss_weight_kl', type=float, default=1e-5, help='vunet setting: kl loss weight')
+        parser.add_argument('--loss_weight_kl', type=float, default=1e-6, help='vunet setting: kl loss weight')
         
         # set train
         self.is_train = True

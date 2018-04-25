@@ -108,6 +108,52 @@ def pose_to_map(img_sz, label, mode='gaussian', radius=5):
     m = np.stack(m, axis=2)
     return m
 
+def pose_to_stickman(img_sz, label):
+    w, h = img_sz
+    scale_factor = min(w, h)//128
+    thickness = int(3*scale_factor)
+    m = [np.zeros((h, w), dtype=np.float32) for _ in range(3)]
+    # check valid points
+    valid = [1 if (x!=-1 and y!=-1) else 0 for x,y in label]
+    # body area (channel 2): the polygon with vertext {lhip, 11}-{lshoulder, 5}-{rshoulder, 2}-{rhip, 8}
+    body_pt_idx = [11, 5, 2, 8]
+    body_pts = np.array([label[i] for i in body_pt_idx if valid[i]], dtype=np.int)
+    if body_pts.shape[0] > 2:
+        cv2.fillPoly(m[2], [body_pts], color=1.0)
+    # left line (channel 0): {lankle, 13}-{lknee, 12}-{lhip, 11}-{lshoulder, 5}-{lelbow, 6}-{lwrist, 7}
+    left_pt_idx = [13, 12, 11, 5, 6, 7]
+    for i1, i2 in zip(left_pt_idx[0:-1], left_pt_idx[1::]):
+        if valid[i1] and valid[i2]:
+            p1 = tuple(np.int_(label[i1]))
+            p2 = tuple(np.int_(label[i2]))
+            cv2.line(m[0], p1, p2, color=1.0, thickness=thickness)
+    # right line (channel 1): {rankle, 10}-{rknee, 9}-{rhip, 8}-{rshoulder, 2}-{relbow, 3}-{rwrist, 4}
+    right_pt_idx = [10, 9, 8, 2, 3, 4]
+    for i1, i2 in zip(right_pt_idx[0:-1], right_pt_idx[1::]):
+        if valid[i1] and valid[i2]:
+            p1 = tuple(np.int_(label[i1]))
+            p2 = tuple(np.int_(label[i2]))
+            cv2.line(m[1], p1, p2, color=1.0, thickness=thickness)
+    # neck line (channel 0&1): {lshoulder, 5}, {rshoulder, 2}, {nose, 0}, {neck, 1}
+    if valid[2] and valid[5] and valid[0]:
+        p_nose = tuple(np.int_(label[0]))
+        p_neck = tuple(np.int_([label[2][0]+label[5][0], label[2][1]+label[5][1]])//2)
+        cv2.line(m[0], p_nose, p_neck, color=0.5, thickness=thickness)
+        cv2.line(m[1], p_nose, p_neck, color=0.5, thickness=thickness)
+    # eye-nose line (channel 0&1): {nose, 0}, {leye, 15}, {reye, 14}
+    if valid[0] and valid[15]:
+        p_leye = tuple(np.int_(label[15]))
+        p_nose = tuple(np.int_(label[0]))
+        cv2.line(m[0], p_nose, p_leye, color=1, thickness=thickness)
+    if valid[0] and valid[14]:
+        p_reye = tuple(np.int_(label[14]))
+        p_nose = tuple(np.int_(label[0]))
+        cv2.line(m[1], p_nose, p_reye, color=1, thickness=thickness)
+
+    m = np.stack(m, axis=2)
+    return m
+
+
 
 def segmap_to_mask(seg_map, mask_type, cloth_type):
     '''

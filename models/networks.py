@@ -25,69 +25,66 @@ def weights_init_normal(m):
     classname = m.__class__.__name__
     # print(classname)
     if classname.startswith('Conv'):
-        init.normal(m.weight.data, 0.0, 0.02)
+        init.normal_(m.weight.data, 0.0, 0.02)
     elif classname.startswith('Linear'):
-        init.normal(m.weight.data, 0.0, 0.02)
+        init.normal_(m.weight.data, 0.0, 0.02)
     elif classname.startswith('BatchNorm2d'):
-        init.normal(m.weight.data, 1.0, 0.02)
+        init.normal_(m.weight.data, 1.0, 0.02)
 
     if 'bias' in m._parameters and m.bias is not None:
-        init.constant(m.bias.data, 0.0)
+        init.constant_(m.bias.data, 0.0)
 
 def weights_init_normal2(m):
     classname = m.__class__.__name__
     # print(classname)
     if classname.startswith('Conv'):
-        init.normal(m.weight.data, 0.0, 0.001)
+        init.normal_(m.weight.data, 0.0, 0.001)
     elif classname.startswith('Linear'):
-        init.normal(m.weight.data, 0.0, 0.001)
+        init.normal_(m.weight.data, 0.0, 0.001)
     elif classname.startswith('BatchNorm2d'):
-        init.normal(m.weight.data, 1.0, 0.001)
+        init.normal_(m.weight.data, 1.0, 0.001)
 
     if 'bias' in m._parameters and m.bias is not None:
-        init.constant(m.bias.data, 0.0)
+        init.constant_(m.bias.data, 0.0)
 
 def weights_init_xavier(m):
     classname = m.__class__.__name__
     # print(classname)
     if classname.startswith('Conv'):
-        init.xavier_normal(m.weight.data, gain=0.02)
+        init.xavier_normal_(m.weight.data, gain=0.02)
     elif classname.startswith('Linear'):
-        init.xavier_normal(m.weight.data, gain=0.02)
+        init.xavier_normal_(m.weight.data, gain=0.02)
     elif classname.startswith('BatchNorm2d'):
-        init.normal(m.weight.data, 1.0, 0.02)
+        init.normal_(m.weight.data, 1.0, 0.02)
     
     if 'bias' in m._parameters and m.bias is not None:
-        init.constant(m.bias.data, 0.0)
-
+        init.constant_(m.bias.data, 0.0)
 
 def weights_init_kaiming(m):
     classname = m.__class__.__name__
     # print(classname)
     if classname.startswith('Conv'):
-        init.kaiming_normal(m.weight.data, a=0, mode='fan_in')
+        init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
     elif classname.startswith('Linear'):
-        init.kaiming_normal(m.weight.data, a=0, mode='fan_in')
+        init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
     elif classname.startswith('BatchNorm2d'):
-        init.normal(m.weight.data, 1.0, 0.02)
+        init.normal_(m.weight.data, 1.0, 0.02)
 
     if 'bias' in m._parameters and m.bias is not None:
-        init.constant(m.bias.data, 0.0)
-
+        init.constant_(m.bias.data, 0.0)
 
 def weights_init_orthogonal(m):
     classname = m.__class__.__name__
     # print(classname)
     if classname.startswith('Conv'):
-        init.orthogonal(m.weight.data, gain=1)
+        init.orthogonal_(m.weight.data, gain=1)
     elif classname.startswith('Linear'):
-        init.orthogonal(m.weight.data, gain=1)
+        init.orthogonal_(m.weight.data, gain=1)
     elif classname.startswith('BatchNorm2d'):
-        init.normal(m.weight.data, 1.0, 0.02)
+        init.normal_(m.weight.data, 1.0, 0.02)
     
     if 'bias' in m._parameters and m.bias is not None:
-        init.constant(m.bias.data, 0.0)
-
+        init.constant_(m.bias.data, 0.0)
 
 def init_weights(net, init_type='normal'):
     # print('initialization method [%s]' % init_type)

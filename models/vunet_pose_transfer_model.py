@@ -96,22 +96,23 @@ class VUnetPoseTransferModel(BaseModel):
     def set_input(self, data):
         input_list = [
             'img_1',
-            'pose_1',
+            'joint_1',
+            'stickman_1',
             'seg_1',
             'seg_mask_1',
 
             'img_2',
-            'pose_2',
+            'joint_2',
+            'stickman_2',
             'seg_2',
             'seg_mask_2',
         ]
-
         for name in input_list:
-            self.input[name] = Variable(self.Tensor(data[name].size()).copy_(data[name]))
+            self.input[name] = self.Tensor(data[name].size()).copy_(data[name])
 
         self.input['id'] = zip(data['id_1'], data['id_2'])
-        self.input['pose_c_1'] = data['pose_c_1']
-        self.input['pose_c_2'] = data['pose_c_2']
+        self.input['joint_c_1'] = data['joint_c_1']
+        self.input['joint_c_2'] = data['joint_c_2']
 
     def compute_kl_loss(self, ps, qs):
         assert len(ps) == len(qs)
@@ -127,9 +128,15 @@ class VUnetPoseTransferModel(BaseModel):
             pose_ref = self.get_pose(self.opt.pose_type, index='1')
             img_tar = self.input['img_2']
             pose_tar = self.get_pose(self.opt.pose_type, index='2')
+            # for visualization
+            self.output['joint_tar'] = self.input['joint_2']
+            self.output['stickman_tar'] = self.input['stickman_2']
         else:
             img_ref = img_tar = self.input['img_1']
             pose_ref = pose_tar = self.get_pose(self.opt.pose_type, index='1')
+            # for visualization
+            self.output['joint_tar'] = self.input['joint_1']
+            self.output['stickman_tar'] = self.input['stickman_1']
 
         self.output['img_out'], self.output['ps'], self.output['qs'] = self.netT(img_ref, pose_ref, pose_tar, mode)
         self.output['img_tar'] = img_tar
@@ -171,7 +178,7 @@ class VUnetPoseTransferModel(BaseModel):
             self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
             # style loss
             if self.opt.loss_weight_style > 0:
-                self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['pose_c_2'], self.output['img_tar'], self.input['pose_c_2'], self.opt.patch_size)
+                self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
                 loss += self.output['loss_style'] * self.opt.loss_weight_style
         
 
@@ -204,7 +211,7 @@ class VUnetPoseTransferModel(BaseModel):
         self.output['loss_content_old'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
         # style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['pose_c_2'], self.output['img_tar'], self.input['pose_c_2'], self.opt.patch_size)
+            self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
             loss += self.output['loss_style'] * self.opt.loss_weight_style
 
         # GAN
@@ -232,7 +239,7 @@ class VUnetPoseTransferModel(BaseModel):
         grad = self.output['img_out'].grad.clone()
         # style loss
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['pose_c_2'], self.output['img_tar'], self.input['pose_c_2'], self.opt.patch_size)
+            self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
             (self.output['loss_style'] * self.opt.loss_weight_style).backward(retain_graph=True)
             self.output['grad_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
@@ -266,21 +273,35 @@ class VUnetPoseTransferModel(BaseModel):
 
 
     def get_pose_dim(self, pose_type):
-        if pose_type == 'joint':
-            dim = 18
-        elif pose_type == 'joint+seg':
-            dim = 18 + 7
+        dim = 0
+        pose_items = pose_type.split('+')
+        pose_items.sort()
+        for item in pose_items:
+            if item == 'joint':
+                dim += 18
+            elif item == 'seg':
+                dim += 7
+            elif item == 'stickman':
+                dim += 3
         return dim
 
     def get_pose(self, pose_type, index='1'):
         assert index in {'1', '2'}
-        pose = self.input['pose_%s' % index]
-        seg_mask = self.input['seg_mask_%s' % index]
 
-        if pose_type == 'joint':
-            return pose
-        elif pose_type == 'joint+seg':
-            return torch.cat((pose, seg_mask), dim=1)
+        pose = []
+        pose_items = pose_type.split('+')
+        pose_items.sort()
+        for item in pose_items:
+            if item == 'joint':
+                pose.append(self.input['joint_%s'%index])
+            elif item == 'seg':
+                pose.append(self.input['seg_mask_%s'%index])
+            elif item == 'stickman':
+                pose.append(self.input['stickman_%s'%index])
+
+        assert len(pose) > 0
+        pose = torch.cat(pose, dim=1)
+        return pose
 
     def get_patch(self, images, coords, patch_size=32):
         '''
@@ -355,11 +376,10 @@ class VUnetPoseTransferModel(BaseModel):
     def get_current_visuals(self):
         visuals = OrderedDict([
             ('img_ref', (self.input['img_1'].data.cpu(), 'rgb')),
-            # ('poes_tar', (self.output['pose_tar'].data.cpu(), 'pose')),
-            ('poes_tar', (self.input['pose_2'].data.cpu(), 'pose')),
-            # ('seg_tar', (self.input['seg_mask_2'].data.cpu(), 'seg')),
+            ('joint_tar', (self.output['joint_tar'].data.cpu(), 'pose')),
+            ('stickman_tar', (self.output['stickman_tar'].data.cpu(), 'rgb')),
             ('img_tar', (self.output['img_tar'].data.cpu(), 'rgb')),
-            ('img_out', (self.output['img_out'].data.cpu(), 'rgb'))
+            ('img_out', (self.output['img_out'].data.cpu(), 'rgb')),
             ])
         return visuals
 
