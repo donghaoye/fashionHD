@@ -273,13 +273,12 @@ def trans_random_horizontal_flip_pose_c(pose_c, img_sz, coin=None):
     # pose_c: [[x0, y0], [x1, y1], ... , [x17, y17]]
     if coin is None:
         coin = np.random.rand()
-    if coin > 0.5:
+    if coin >= 0.5:
         pose_c = [pose_c[i] for i in [0,1,5,6,7,2,3,4,11,12,13,8,9,10,15,14,17,16]]
         w, h = img_sz
         for i, (x, y) in enumerate(pose_c):
             if x > 0 and y > 0:
                 x = w - 1 - x
-                y = h - 1 - y
                 pose_c[i] = [x, y]
     return pose_c
 
