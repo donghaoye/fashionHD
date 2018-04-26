@@ -65,8 +65,6 @@ class PoseTransferDataset(BaseDataset):
         img_2 = self.read_image(sid_2)
         joint_c_1 = self.pose_label[sid_1]
         joint_c_2 = self.pose_label[sid_2]
-        pose_1 = pose_to_map(img_sz=(img_1.shape[1], img_1.shape[0]), label=joint_c_1, mode=self.opt.joint_mode, radius=self.opt.joint_radius)
-        pose_2 = pose_to_map(img_sz=(img_2.shape[1], img_2.shape[0]), label=joint_c_2, mode=self.opt.joint_mode, radius=self.opt.joint_radius)
         seg_1 = self.read_seg(sid_1)
         seg_2 = self.read_seg(sid_2)
         ######################
@@ -82,7 +80,7 @@ class PoseTransferDataset(BaseDataset):
             coin = np.random.rand()
             img_2 = trans_random_horizontal_flip(img_2, coin)
             seg_2 = trans_random_horizontal_flip(seg_2, coin)
-            joint_c_1 = trans_random_horizontal_flip_pose_c(joint_c_2, (img_2.shape[1], img_2.shape[2]), coin)
+            joint_c_2 = trans_random_horizontal_flip_pose_c(joint_c_2, (img_2.shape[1], img_2.shape[2]), coin)
             # swap img_1 and img_2
             coin = np.random.rand()
             if coin > 0.5:

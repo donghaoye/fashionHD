@@ -283,6 +283,8 @@ class VUnetPoseTransferModel(BaseModel):
                 dim += 7
             elif item == 'stickman':
                 dim += 3
+            else:
+                raise Exception('invalid pose representation type %s' % item)
         return dim
 
     def get_pose(self, pose_type, index='1'):
@@ -298,6 +300,8 @@ class VUnetPoseTransferModel(BaseModel):
                 pose.append(self.input['seg_mask_%s'%index])
             elif item == 'stickman':
                 pose.append(self.input['stickman_%s'%index])
+            else:
+                raise Exception('invalid pose representation type %s' % item)
 
         assert len(pose) > 0
         pose = torch.cat(pose, dim=1)
