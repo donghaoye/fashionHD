@@ -470,26 +470,28 @@ class PSNR_old(nn.Module):
 
 class PSNR(nn.Module):
     def forward(self, images_1, images_2):
-        images_np_1 = images_1.data.cpu().numpy().transpose(0,2,3,1)
-        images_np_2 = images_2.data.cpu().numpy().transpose(0,2,3,1)
-        psnr_score = []
-        data_range = 2 # [-1, 1]
+        numpy_imgs_1 = images_1.data.cpu().numpy().transpose(0,2,3,1)
+        numpy_imgs_1 = ((numpy_imgs_1 + 1.0) * 127.5).clip(0,255).astype(np.uint8)
+        numpy_imgs_2 = images_2.data.cpu().numpy().transpose(0,2,3,1)
+        numpy_imgs_2 = ((numpy_imgs_2 + 1.0) * 127.5).clip(0,255).astype(np.uint8)
 
-        for img_1, img_2 in zip(images_np_1, images_np_2):
-            psnr_score.append(compare_psnr(img_2, img_1, data_range=data_range))
+        psnr_score = []
+        for img_1, img_2 in zip(numpy_imgs_1, numpy_imgs_2):
+            psnr_score.append(compare_psnr(img_2, img_1))
 
         return Variable(images_1.data.new(1).fill_(np.mean(psnr_score)))
 
 
 class SSIM(nn.Module):
     def forward(self, images_1, images_2):
-        images_np_1 = images_1.data.cpu().numpy().transpose(0,2,3,1)
-        images_np_2 = images_2.data.cpu().numpy().transpose(0,2,3,1)
-        ssim_score = []
-        data_range = 2 # [-1, 1]
+        numpy_imgs_1 = images_1.data.cpu().numpy().transpose(0,2,3,1)
+        numpy_imgs_1 = ((numpy_imgs_1 + 1.0) * 127.5).clip(0,255).astype(np.uint8)
+        numpy_imgs_2 = images_2.data.cpu().numpy().transpose(0,2,3,1)
+        numpy_imgs_2 = ((numpy_imgs_2 + 1.0) * 127.5).clip(0,255).astype(np.uint8)
 
-        for img_1, img_2 in zip(images_np_1, images_np_2):
-            ssim_score.append(compare_ssim(img_1, img_2, data_range=data_range, multichannel=True))
+        ssim_score = []
+        for img_1, img_2 in zip(numpy_imgs_1, numpy_imgs_2):
+            ssim_score.append(compare_ssim(img_1, img_2, multichannel=True))
 
         return Variable(images_1.data.new(1).fill_(np.mean(ssim_score)))
 
@@ -2059,8 +2061,6 @@ class VariationalUnet(nn.Module):
                 return self.transfer_pass(x_ref, c_ref, c_tar)
             else:
                 raise NotImplementedError()
-
-
 
 
 ###############################################################################

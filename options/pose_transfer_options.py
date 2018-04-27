@@ -11,6 +11,7 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
         parser.add_argument('--batch_size', type = int, default = 32, help = 'batch size')
         parser.add_argument('--pavi', default = False, action = 'store_true', help = 'activate pavi log')
+        parser.add_argument('--supervised', type=int, default=1, choices=[0,1], help='supervised: img_ref=img_1, pose_tar=pose_2, img_tar=img_2; unsupervised: img_ref=img_tar=img_1, pose_tar=pose_1')
         ##############################
         # Pose Setting
         ##############################
@@ -68,7 +69,6 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser = self.parser
         # basic
         parser.add_argument('--continue_train', action = 'store_true', default = False, help = 'coninue training from saved model')
-        parser.add_argument('--supervised', type=int, default=1, choices=[0,1], help='supervised: img_ref=img_1, pose_tar=pose_2, img_tar=img_2; unsupervised: img_ref=img_tar=img_1, pose_tar=pose_1')
         # optimizer
         parser.add_argument('--lr', type = float, default = 2e-4, help = 'initial learning rate')
         parser.add_argument('--lr_D', type = float, default = 1e-4, help = 'only use lr_D for netD when loss_weight_gan > 0')

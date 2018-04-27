@@ -64,6 +64,9 @@ class VUnetPoseTransferModel(BaseModel):
         ###################################
         # loss functions
         ###################################
+        self.crit_psnr = networks.PSNR()
+        self.crit_ssim = networks.SSIM()
+        
         if self.is_train:
             self.loss_functions = []
             self.schedulers = []
@@ -71,8 +74,6 @@ class VUnetPoseTransferModel(BaseModel):
             self.crit_L1 = nn.L1Loss()
             self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
             # self.crit_vgg_old = networks.VGGLoss(self.gpu_ids)
-            self.crit_psnr = networks.PSNR()
-            self.crit_ssim = networks.SSIM()
             self.loss_functions += [self.crit_L1, self.crit_vgg]
             self.optim = torch.optim.Adam(self.netT.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
             self.optimizers += [self.optim]
@@ -91,7 +92,7 @@ class VUnetPoseTransferModel(BaseModel):
         # load trained model
         ###################################
         if not self.is_train:
-            self.load_network(self.netT, 'netT', opt.which_model)
+            self.load_network(self.netT, 'netT', opt.which_epoch)
 
     def set_input(self, data):
         input_list = [
@@ -345,6 +346,9 @@ class VUnetPoseTransferModel(BaseModel):
             patch = torch.cat(patch, dim=0)
             patches.append(patch)
         return patches
+
+    def get_body_limb(self, images, c):
+        pass
 
     def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32):
         '''
