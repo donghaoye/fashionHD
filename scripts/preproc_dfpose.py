@@ -56,6 +56,19 @@ def create_pair_index():
     print('test pair: %d' % len(pair_split['test']))
 
 
+def load_test_pair_index():
+    num_pair = 12800
+    pair_index = io.load_data('datasets/DF_Pose/Anno/NIPS17-test/p_pair_test.p') # test index used in NIPS17 paper: Pose Guided Person Image Generation
+    pair_split = io.load_json('datasets/DF_Pose/Label/pair_split.json')
+    # store previous generated pairs
+    pair_split['test_disordered_pair'] = pair_split['test']
+    # use pair indexes provided in  NIPS17 paper
+    pair_split['test'] = [[s1[0:-4], s2[0:-4]] for s1, s2 in pair_index[0:num_pair]]
+    np.random.shuffle(pair_split['test'])
+
+    io.save_json(pair_split, 'datasets/DF_Pose/Label/pair_split.json')
+
+
 
 if __name__ == '__main__':
     create_image_index()
