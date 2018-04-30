@@ -66,7 +66,8 @@ class BasePoseTransferOptions(BaseOptions):
 class TrainPoseTransferOptions(BasePoseTransferOptions):
     def initialize(self):
         super(TrainPoseTransferOptions, self).initialize()
-        parser = self.parser
+        self.is_train = True
+        parser = self.parser        
         # basic
         parser.add_argument('--continue_train', action = 'store_true', default = False, help = 'coninue training from saved model')
         # optimizer
@@ -93,11 +94,12 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--loss_weight_style', type=float, default=0., help='set loss_weight_style > 0 to enable patch style loss')
         parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
         parser.add_argument('--loss_weight_kl', type=float, default=1e-6, help='vunet setting: kl loss weight')
-        
-        # set train
-        self.is_train = True
 
 class TestPoseTransferOptions(BasePoseTransferOptions):
     def initialize(self):
         super(TestPoseTransferOptions, self).initialize()
         self.is_train = False
+        parser = self.parser
+
+        parser.add_argument('--nbatch', type=int, default=-1, help='set number of minibatch used for test')
+        parser.add_argument('--save_output', action='store_true', help='save output images in the folder exp_dir/output/')

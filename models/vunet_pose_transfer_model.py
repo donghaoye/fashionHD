@@ -8,6 +8,7 @@ import networks
 from torch.autograd import Variable
 from misc.image_pool import ImagePool
 from base_model import BaseModel
+from misc import pose_util
 
 import os
 import sys
@@ -66,7 +67,7 @@ class VUnetPoseTransferModel(BaseModel):
         ###################################
         self.crit_psnr = networks.PSNR()
         self.crit_ssim = networks.SSIM()
-        
+
         if self.is_train:
             self.loss_functions = []
             self.schedulers = []
@@ -348,8 +349,28 @@ class VUnetPoseTransferModel(BaseModel):
         return patches
 
     def get_body_limb(self, images, c):
-        pass
+        '''
+        crop 6 patches:
+            0: lshoulder,lhip, rhip, rshoulder
+            1: lshoulder, rshoulder, nose
+            2: lshoulder, lelbow
+            3: lelbow, lwritst
+            4: rshoulder, relbow
+            5: relbow, rwritst
+            6: lhip, lknee
+            7: rhip, rknee
+        '''
+        bpart = [
+            ['lshoulder', 'lhip', 'rhip', 'rshoulder'],
+            ['lshoulder', 'rshoulder', 'nose'],
+            ['lshoulder', 'lelbow'],
+            ['lelbow', 'lwritst'],
+            ['rshoulder', 'relbow'],
+            ['relbow', 'rwritst'],
+            ['lhip', 'lknee'],
+            ['rhip', 'rknee']]
 
+        
     def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32):
         '''
         images_1: (bsz, h, w, h)
