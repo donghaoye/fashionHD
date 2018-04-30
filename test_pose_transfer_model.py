@@ -57,11 +57,11 @@ for i, data in enumerate(val_loader):
     sys.stdout.flush()
     # save output
     if opt.save_output:
-        id_list = [id2 for id1, id2 in model.input['id']]
+        id_list = model.input['id']
         images = model.output['img_out'].cpu().numpy().transpose(0,2,3,1)
         images = ((images + 1.0) * 127.5).clip(0,255).astype(np.uint8)
-        for sid, img in zip(id_list, images):
-            cv2.imwrite(os.path.join(img_dir,sid + '.jpg'), img)
+        for (id1, id2), img in zip(id_list, images):
+            cv2.imwrite(os.path.join(img_dir,'%s_%s.jpg' % (id1, id2)), img)
 print('\n')
 
 test_error = loss_buffer.get_errors()

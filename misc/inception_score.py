@@ -111,14 +111,15 @@ if __name__ == '__main__':
     print('[Inception Score] test dir: %s' % test_dir)
 
     images = []
-    fn_list = glob.glob(os.path.join(test_dir, '*'))
+    fn_list = glob.glob(os.path.join(test_dir, '*.jpg'))
     for i, fn in enumerate(fn_list):
         images.append(imageio.imread(fn))
         if i%100 == 0:
-            print('\r[Inception Score] loading images: %d (%d/%d)' % (i*100//len(fn_list), i, len(fn_list)), end='')
+            print('\r[Inception Score] loading images: %d%% (%d/%d)' % (i*100//len(fn_list), i, len(fn_list)), end='')
+            sys.stdout.flush()
     print('\n')
     print(len(images))
     print(type(images[0]))
 
     is_score, is_score_std = get_inception_score(images)
-    print('[Inception Score] inception_score: %.3f (std: %.3f)' % (is_score, is_score_std))
+    print('\n[Inception Score] inception_score: %.3f (std: %.3f)' % (is_score, is_score_std))
