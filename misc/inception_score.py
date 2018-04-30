@@ -7,11 +7,10 @@ import os
 import sys
 
 if len(sys.argv) < 2:
-    print('need a model id')
+  print('need a model id')
 if len(sys.argv) > 2:
-    gpu_ids = sys.argv[2]
-    os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[2]
-
+  gpu_ids = sys.argv[2]
+  os.environ['CUDA_VISIBLE_DEVICES'] = sys.argv[2]
 
 import tarfile
 import numpy as np
@@ -107,7 +106,10 @@ if softmax is None:
 if __name__ == '__main__':
   # test images in given folder
     model_id = sys.argv[1]
-    test_dir = os.path.join('checkpoints', model_id, 'test')
+    if os.path.isdir(model_id):
+        test_dir = model_id
+    else:
+        test_dir = os.path.join('checkpoints', model_id, 'test')
     print('[Inception Score] test dir: %s' % test_dir)
 
     images = []
@@ -118,8 +120,5 @@ if __name__ == '__main__':
             print('\r[Inception Score] loading images: %d%% (%d/%d)' % (i*100//len(fn_list), i, len(fn_list)), end='')
             sys.stdout.flush()
     print('\n')
-    print(len(images))
-    print(type(images[0]))
-
     is_score, is_score_std = get_inception_score(images)
     print('\n[Inception Score] inception_score: %.3f (std: %.3f)' % (is_score, is_score_std))
