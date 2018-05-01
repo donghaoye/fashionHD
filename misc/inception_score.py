@@ -34,6 +34,7 @@ def get_inception_score(images, splits=10):
     assert(len(images[0].shape) == 3)
     assert(np.max(images[0]) > 10)
     assert(np.min(images[0]) >= 0.0)
+    np.random.shuffle(images)
     inps = []
     for img in images:
         img = img.astype(np.float32)
