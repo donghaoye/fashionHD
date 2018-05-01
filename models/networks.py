@@ -391,7 +391,7 @@ class VGGLoss_v2(nn.Module):
                 loss_style = 0
                 for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
                     if self.style_weights[i] > 0:
-                        loss_style += self.style_weights[i] * F.mse_loss(self.gram_matrix(feat_x), self.gram_matrix(feat_y), reduce=False).view(bsz, -1).mean(dim=1)
+                        loss_style += self.style_weights[i] * F.mse_loss(self.gram_matrix(feat_x), self.gram_matrix(feat_y), reduce=False).view(bsz, -1).sum(dim=1)
                         # loss_style += self.style_weights[i] * ((self.gram_matrix(feat_x) - self.gram_matrix(feat_y))**2).view(bsz, -1).mean(dim=1)
                 if device_mode == 'single':
                     loss_style = loss_style.mean(dim=0)
