@@ -172,16 +172,19 @@ class VUnetPoseTransferModel(BaseModel):
                 else:
                     D_input = self.output['img_out']
                 self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
-            # KL loss
+            # KL
             self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
-            # L1 loss
+            # L1
             self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
-            # content loss
+            # content
             self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
-            # style loss
+            # style
             if self.opt.loss_weight_style > 0:
-                self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
-                loss += self.output['loss_style'] * self.opt.loss_weight_style
+                self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
+
+            # patch style
+            if self.opt.loss_weight_patch_style > 0:
+                self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
         
 
     def backward_D(self):
@@ -210,12 +213,14 @@ class VUnetPoseTransferModel(BaseModel):
         # content
         self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
         loss += self.output['loss_content'] * self.opt.loss_weight_content
-        self.output['loss_content_old'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
         # style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
+            self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
             loss += self.output['loss_style'] * self.opt.loss_weight_style
-
+        # patch style
+        if self.opt.loss_weight_patch_style > 0:
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
+            loss += self.output['loss_patch_style'] * self.opt.loss_weight_patch_style
         # GAN
         if self.use_GAN:
             if self.opt.D_cond:
@@ -234,18 +239,24 @@ class VUnetPoseTransferModel(BaseModel):
         (self.output['loss_L1'] * self.opt.loss_weight_L1).backward(retain_graph=True)
         self.output['grad_L1'] = self.output['img_out'].grad.norm()
         grad = self.output['img_out'].grad.clone()
-        # content loss
+        # content 
         self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
         (self.output['loss_content'] * self.opt.loss_weight_content).backward(retain_graph=True)
         self.output['grad_content'] = (self.output['img_out'].grad - grad).norm()
         grad = self.output['img_out'].grad.clone()
-        # style loss
+        # style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
+            self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
             (self.output['loss_style'] * self.opt.loss_weight_style).backward(retain_graph=True)
             self.output['grad_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
-        # gan loss
+        # patch style 
+        if self.opt.loss_weight_patch_style > 0:
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
+            (self.output['loss_patch_style'] * self.opt.loss_weight_patch_style).backward(retain_graph=True)
+            self.output['grad_patch_style'] = (self.output['img_out'].grad - grad).norm()
+            grad = self.output['img_out'].grad.clone()
+        # gan 
         if self.use_GAN:
             if self.opt.D_cond:
                 D_input = torch.cat((self.output['img_out'], self.output['pose_tar']), dim=1)
@@ -254,7 +265,7 @@ class VUnetPoseTransferModel(BaseModel):
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             (self.output['loss_G'] * self.opt.loss_weight_gan).backward(retain_graph=True)
             self.output['grad_gan'] = (self.output['img_out'].grad - grad).norm()
-        # KL loss
+        # KL 
         self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
         (self.output['loss_kl'] * self.opt.loss_weight_kl).backward()
 
@@ -370,7 +381,7 @@ class VUnetPoseTransferModel(BaseModel):
             ['lhip', 'lknee'],
             ['rhip', 'rknee']]
 
-        
+    
     def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32):
         '''
         images_1: (bsz, h, w, h)
@@ -391,11 +402,11 @@ class VUnetPoseTransferModel(BaseModel):
         # compute style loss
         patches_1 = torch.cat(patches_1, dim=0)
         patches_2 = torch.cat(patches_2, dim=0)
-        loss_style = self.crit_vgg(patches_1, patches_2, 'style')
-        return loss_style
+        loss_patch_style = self.crit_vgg(patches_1, patches_2, 'style')
+        return loss_patch_style
 
     def get_current_errors(self):
-        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_kl', 'loss_G', 'loss_D', 'grad_L1', 'grad_content', 'grad_style', 'grad_gan']
+        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_patch_style', 'loss_kl', 'loss_G', 'loss_D', 'grad_L1', 'grad_content', 'grad_style', 'grad_patch_style', 'grad_gan']
         errors = OrderedDict()
         for item in error_list:
             if item in self.output:

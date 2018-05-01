@@ -7,7 +7,7 @@ class BasePoseTransferOptions(BaseOptions):
         ##############################
         # General Setting
         ##############################
-        parser.add_argument('--norm', type=str, default='instance', help='instance normalization or batch normalization [batch|instance|none]')
+        parser.add_argument('--norm', type=str, default='batch', help='instance normalization or batch normalization [batch|instance|none]')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
         parser.add_argument('--batch_size', type = int, default = 32, help = 'batch size')
         parser.add_argument('--pavi', default = False, action = 'store_true', help = 'activate pavi log')
@@ -91,7 +91,8 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         # loss weights
         parser.add_argument('--loss_weight_L1', type=float, default=1.)
         parser.add_argument('--loss_weight_content', type=float, default=1.)
-        parser.add_argument('--loss_weight_style', type=float, default=0., help='set loss_weight_style > 0 to enable patch style loss')
+        parser.add_argument('--loss_weight_style', type=float, default=0., help='set loss_weight_style > 0 to enable global style loss')
+        parser.add_argument('--loss_weight_patch_style', type=float, default=0., help='set loss_weight_patch_style > 0 to enable patch style loss')
         parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
         parser.add_argument('--loss_weight_kl', type=float, default=1e-6, help='vunet setting: kl loss weight')
 
