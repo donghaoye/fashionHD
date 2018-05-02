@@ -13,10 +13,13 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--pavi', default = False, action = 'store_true', help = 'activate pavi log')
         parser.add_argument('--supervised', type=int, default=1, choices=[0,1], help='supervised: img_ref=img_1, pose_tar=pose_2, img_tar=img_2; unsupervised: img_ref=img_tar=img_1, pose_tar=pose_1')
         ##############################
+        # Appearance Setting
+        ##############################
+        parser.add_argument('--appearance_type', type=str, default='image', help='appearance input format, combination ("+") of [image, limb]')
+        ##############################
         # Pose Setting
         ##############################
-        # parser.add_argument('--pose_type', type=str, default='joint', choices=['joint', 'joint+seg'], help='pose format')
-        parser.add_argument('--pose_type', type=str, default='joint', help='pose format')
+        parser.add_argument('--pose_type', type=str, default='joint', help='pose format, combination ("+") of [joint, stickman, seg]')
         parser.add_argument('--joint_radius', type=int, default=8, help='radius of joint map')
         parser.add_argument('--joint_mode', type=str, default='binary', choices=['binary', 'gaussian'])
         parser.add_argument('--seg_bin_size', type=int, default=16, help='bin size of downsampled seg mask')        
@@ -34,7 +37,7 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--vunet_n_latent_scales', type=int, default=2, help='vunet setting: layer number of latent space')
         parser.add_argument('--vunet_bottleneck_factor', type=int, default=2, help='vunet setting: the bottlenect resolution will be 2**vunet_bottleneck_factor')
         parser.add_argument('--vunet_box_factor', type=int, default=2, help='vunet setting: the spatial shape ratio of pose encoder to appearance encoder')
-        parser.add_argument('--vnet_activation', type=str, default='relu', choices=['relu', 'elu'], help='activation type')
+        parser.add_argument('--vunet_activation', type=str, default='relu', choices=['relu', 'elu'], help='activation type')
         ##############################
         # Discriminator Setting
         ##############################

@@ -11,7 +11,7 @@ joint2idx = {
     'rhip': 8,
     'rknee': 9,
     'rankle': 10,
-    'lhip:': 11,
+    'lhip': 11,
     'lknee': 12,
     'lankle': 13,
     'reye': 14,
@@ -20,5 +20,9 @@ joint2idx = {
     'lear': 17,
 }
 
-def joint_coord(label, name):
-    return label[joint2idx[name]]
+def get_joint_coord(label, joint_list):
+    indices = [joint2idx[j] for j in joint_list]
+    if isinstance(label, list):
+        label = np.float32(label)
+
+    return label[indices, :]

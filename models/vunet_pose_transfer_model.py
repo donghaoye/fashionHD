@@ -29,7 +29,7 @@ class VUnetPoseTransferModel(BaseModel):
         ###################################
         self.netT = networks.VariationalUnet(
             input_nc_dec = self.get_pose_dim(opt.pose_type),
-            input_nc_enc = 3,
+            input_nc_enc = self.get_appearance_dim(opt.appearance_type),
             output_nc = 3,
             nf = opt.vunet_nf,
             max_nf = opt.vunet_max_nf,
@@ -108,9 +108,14 @@ class VUnetPoseTransferModel(BaseModel):
             'stickman_2',
             'seg_2',
             'seg_mask_2',
+
+            # optional
+            'limb_1',
+            'limb_2',
         ]
         for name in input_list:
-            self.input[name] = self.Tensor(data[name].size()).copy_(data[name])
+            if name in data:
+                self.input[name] = self.Tensor(data[name].size()).copy_(data[name])
 
         self.input['id'] = zip(data['id_1'], data['id_2'])
         self.input['joint_c_1'] = data['joint_c_1']
@@ -126,21 +131,22 @@ class VUnetPoseTransferModel(BaseModel):
     def forward(self, mode='train'):
         ''' mode in {'train', 'transfer'} '''
         if self.opt.supervised or mode == 'transfer':
-            img_ref = self.input['img_1']
+            appr_ref = self.get_appearance(self.opt.appearance_type, index='1')
             pose_ref = self.get_pose(self.opt.pose_type, index='1')
-            img_tar = self.input['img_2']
             pose_tar = self.get_pose(self.opt.pose_type, index='2')
+            img_tar = self.input['img_2']
             # for visualization
             self.output['joint_tar'] = self.input['joint_2']
             self.output['stickman_tar'] = self.input['stickman_2']
         else:
-            img_ref = img_tar = self.input['img_1']
+            appr_ref = self.get_appearance(self.opt.appearance_type, index='1')
             pose_ref = pose_tar = self.get_pose(self.opt.pose_type, index='1')
+            img_tar = self.input['img_1']
             # for visualization
             self.output['joint_tar'] = self.input['joint_1']
             self.output['stickman_tar'] = self.input['stickman_1']
 
-        self.output['img_out'], self.output['ps'], self.output['qs'] = self.netT(img_ref, pose_ref, pose_tar, mode)
+        self.output['img_out'], self.output['ps'], self.output['qs'] = self.netT(appr_ref, pose_ref, pose_tar, mode)
         self.output['img_tar'] = img_tar
         self.output['pose_tar'] = pose_tar
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
@@ -302,7 +308,6 @@ class VUnetPoseTransferModel(BaseModel):
 
     def get_pose(self, pose_type, index='1'):
         assert index in {'1', '2'}
-
         pose = []
         pose_items = pose_type.split('+')
         pose_items.sort()
@@ -319,6 +324,33 @@ class VUnetPoseTransferModel(BaseModel):
         assert len(pose) > 0
         pose = torch.cat(pose, dim=1)
         return pose
+
+    def get_appearance_dim(self, appearance_type):
+        dim = 0
+        appr_items = appearance_type.split('+')
+        for item in appr_items:
+            if item == 'image':
+                dim += 3
+            elif item == 'limb':
+                dim += 24 # (3channel x 8limbs)
+            else:
+                raise Exception('invalid appearance prepresentation type %s'%item)
+        return dim
+    
+    def get_appearance(self, appearance_type, index='1'):
+        assert index in {'1', '2'}
+        appr = []
+        appr_items = appearance_type.split('+')
+        for item in appr_items:
+            if item == 'image':
+                appr.append(self.input['img_%s'%index])
+            elif item == 'limb':
+                appr.append(self.input['limb_%s'%index])
+            else:
+                raise Exception('invalid appearance representation type %s' % item)
+        assert len(appr) > 0
+        appr = torch.cat(appr, dim=1)
+        return appr
 
     def get_patch(self, images, coords, patch_size=32):
         '''
@@ -358,29 +390,6 @@ class VUnetPoseTransferModel(BaseModel):
             patch = torch.cat(patch, dim=0)
             patches.append(patch)
         return patches
-
-    def get_body_limb(self, images, c):
-        '''
-        crop 6 patches:
-            0: lshoulder,lhip, rhip, rshoulder
-            1: lshoulder, rshoulder, nose
-            2: lshoulder, lelbow
-            3: lelbow, lwritst
-            4: rshoulder, relbow
-            5: relbow, rwritst
-            6: lhip, lknee
-            7: rhip, rknee
-        '''
-        bpart = [
-            ['lshoulder', 'lhip', 'rhip', 'rshoulder'],
-            ['lshoulder', 'rshoulder', 'nose'],
-            ['lshoulder', 'lelbow'],
-            ['lelbow', 'lwritst'],
-            ['rshoulder', 'relbow'],
-            ['relbow', 'rwritst'],
-            ['lhip', 'lknee'],
-            ['rhip', 'rknee']]
-
     
     def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32):
         '''
