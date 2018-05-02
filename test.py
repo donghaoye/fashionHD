@@ -1,28 +1,19 @@
 from __future__ import division
 
-from options.pose_transfer_options import TestPoseTransferOptions
-from data.data_loader import CreateDataLoader
-import numpy as np
-import imageio
+import os
+import shutil
 
-output_dir = 'temp/vunet_limbs/'
+src_dir = 'datasets/Zalando/Img/img_zalando_256/'
+tar_dir1 = 'datasets/Zalando/Img/img_zalando_person/'
+tar_dir2 = 'datasets/Zalando/Img/img_zalando_cloth/'
 
-opt = TestPoseTransferOptions().parse()
-opt.appearance_type = 'limb'
-opt.batch_size = 8
+fn_list = os.listdir(src_dir)
 
-loader = iter(CreateDataLoader(opt, 'test'))
-data = next(loader)
+for idx, fn in enumerate(fn_list):
+    print(idx)
+    if fn.endswith('_1.jpg'):
+        fn1 = fn[0:6]+'.jpg'
+        shutil.copyfile(src_dir + fn, tar_dir2 + fn1)
+    else:
+        shutil.copyfile(src_dir + fn, tar_dir1 + fn)
 
-img = data['img_1'].numpy().transpose(0,2,3,1)
-img = (img * 127.5 + 127.5).clip(0,255).astype(np.uint8)
-
-limb = data['limb_1'].numpy().transpose(0,2,3,1)
-limb = (limb * 127.5 + 127.5).clip(0,255).astype(np.uint8)
-
-
-for i in range(opt.batch_size):
-    imageio.imwrite(output_dir + '%d.jpg'%i, img[i])
-    for j in range(8):
-        imageio.imwrite(output_dir + '%d_%d.jpg'%(i,j), limb[i,:,:,(j*3):(j*3+3)])
-	

@@ -114,7 +114,7 @@ if __name__ == '__main__':
     print('[Inception Score] test dir: %s' % test_dir)
 
     images = []
-    fn_list = glob.glob(os.path.join(test_dir, '*.jpg'))
+    fn_list = glob.glob(os.path.join(test_dir, '*.jpg')) + glob.glob(os.path.join(test_dir, '*.png'))
     for i, fn in enumerate(fn_list):
         images.append(imageio.imread(fn))
         if i%100 == 0:

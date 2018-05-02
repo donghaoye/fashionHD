@@ -182,11 +182,11 @@ class VUnetPoseTransferModel(BaseModel):
             self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
             # L1
             self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
-            # content
-            self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
-            # style
+            # content & style
             if self.opt.loss_weight_style > 0:
-                self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
+                self.output['output_content'], self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'all')
+            else:
+                self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
 
             # patch style
             if self.opt.loss_weight_patch_style > 0:
@@ -216,13 +216,14 @@ class VUnetPoseTransferModel(BaseModel):
         # L1
         self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
-        # content
-        self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
-        loss += self.output['loss_content'] * self.opt.loss_weight_content
-        # style
+        # content & style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
+            self.output['loss_content'], self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'all')
+            loss += self.output['loss_content'] * self.opt.loss_weight_content
             loss += self.output['loss_style'] * self.opt.loss_weight_style
+        else:
+            self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
+            loss += self.output['loss_content'] * self.opt.loss_weight_content
         # patch style
         if self.opt.loss_weight_patch_style > 0:
             self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
