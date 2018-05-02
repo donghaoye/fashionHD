@@ -377,8 +377,8 @@ class VGGLoss_v2(nn.Module):
                 loss_content, loss_style = nn.parallel.data_parallel(self, (X, Y), module_kwargs={'loss_type': loss_type, 'device_mode': 'sub'})
                 return loss_content.mean(dim=0), loss_style.mean(dim=0)
         else:
-            features_x = self.compute_feature(X)
-            features_y = self.compute_feature(Y)
+            features_x = self.compute_feature(self.normalize(X))
+            features_y = self.compute_feature(self.normalize(Y))
             # compute content loss
             if loss_type in {'all', 'content'}:
                 loss_content = 0
@@ -402,6 +402,17 @@ class VGGLoss_v2(nn.Module):
                 return loss_style
             elif loss_type == 'all':
                 return loss_content, loss_style
+
+    def normalize(self, x):
+        # normalization parameters of input
+        mean_1 = x.new([0.5, 0.5, 0.5]).view(1,3,1,1)
+        std_1 = x.new([0.5, 0.5, 0.5]).view(1,3,1,1)
+        # normalization parameters of output
+        mean_2 = x.new([0.485, 0.456, 0.406]).view(1,3,1,1)
+        std_2 = x.new([0.229, 0.224, 0.225]).view(1,3,1,1)
+
+        return (x*std_1 + mean_1 - mean_2)/std_2
+
 
     def gram_matrix(self, feat):
         bsz, c, h, w = feat.size()
