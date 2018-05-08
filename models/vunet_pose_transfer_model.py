@@ -361,7 +361,7 @@ class VUnetPoseTransferModel(BaseModel):
         bsz, c, h, w = images.size()
 
         # use 0-None for face area, ignore [14-REye, 15-LEye, 16-REar, 17-LEar]
-        joint_index = [0,1,2,3,4,5,6,7,8,9,10,11,12,13]
+        joint_index = [1,2,3,4,5,6,7,8,9,10,11,12,13]
         patches = []
 
         for i in joint_index:
@@ -409,10 +409,25 @@ class VUnetPoseTransferModel(BaseModel):
         # get patches
         patches_1 = self.get_patch(images_1, vc_1, patch_size) # list: [patch_c1, patch_c2, ...]
         patches_2 = self.get_patch(images_2, vc_2, patch_size)
+        n_patch = len(patches_1)
         # compute style loss
         patches_1 = torch.cat(patches_1, dim=0)
         patches_2 = torch.cat(patches_2, dim=0)
-        loss_patch_style = self.crit_vgg(patches_1, patches_2, 'style')
+        loss_patch_style = self.crit_vgg(patches_1, patches_2, 'style') / n_patch
+
+        # output = {
+        #     'images_1': images_1.cpu(),
+        #     'images_2': images_2.cpu(),
+        #     'c_1': c_1.cpu(),
+        #     'c_2': c_2.cpu(),
+        #     'patches_1': patches_1.cpu(),
+        #     'patches_2': patches_2.cpu(),
+        #     'n_patch': n_patch,
+        #     'id': self.input['id']
+        # }
+
+        # torch.save(output, 'data.pth')
+        # exit()
         return loss_patch_style
 
     def get_current_errors(self):
@@ -425,11 +440,11 @@ class VUnetPoseTransferModel(BaseModel):
 
     def get_current_visuals(self):
         visuals = OrderedDict([
-            ('img_ref', (self.input['img_1'].data.cpu(), 'rgb')),
-            ('joint_tar', (self.output['joint_tar'].data.cpu(), 'pose')),
-            ('stickman_tar', (self.output['stickman_tar'].data.cpu(), 'rgb')),
-            ('img_tar', (self.output['img_tar'].data.cpu(), 'rgb')),
-            ('img_out', (self.output['img_out'].data.cpu(), 'rgb')),
+            ('img_ref', [self.input['img_1'].data.cpu(), 'rgb']),
+            ('joint_tar', [self.output['joint_tar'].data.cpu(), 'pose']),
+            ('stickman_tar', [self.output['stickman_tar'].data.cpu(), 'rgb']),
+            ('img_tar', [self.output['img_tar'].data.cpu(), 'rgb']),
+            ('img_out', [self.output['img_out'].data.cpu(), 'rgb']),
             ])
         return visuals
 

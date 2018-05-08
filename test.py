@@ -1,19 +1,21 @@
 from __future__ import division
 
-import os
-import shutil
+import torch
+from options.domain_transfer_options import TestDomainTransferOptions
+from data.data_loader import CreateDataLoader
+import util.image as image
 
-src_dir = 'datasets/Zalando/Img/img_zalando_256/'
-tar_dir1 = 'datasets/Zalando/Img/img_zalando_person/'
-tar_dir2 = 'datasets/Zalando/Img/img_zalando_cloth/'
+opt = TestDomainTransferOptions().parse()
+loader = iter(CreateDataLoader(opt, 'test'))
 
-fn_list = os.listdir(src_dir)
+data = next(loader)
+print(data.keys())
 
-for idx, fn in enumerate(fn_list):
-    print(idx)
-    if fn.endswith('_1.jpg'):
-        fn1 = fn[0:6]+'.jpg'
-        shutil.copyfile(src_dir + fn, tar_dir2 + fn1)
-    else:
-        shutil.copyfile(src_dir + fn, tar_dir1 + fn)
+for k, d in(data.iteritems()):
+    if isinstance(d, torch.Tensor):
+        print('%s: %s'%(k, str(d.size())))
 
+img2 = data['img_2'].numpy().transpose(0,2,3,1)[:,:,:,[2,1,0]]
+img2 = (img2 + 1)/2
+
+image.imshow(img2[0])

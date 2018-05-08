@@ -50,6 +50,9 @@ def CreateDataset(opt, split):
     elif opt.dataset_mode in {'pose_transfer'}:
         from data.pose_transfer_dataset import PoseTransferDataset
         dataset = PoseTransferDataset()
+    elif opt.dataset_mode in {'domain_transfer'}:
+        from data.domain_transfer_dataset import DomainTransferDataset
+        dataset = DomainTransferDataset()
     # elif opt.dataset_mode in {'unsupervised_pose_transfer'}:
     #     from data.pose_transfer_dataset import UnsupervisedPoseTransferDataset
     #     dataset = UnsupervisedPoseTransferDataset()

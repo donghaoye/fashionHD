@@ -327,7 +327,7 @@ class VGGLoss_v2(nn.Module):
         super(VGGLoss_v2, self).__init__()
         self.gpu_ids = gpu_ids
         self.content_weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
-        self.style_weights = [1,1,1,1,1] # use relu-3 layer feature to compure style loss
+        self.style_weights = [1,1,1,1,1]
         # self.style_weights = [0,0,1,0,0] # use relu-3 layer feature to compure style loss
         # define vgg
         vgg_pretrained_features = torchvision.models.vgg19(pretrained=True).features
@@ -412,7 +412,6 @@ class VGGLoss_v2(nn.Module):
         std_2 = x.new([0.229, 0.224, 0.225]).view(1,3,1,1)
 
         return (x*std_1 + mean_1 - mean_2)/std_2
-
 
     def gram_matrix(self, feat):
         bsz, c, h, w = feat.size()
@@ -2001,7 +2000,6 @@ class VariationalUnet(nn.Module):
         gs = self.dec_up(c_tar)
         ds, ps, zs_prior = self.dec_down(gs, zs_posterior, training=True)
         img = self.dec_to_image(ds[-1])
-
         return img, qs, ps
 
     def test_forward_pass(self, c_tar):
@@ -2041,6 +2039,243 @@ class VariationalUnet(nn.Module):
                 return self.transfer_pass(x_ref, c_ref, c_tar)
             else:
                 raise NotImplementedError()
+
+
+class VariationalAutoEncoder(nn.Module):
+    def __init__(self, input_nc, output_nc, nf, max_nf, latent_nf, input_size, bottleneck_factor, n_residual_blocks, norm_layer, activation, use_dropout, gpu_ids):
+        super(VariationalAutoEncoder, self).__init__()
+        self.gpu_ids = gpu_ids
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.latent_nf = latent_nf
+        self.n_scales = 1 + int(np.round(np.log2(input_size))) - bottleneck_factor
+        self.input_size = input_size
+        if type(norm_layer) == functools.partial:
+            self.use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            self.use_bias = norm_layer == nn.InstanceNorm2d
+        # define encode network
+        c_in = nf
+        hidden_c = []
+        encoder_layers = [
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(input_nc, c_in, kernel_size=7, padding=0, bias=self.use_bias),
+            norm_layer(c_in)]
+        for l in range(self.n_scales):
+            spatial_shape = self.input_size // 2**l
+            nl = None if spatial_shape == 1 else norm_layer
+            for i in range(n_residual_blocks):
+                encoder_layers.append(VUnetResidualBlock(c_in, 0, nl, self.use_bias, activation, use_dropout))
+                hidden_c.append(c_in)
+            if l + 1 < self.n_scales:
+                # downsample
+                c_out = min(2*c_in, max_nf)
+                if spatial_shape <= 2:
+                    encoder_layers += [
+                        activation,
+                        nn.Conv2d(c_in, c_out, kernel_size=3, stride=2, padding=1, bias=True)]
+                else:
+                    encoder_layers += [
+                        activation,
+                        nn.Conv2d(c_in, c_out, kernel_size=3, stride=2, padding=1, bias=self.use_bias),
+                        norm_layer(c_out)]
+                c_in = c_out
+            else:
+                encoder_layers += [
+                    activation,
+                    nn.Conv2d(c_in, latent_nf, kernel_size=spatial_shape)]
+        self.encoder = nn.Sequential(*encoder_layers)
+        # define decode network
+        c_in = hidden_c[-1]
+        decoder_layers = [
+            nn.Conv2d(latent_nf, c_in*spatial_shape**2, kernel_size=1),
+            nn.PixelShuffle(spatial_shape)]
+        for l in range(self.n_scales):
+            spatial_shape = self.input_size // 2**(self.n_scales - l -1)
+            nl = None if spatial_shape == 1 else norm_layer
+            for i in range(n_residual_blocks):
+                c_in = hidden_c.pop()
+                decoder_layers.append(VUnetResidualBlock(c_in, 0, nl, self.use_bias, activation, use_dropout))
+            if l + 1 < self.n_scales:
+                # upsample
+                c_out = hidden_c[-1]
+                decoder_layers += [
+                    activation,
+                    nn.Conv2d(c_in, c_out*4, kernel_size=3, padding=1, bias=self.use_bias),
+                    nn.PixelShuffle(2),
+                    norm_layer(c_out)]
+        decoder_layers += [
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(c_in, output_nc, kernel_size=7, padding=0, bias=True),
+            nn.Tanh()]
+        self.decoder = nn.Sequential(*decoder_layers)
+
+    def encode(self, x):
+        return self.encoder(x)
+
+    def decode(self, z):
+        if not (z.dim()==4 and z.size(2)==z.size(3)==1):
+            z = z.view(z.size(0), -1, 1, 1)
+        assert z.size(1) == self.latent_nf, 'size of z (%s) does not match latent_nf(%d)' % (str(z.size()), self.latent_nf)
+        return self.decoder(z)
+
+    def latent_sample(self, q):
+        mean = q
+        stddev = 1.0
+        z = q + stddev * q.new(q.size()).normal_()
+        return z
+
+    def latent_kl(self, q):
+        # assume that the var of q is 1
+        kl = 0.5 * q * q
+        kl = kl.view(q.size(0), -1)
+        kl = kl.sum(dim=1).mean()
+        return kl
+
+    def forward(self, input, mode, sample=True, single_device=False):
+        '''
+        mode:
+            'encode': input is image, output is q
+            'decode': input is q (sample==True) or z (sampled from q, sample==False), output is image
+            'full': input is image, output is (image, q, z)
+        '''
+        if len(self.gpu_ids) > 1 and not single_device:
+            return nn.parallel.data_parallel(self, input, module_kwargs={'mode': mode, 'sample': sample, 'single_device': True})
+        else:
+            if mode == 'encode':
+                return self.encode(input)
+            elif mode == 'decode':
+                if sample:
+                    z = self.latent_sample(input)
+                else:
+                    z = input
+                return self.decode(z)
+            elif mode == 'full':
+                q = self.encode(input)
+                if sample:
+                    z = self.latent_sample(q)
+                else:
+                    z = q
+                return self.decode(z), q, z
+            else:
+                raise Exception('invalid mode "%s"' % mode)
+
+
+class VUnetLatentTransformer(nn.Module):
+    '''
+    Transformer network to connect:
+        - VariationalUnet latent space (hierarchical feature map)
+        - VariationalAutoEncoder latent space (vector)
+    encode: vunet_feat -> vae_feat
+    decode: vae_feat -> vunet_feat
+    '''
+    def __init__(self, vunet_nf_list, vunet_size, vae_nf, n_residual_blocks, norm_layer, gpu_ids):
+        super(VUnetLatentTransformer, self).__init__()
+        self.gpu_ids = gpu_ids
+        self.vunet_nf_list = vunet_nf_list
+        self.vunet_size = vunet_size # size of feature map at the highest level
+        self.vae_nf = vae_nf
+        self.n_residual_blocks = n_residual_blocks
+        if type(norm_layer) == functools.partial:
+            self.use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            self.use_bias = norm_layer == nn.InstanceNorm2d
+
+        activation = nn.ReLU(False)
+        n_scales = len(vunet_nf_list)
+        # encoder network
+        for l in range(n_scales):
+            spatial_shape = vunet_size * 2**(n_scales - l - 1)
+            nl = None if spatial_shape==1 else norm_layer
+            c_in = vunet_nf_list[l]
+            c_a = 0 if l == 0 else c_in
+            self.__setattr__('enc_%d_res_0'%l, VUnetResidualBlock(c_in, c_a, nl, self.use_bias, activation, use_dropout=False))
+            for i in range(1, n_residual_blocks):
+                self.__setattr__('enc_%d_res_%d'%(l,i), VUnetResidualBlock(c_in, 0, nl, self.use_bias, activation, use_dropout=False))
+            if l + 1 < n_scales:
+                c_out = vunet_nf_list[l+1]
+                if spatial_shape <= 2:
+                    downsample = nn.Sequential(
+                        activation,
+                        nn.Conv2d(c_in, c_out, kernel_size=3, stride=2, padding=1, bias=True)
+                    )
+                else:
+                    downsample = nn.Sequential(
+                        activation,
+                        nn.Conv2d(c_in, c_out, kernel_size=3, stride=2, padding=1, bias=self.use_bias),
+                        norm_layer(c_out)
+                        )
+            else:
+                c_out = vae_nf
+                downsample = nn.Sequential(
+                    activation,
+                    nn.Conv2d(c_in, c_out, kernel_size=vunet_size)
+                    )
+            self.__setattr__('enc_%d_downsample'%l, downsample)
+        # decoder network
+        for l in range(n_scales):
+            spatial_shape = vunet_size * 2**l
+            c_in = vunet_nf_list[l]
+            if l == 0:
+                upsample = nn.Sequential(
+                    nn.Conv2d(vae_nf, c_in*spatial_shape**2, kernel_size=1),
+                    nn.PixelShuffle(spatial_shape)
+                    )
+            else:
+                upsample = nn.Sequential(
+                    activation,
+                    nn.Conv2d(vunet_nf_list[l-1], c_in*4, kernel_size=3, padding=1, bias=self.use_bias),
+                    nn.PixelShuffle(2),
+                    norm_layer(c_in))
+            self.__setattr__('dec_%d_upsample'%l, upsample)
+            for i in range(n_residual_blocks):
+                self.__setattr__('dec_%d_res_%d'%(l,i), VUnetResidualBlock(c_in, 0, norm_layer, self.use_bias, activation, use_dropout=False))
+
+    def encode(self, qs):
+        '''
+        qs: from LR to HR
+        vunet_nf_list: from HR to LR
+        '''
+        qs = qs[::-1]
+        assert len(qs) == len(self.vunet_nf_list)
+        for i in range(len(qs)):
+            assert qs[i].size(1) == self.vunet_nf_list[i]
+
+        n_scale = len(self.vunet_nf_list)
+        h = qs[0]
+        for l in range(n_scale):
+            if l == 0:
+                h = self.__getattr__('enc_%d_res_0'%l)(h)
+            else:
+                h = self.__getattr__('enc_%d_res_0'%l)(h, qs[l])
+            for i in range(1, self.n_residual_blocks):
+                h = self.__getattr__('enc_%d_res_%d'%(l,i))(h)
+            h = self.__getattr__('enc_%d_downsample'%l)(h)
+        
+        return h
+
+    def decode(self, z):
+        assert z.size(1) == self.vae_nf
+        n_scale = len(self.vunet_nf_list)
+        qs = []
+        q = z
+        for l in range(n_scale):
+            q = self.__getattr__('dec_%d_upsample'%l)(q)
+            for i in range(self.n_residual_blocks):
+                q = self.__getattr__('dec_%d_res_%d'%(l,i))(q)
+            qs.append(q)
+        return qs
+
+    def forward(self, input, mode, single_device=False):
+        if len(self.gpu_ids) > 1 and not single_device:
+            return nn.parallel.data_parallel(self, input, module_kwargs={'mode':mode, 'single_device':True})
+        else:
+            if mode == 'encode':
+                return self.encode(input)
+            elif mode == 'decode':
+                return self.decode(input)
+            else:
+                raise Exception('invalid mode "%s"'%mode)
 
 
 ###############################################################################

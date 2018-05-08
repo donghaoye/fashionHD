@@ -191,12 +191,12 @@ class PoseTransferDataset(BaseDataset):
             coin = np.random.rand()
             img_1 = trans_random_horizontal_flip(img_1, coin)
             seg_1 = trans_random_horizontal_flip(seg_1, coin)
-            joint_c_1 = trans_random_horizontal_flip_pose_c(joint_c_1, (img_1.shape[1], img_1.shape[2]), coin)
+            joint_c_1 = trans_random_horizontal_flip_pose_c(joint_c_1, (img_1.shape[1], img_1.shape[0]), coin)
             # flip img_2
             coin = np.random.rand()
             img_2 = trans_random_horizontal_flip(img_2, coin)
             seg_2 = trans_random_horizontal_flip(seg_2, coin)
-            joint_c_2 = trans_random_horizontal_flip_pose_c(joint_c_2, (img_2.shape[1], img_2.shape[2]), coin)
+            joint_c_2 = trans_random_horizontal_flip_pose_c(joint_c_2, (img_2.shape[1], img_2.shape[0]), coin)
             # swap img_1 and img_2
             coin = np.random.rand()
             if coin > 0.5:

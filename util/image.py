@@ -36,6 +36,14 @@ def imshow(im):
         m_plot = plt.imshow(im, cmap = 'gray')
     plt.show()
 
+def imshowt(im_t):
+    '''
+    show tensor image
+    '''
+    im = im_t.cpu().detach().numpy().transpose(1,2,0)[:,:,[2,1,0]]
+    im = (im*127.5+127.5).clip(0,255).astype(np.uint8)
+    imshow(im)
+
 
 def resize(im,  new_shape_t, interpolation = cv2.INTER_LINEAR):
     ''' im_out = resize(im_in, new_shape = (w, h)) '''

@@ -75,16 +75,31 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
 
 
     if epoch % opt.vis_epoch_freq == 0:
-        train_data = iter(train_loader).next()
-        model.set_input(train_data)
-        model.test()
-        train_visuals = model.get_current_visuals()
+        num_vis_epoch = 4
+        train_visuals = None
+        val_visuals = None
+
+        for i, data in enumerate(train_loader):
+            model.set_input(data)
+            model.test()
+            visuals = model.get_current_visuals()
+            if train_visuals is None:
+                train_visuals = visuals
+            else:
+                for name, v in visuals.iteritems():
+                    train_visuals[name] = torch.cat((train_visuals[name], v),dim=0)
         visualizer.visualize_image(epoch = epoch, subset = 'train', visuals = train_visuals)
 
-        val_data = iter(val_loader).next()
-        model.set_input(val_data)
-        model.test()
-        val_visuals = model.get_current_visuals()
+        
+        for i, data in enumerate(val_loader):
+            model.set_input(data)
+            model.test()
+            visuals = model.get_current_visuals()
+            if val_visuals is None:
+                val_visuals = visuals
+            else:
+                for name, v in visuals.iteritems():
+                    val_visuals[name][0] = torch.cat((val_visuals[name][0], v[0]),dim=0)
         visualizer.visualize_image(epoch = epoch, subset = 'test', visuals = val_visuals)
     
     if epoch % opt.save_epoch_freq == 0:
