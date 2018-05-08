@@ -137,6 +137,7 @@ class VUnetPoseTransferModel(BaseModel):
             img_tar = self.input['img_2']
             # for visualization
             self.output['joint_tar'] = self.input['joint_2']
+            self.output['joint_c_tar'] = self.input['joint_c_2']
             self.output['stickman_tar'] = self.input['stickman_2']
         else:
             appr_ref = self.get_appearance(self.opt.appearance_type, index='1')
@@ -144,6 +145,7 @@ class VUnetPoseTransferModel(BaseModel):
             img_tar = self.input['img_1']
             # for visualization
             self.output['joint_tar'] = self.input['joint_1']
+            self.output['joint_c_tar'] = self.input['joint_c_1']
             self.output['stickman_tar'] = self.input['stickman_1']
 
         self.output['img_out'], self.output['ps'], self.output['qs'] = self.netT(appr_ref, pose_ref, pose_tar, mode)
@@ -190,7 +192,7 @@ class VUnetPoseTransferModel(BaseModel):
 
             # patch style
             if self.opt.loss_weight_patch_style > 0:
-                self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
+                self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
         
 
     def backward_D(self):
@@ -226,7 +228,7 @@ class VUnetPoseTransferModel(BaseModel):
             loss += self.output['loss_content'] * self.opt.loss_weight_content
         # patch style
         if self.opt.loss_weight_patch_style > 0:
-            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
             loss += self.output['loss_patch_style'] * self.opt.loss_weight_patch_style
         # GAN
         if self.use_GAN:
@@ -259,7 +261,7 @@ class VUnetPoseTransferModel(BaseModel):
             grad = self.output['img_out'].grad.clone()
         # patch style 
         if self.opt.loss_weight_patch_style > 0:
-            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.input['joint_c_2'], self.output['img_tar'], self.input['joint_c_2'], self.opt.patch_size)
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
             (self.output['loss_patch_style'] * self.opt.loss_weight_patch_style).backward(retain_graph=True)
             self.output['grad_patch_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
@@ -385,7 +387,7 @@ class VUnetPoseTransferModel(BaseModel):
 
                     p = img[:, top:bottom, left:right].unsqueeze(dim=0)
                     if not (p_l == p_r == p_t == p_b == 0):
-                        p = F.pad(p, pad=(p_l, p_r, p_t, p_b), mode='reflect')
+                        p = F.pad(p, pad=(p_l, p_r, p_t, p_b), mode='constant')
 
                 patch.append(p)
             patch = torch.cat(patch, dim=0)
@@ -413,7 +415,7 @@ class VUnetPoseTransferModel(BaseModel):
         # compute style loss
         patches_1 = torch.cat(patches_1, dim=0)
         patches_2 = torch.cat(patches_2, dim=0)
-        loss_patch_style = self.crit_vgg(patches_1, patches_2, 'style') / n_patch
+        loss_patch_style = self.crit_vgg(patches_1, patches_2, 'style')
 
         # output = {
         #     'images_1': images_1.cpu(),
