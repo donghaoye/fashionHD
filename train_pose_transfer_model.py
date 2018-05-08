@@ -87,7 +87,7 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
                 train_visuals = visuals
             else:
                 for name, v in visuals.iteritems():
-                    train_visuals[name] = torch.cat((train_visuals[name], v),dim=0)
+                    train_visuals[name][0] = torch.cat((train_visuals[name][0], v[0]),dim=0)
         visualizer.visualize_image(epoch = epoch, subset = 'train', visuals = train_visuals)
 
         
