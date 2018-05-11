@@ -1,4 +1,3 @@
-
 joint2idx = {
     'nose': 0,
     'neck': 1,

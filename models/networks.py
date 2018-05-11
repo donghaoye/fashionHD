@@ -18,7 +18,7 @@ from skimage.measure import compare_ssim, compare_psnr
 import util.io as io
 
 ###############################################################################
-# Functions
+# parameter initialize
 ###############################################################################
 
 def weights_init_normal(m):
@@ -100,6 +100,37 @@ def init_weights(net, init_type='normal'):
         net.apply(weights_init_orthogonal)
     else:
         raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
+
+###############################################################################
+# functions
+###############################################################################
+def perspective_grider(theta, size):
+    '''
+    Refer to pytorch function "torch.nn.functional.affine_grider" for detail of input/output format
+    input:
+        theta: (bsz, 3, 3) transformation matrix, numpy.ndarray or torch.Tensor
+        size: (bsz, c, H, W) output size, numpy.ndarray or torch.Size()
+    output:
+        grid: (bsz, H, W, 2)
+    '''
+    bsz, c, h, w = size[2:4]
+    gx, gy = np.meshgrid(np.linspace(-1,1,w), np.linspace(-1,1,h), indexing='xy')
+    grid = np.stack((gx, gy, np.ones(gx.shape)), axis=2)
+    grid = np.tile(grid, [bsz, 1, 1, 1]) #(bsz, h, w, 3)
+
+    if isinstance(theta, torch.Tensor):
+        theta_np = theta.detach().cpu().numpy()
+    else:
+        theta_np = theta
+
+    for i in range(bsz):
+        grid[i] = grid[i].dot(theta_np[i].T)
+    grid = grid[:,:,:,0:2] / grid[:,:,:,2::] #(bsz, h, w, 2)
+
+    if isinstance(theta, torch.Tensor):
+        grid = theta.new(grid)
+
+    return grid
 
 
 ###############################################################################
@@ -419,7 +450,6 @@ class VGGLoss_v2(nn.Module):
         feat_T = feat.transpose(1,2)
         g = torch.matmul(feat, feat_T) / (c*h*w)
         return g
-
 
 class TotalVariationLoss(nn.Module):
     def forward(self, x):
@@ -772,7 +802,6 @@ def print_network(net):
         num_params += param.numel()
     print(net)
     print('Total number of parameters: %d' % num_params)
-
 
 def get_norm_layer(norm_type = 'instance'):
     if norm_type == 'batch':
@@ -1133,7 +1162,7 @@ class UnetGenerator(nn.Module):
 
 class UnetGenerator_v2(nn.Module):
     def __init__(self, input_nc, output_nc, num_downs, ngf=64,
-                 norm_layer=nn.BatchNorm2d, use_dropout=False, gpu_ids=[]):
+                 norm_layer=nn.BatchNorm2d, use_dropout=False, gpu_ids=[], max_nf=512):
         super(UnetGenerator_v2, self).__init__()
         self.gpu_ids = gpu_ids
         if type(norm_layer) == functools.partial:
@@ -1141,13 +1170,19 @@ class UnetGenerator_v2(nn.Module):
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
         # construct unet structure
-        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer, innermost=True)
-        for i in range(num_downs - 4):
-            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout)
-        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(ngf * 1, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-
+        # unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=None, norm_layer=norm_layer, innermost=True)
+        # for i in range(num_downs - 4):
+        #     unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout)
+        # unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+        # unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+        # unet_block = UnetSkipConnectionBlock(ngf * 1, ngf * 2, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
+        
+        unet_block = None
+        for l in range(num_downs)[::-1]:
+            outer_nc = min(max_nf, ngf*2**l)
+            inner_nc = min(max_nf, ngf*2**(l+1))
+            innermost = (l==num_downs-1)
+            unet_block = UnetSkipConnectionBlock(outer_nc, input_nc, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout, innermost=innermost)
         # self.model = unet_block
         model = [
             nn.Conv2d(input_nc, ngf, kernel_size=7, padding=3, bias=use_bias),
@@ -1652,7 +1687,6 @@ class VUnetResidualBlock(nn.Module):
         out = x + residual
         return out
 
-
 class VariationalUnet(nn.Module):
     def __init__(self, input_nc_dec, input_nc_enc, output_nc, nf, max_nf, input_size, n_latent_scales, bottleneck_factor, box_factor, n_residual_blocks, norm_layer, activation, use_dropout, gpu_ids):
         super(VariationalUnet, self).__init__()
@@ -2040,7 +2074,6 @@ class VariationalUnet(nn.Module):
             else:
                 raise NotImplementedError()
 
-
 class VariationalAutoEncoder(nn.Module):
     def __init__(self, input_nc, output_nc, nf, max_nf, latent_nf, input_size, bottleneck_factor, n_residual_blocks, norm_layer, activation, use_dropout, gpu_ids):
         super(VariationalAutoEncoder, self).__init__()
@@ -2160,7 +2193,6 @@ class VariationalAutoEncoder(nn.Module):
             else:
                 raise Exception('invalid mode "%s"' % mode)
 
-
 class VUnetLatentTransformer(nn.Module):
     '''
     Transformer network to connect:
@@ -2276,6 +2308,86 @@ class VUnetLatentTransformer(nn.Module):
                 return self.decode(input)
             else:
                 raise Exception('invalid mode "%s"'%mode)
+
+class LocalEncoder(nn.Module):
+    def __init__(self, n_patch, input_nc, output_nc, nf, max_nf, input_size, bottleneck_factor, n_residual_blocks, norm_layer, activation, use_dropout, gpu_ids):
+        super(LocalEncoder, self).__init__()
+        self.gpu_ids = gpu_ids
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.n_patch = n_patch
+        self.n_scales = 1 + int(np.round(np.log2(input_size))) - bottleneck_factor
+        self.input_size = input_size
+        if type(norm_layer) == functools.partial:
+            self.use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            self.use_bias = norm_layer == nn.InstanceNorm2d
+
+        # define encoder
+        c_in = nf
+        encoder_layers = [
+            nn.Conv2d(input_nc, c_in, kernel_size=1)]
+        for l in range(self.n_scales):
+            spatial_shape = self.input_size // 2**l
+            nl = None if spatial_shape == 1 else norm_layer
+            for i in range(n_residual_blocks):
+                encoder_layers.append(VUnetResidualBlock(c_in, 0, nl, self.use_bias, activation, use_dropout))
+            if l + 1 < self.n_scales:
+                # downsample
+                c_out = min(2*c_in, max_nf)
+                if spatial_shape <= 2:
+                    encoder_layers += [
+                        activation,
+                        nn.Conv2d(c_in, c_out, kernel_size=3, stride=2, padding=1, bias=True)]
+                else:
+                    encoder_layers += [
+                        activation,
+                        nn.Conv2d(c_in, c_out, kernel_size=3, stride=2, padding=1, bias=self.use_bias),
+                        norm_layer(c_out)]
+                c_in = c_out
+            else:
+                encoder_layers += [
+                    activation,
+                    nn.Conv2d(c_in, output_nc, kernel_size=spatial_shape)]
+        self.encoder = nn.Sequential(*encoder_layers)
+        # define reducer
+        self.reducer = nn.Conv2d(n_patch*output_nc, output_nc, kernel_size=1)
+
+    def reconstruct(self, patch_feat, joint_tar):
+        '''
+        reconstruct spatial structure using local embedding and target pose (joint point heatmap)
+        Input:
+            patch_feat: (bsz, n_patch, c, 1, 1)
+            joint_tar: (bsz, n_patch, H, W)
+        Output:
+            rec_map: (bsz, n_patch*c, H, W)
+        '''
+        rec_map = []
+        for i in range(self.n_patch):
+            rec_map.append(patch_feat[:,i] * joint_tar[:,i:(i+1)])
+        rec_map = torch.cat(rec_map, dim=1)
+        return rec_map
+        
+
+
+    def forward(self, patches, joint_tar, single_device=False):
+        '''
+        Inputs:
+            patches: [bsz, n_patch, c, h_p, w_p]
+            joint_tar: [bsz, n_patch, h, w]
+        '''
+        if len(self.gpu_ids)>1 and not single_device:
+            return nn.parallel.data_parallel(self, (patches, joint_tar), module_kwargs={'single_device':True})
+        else:
+            bsz, n_patch, c, h, w = patches.size()
+            assert n_patch == self.n_patch            
+            patches = patches.view(bsz*n_patch, c, h, w)
+            patch_feat = self.encoder(patches) # (bsz*n_patch, output_dim, 1, 1)
+            patch_feat = patch_feat.view(bsz, n_patch, self.output_nc, 1, 1)
+            rec_map = self.reconstruct(patch_feat, joint_tar) # (bsz, n_patch*output_dim, h, w)
+            rec_map = self.reducer(rec_map) # (bsz, output_dim, h, w)
+
+            return rec_map
 
 
 ###############################################################################

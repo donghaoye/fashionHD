@@ -18,25 +18,61 @@ from collections import OrderedDict
 import argparse
 import util.io as io
 
-class VUnetPoseTransferModel(BaseModel):
+class TwoStagePoseTransferModel(BaseModel):
     def name(self):
-        return 'VUnetPoseTransferModel'
+        return 'TwoStagePoseTransferModel'
+
+    def _create_stage_1_net(self, opt):
+        '''
+        stage-1 network should be a pretrained pose transfer model.
+        assume it is a vunet for now
+        '''
+        # load options
+        opt_s1 = argparse.Namespace()
+        dict_opt_s1 = io.load_json(os.path.join('checkpoints', opt.which_model_stage_1, 'train_opt.json'))
+        opt_s1.__dict__.update(dict_opt_s1)
+        self.opt_s1 = opt_s1
+        # create model
+        if opt_s1.which_model_T == 'vunet':
+            self.netT_s1 = networks.VariationalUnet(
+                input_nc_dec = self.get_pose_dim(opt_s1.pose_type),
+                input_nc_enc = self.get_appearance_dim(opt_s1.appearance_type),
+                output_nc = 3,
+                nf = opt_s1.vunet_nf,
+                max_nf = opt_s1.vunet_max_nf,
+                input_size = opt_s1.fine_size,
+                n_latent_scales = opt_s1.vunet_n_latent_scales,
+                bottleneck_factor = opt_s1.vunet_bottleneck_factor,
+                box_factor = opt_s1.vunet_box_factor,
+                n_residual_blocks = 2,
+                norm_layer = networks.get_norm_layer(opt_s1.norm),
+                activation = nn.ReLU(False),
+                use_dropout = False,
+                gpu_ids = opt.gpu_ids,
+                )
+            if opt.gpu_ids:
+                self.netT_s1.cuda()
+        else:
+            raise NotImplementedError()
 
     def initialize(self, opt):
-        super(VUnetPoseTransferModel, self).initialize(opt)
+        super(TwoStagePoseTransferModel, self).initialize(opt)
         ###################################
-        # define transformer
+        # load pretrained stage-1 (coarse) network
         ###################################
-        self.netT = networks.VariationalUnet(
-            input_nc_dec = self.get_pose_dim(opt.pose_type),
-            input_nc_enc = self.get_appearance_dim(opt.appearance_type),
-            output_nc = 3,
-            nf = opt.vunet_nf,
-            max_nf = opt.vunet_max_nf,
-            input_size = opt.fine_size,
-            n_latent_scales = opt.vunet_n_latent_scales,
-            bottleneck_factor = opt.vunet_bottleneck_factor,
-            box_factor = opt.vunet_box_factor,
+        self._create_stage_1_net(opt)
+        ###################################
+        # define stage-2 (refine) network
+        ###################################
+        # local patch encoder
+        self.netT_s2e = networks.LocalEncoder(
+            n_patch = len(opt.patch_indices),
+            input_nc = 3,
+            output_nc = opt.s2e_nof,
+            nf = opt.s2e_nf,
+            max_nf = opt.s2e_max_nf,
+            input_size = opt.patch_size,
+            bottleneck_factor = opt.s2e_bottleneck_factor,
             n_residual_blocks = 2,
             norm_layer = networks.get_norm_layer(opt.norm),
             activation = nn.ReLU(False),
@@ -44,24 +80,62 @@ class VUnetPoseTransferModel(BaseModel):
             gpu_ids = opt.gpu_ids,
             )
         if opt.gpu_ids:
-            self.netT.cuda()
-        networks.init_weights(self.netT, init_type=opt.init_type)
+            self.netT_s2e.cuda()
+        # decoder
+        if self.opt.which_model_s2d == 'resnet':
+            self.netT_s2d = networks.ResnetGenerator(
+                input_nc = 3 + opt.s2e_nof,
+                output_nc = 3,
+                ngf = opt.s2d_nf,
+                norm_layer = networks.get_norm_layer(opt.norm),
+                activation = nn.ReLU,
+                use_dropout = False,
+                n_blocks = opt.s2d_nblocks,
+                gpu_ids = opt.gpu_ids,
+                )
+        elif self.opt.which_model_s2d == 'unet':
+            self.netT_s2d = networks.UnetGenerator_v2(
+                input_nc = 3 + opt.s2e_nof,
+                output_nc = 3,
+                num_downs = 8,
+                ngf = opt.s2d_nf,
+                max_nf = opt.s2d_nf*2**3,
+                norm_layer = networks.get_norm_layer(opt.norm),
+                use_dropout = False,
+                gpu_ids = opt.gpu_ids,
+                )
+        else:
+            raise NotImplementedError()
+        if opt.gpu_ids:
+            self.netT_s2d.cuda()
         ###################################
         # define discriminator
         ###################################
         self.use_GAN = self.is_train and opt.loss_weight_gan > 0
         if self.use_GAN:
             self.netD = networks.define_D_from_params(
-                input_nc=3+self.get_pose_dim(opt.pose_type) if opt.D_cond else 3,
-                ndf=opt.D_nf,
-                which_model_netD='n_layers',
-                n_layers_D=3,
-                norm=opt.norm,
-                which_gan=opt.which_gan,
-                init_type=opt.init_type,
-                gpu_ids=opt.gpu_ids)
+                input_nc = 3 + self.get_pose_dim(opt.pose_type) if opt.D_cond else 3,
+                ndf = opt.D_nf,
+                which_model_netD = 'n_layers',
+                n_layers_D = 3,
+                norm = opt.norm,
+                which_gan = opt.which_gan,
+                init_type = opt.init_type,
+                gpu_ids = opt.gpu_ids
+                )
         else:
             self.netD = None
+        ###################################
+        # init/load model
+        ###################################
+        if self.is_train:
+            self.load_network(self.netT_s1, 'netT', 'latest', self.opt_s1.id)
+            networks.init_weights(self.netT_s2e, init_type=opt.init_type)
+            networks.init_weights(self.netT_s2d, init_type=opt.init_type)
+        else:
+            self.load_network(self.netT_s1, 'netT_s1', opt.which_epoch)
+            self.load_network(self.netT_s2e, 'netT_s2e', opt.which_epoch)
+            self.load_network(self.netT_s2d, 'netT_s2d', opt.which_epoch)
         ###################################
         # loss functions
         ###################################
@@ -70,27 +144,28 @@ class VUnetPoseTransferModel(BaseModel):
 
         if self.is_train:
             self.schedulers = []
-            self.optimizers =[]
+            self.optimizers = []
             self.crit_L1 = nn.L1Loss()
             self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
-            # self.crit_vgg_old = networks.VGGLoss(self.gpu_ids)
-            self.optim = torch.optim.Adam(self.netT.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
-            self.optimizers += [self.optim]
+
+            self.optim = torch.optim.Adam([
+                    {'params': self.netT_s2e.parameters()},
+                    {'params': self.netT_s2d.parameters()}
+                ], lr=opt.lr, betas=(opt.beta1, opt.beta2))
+            self.optimizers.append(self.optim)
+
+            if opt.train_s1:
+                self.optim_s1 = torch.optim.Adam(self.netT_s1.parameters(), lr=opt.lr_s1, betas=(opt.beta1, opt.beta2))
+                self.optimizers.append(self.optim_s1)
 
             if self.use_GAN:
                 self.crit_GAN = networks.GANLoss(use_lsgan=opt.which_gan=='lsgan', tensor=self.Tensor)
                 self.optim_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr_D, betas=(opt.beta1, opt.beta2))
                 self.optimizers.append(self.optim_D)
-            # todo: add pose loss
+                self.fake_pool = ImagePool(opt.pool_size)
+
             for optim in self.optimizers:
                 self.schedulers.append(networks.get_scheduler(optim, opt))
-            self.fake_pool = ImagePool(opt.pool_size)
-
-        ###################################
-        # load trained model
-        ###################################
-        if not self.is_train:
-            self.load_network(self.netT, 'netT', opt.which_epoch)
 
     def set_input(self, data):
         input_list = [
@@ -118,36 +193,52 @@ class VUnetPoseTransferModel(BaseModel):
         self.input['joint_c_1'] = data['joint_c_1']
         self.input['joint_c_2'] = data['joint_c_2']
 
-    def compute_kl_loss(self, ps, qs):
-        assert len(ps) == len(qs)
-        kl_loss = 0
-        for p, q in zip(ps, qs):
-            kl_loss += self.netT.latent_kl(p, q)
-        return kl_loss
-
     def forward(self, mode='train'):
         ''' mode in {'train', 'transfer'} '''
+        ######################################
+        # set reference/target index
+        ######################################
         if self.opt.supervised or mode == 'transfer':
-            appr_ref = self.get_appearance(self.opt.appearance_type, index='1')
-            pose_ref = self.get_pose(self.opt.pose_type, index='1')
-            pose_tar = self.get_pose(self.opt.pose_type, index='2')
-            img_tar = self.input['img_2']
-            # for visualization
-            self.output['joint_tar'] = self.input['joint_2']
-            self.output['joint_c_tar'] = self.input['joint_c_2']
-            self.output['stickman_tar'] = self.input['stickman_2']
+            ref_idx = '1'
+            tar_idx = '2'
         else:
-            appr_ref = self.get_appearance(self.opt.appearance_type, index='1')
-            pose_ref = pose_tar = self.get_pose(self.opt.pose_type, index='1')
-            img_tar = self.input['img_1']
-            # for visualization
-            self.output['joint_tar'] = self.input['joint_1']
-            self.output['joint_c_tar'] = self.input['joint_c_1']
-            self.output['stickman_tar'] = self.input['stickman_1']
+            ref_idx = '1'
+            tar_idx = '1'
 
-        self.output['img_out'], self.output['ps'], self.output['qs'] = self.netT(appr_ref, pose_ref, pose_tar, mode)
-        self.output['img_tar'] = img_tar
-        self.output['pose_tar'] = pose_tar
+        ######################################
+        # stage-1
+        ######################################
+        appr_ref_s1 = self.get_appearance(self.opt_s1.appearance_type, index=ref_idx)
+        pose_ref_s1 = self.get_pose(self.opt_s1.pose_type, index=ref_idx)
+        pose_tar_s1 = self.get_pose(self.opt_s1.pose_type, index=tar_idx)
+
+        if self.opt.train_s1 and self.is_train:
+            self.output['img_out_s1'], self.output['ps_s1'], self.output['qs_s1'] = self.netT_s1(appr_ref_s1, pose_ref_s1, pose_tar_s1, mode=mode)
+        else:
+            with torch.no_grad():
+                self.output['img_out_s1'], self.output['ps_s1'], self.output['qs_s1'] = self.netT_s1(appr_ref_s1, pose_ref_s1, pose_tar_s1, mode=mode)
+        ######################################
+        # stage-2
+        ######################################
+        img_ref = self.input['img_%s'%ref_idx]
+        joint_c_ref = self.input['joint_c_%s'%ref_idx]
+        joint_tar = self.get_pose(pose_type='joint', index=tar_idx)
+        # encoder
+        patch_ref = self.get_patch(img_ref, joint_c_ref, self.opt.patch_size, self.opt.patch_indices)
+        patch_ref = torch.stack(patch_ref, dim=1)
+        local_feat = self.netT_s2e(patch_ref, joint_tar)
+        # decoder
+        dec_input = torch.cat((self.output['img_out_s1'], local_feat), dim=1)
+        self.output['img_out_res'] = self.netT_s2d(dec_input)
+        self.output['img_out'] = self.output['img_out_s1'] + self.output['img_out_res']
+        ######################################
+        # other
+        ######################################
+        self.output['img_tar'] = self.input['img_%s'%tar_idx]
+        self.output['pose_tar'] = self.get_pose(self.opt.pose_type, index=tar_idx)
+        self.output['joint_tar'] = self.input['joint_%s'%tar_idx]
+        self.output['joint_c_tar'] = self.input['joint_c_%s'%tar_idx]
+        self.output['stickman_tar'] = self.input['stickman_%s'%tar_idx]
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
         self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
 
@@ -166,7 +257,7 @@ class VUnetPoseTransferModel(BaseModel):
                 else:
                     D_input_fake = self.output['img_out'].detach()
                     D_input_real = self.output['img_tar']
-                
+
                 D_input_fake = self.fake_pool.query(D_input_fake.data)
                 loss_D_fake = self.crit_GAN(self.netD(D_input_fake), False)
                 loss_D_real = self.crit_GAN(self.netD(D_input_real), True)
@@ -177,20 +268,18 @@ class VUnetPoseTransferModel(BaseModel):
                 else:
                     D_input = self.output['img_out']
                 self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
-            # KL
-            self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
+            # KL: Add if using VAE model
             # L1
             self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
-            # content & style
-            if self.opt.loss_weight_style > 0:
-                self.output['output_content'], self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'all')
-            else:
+            # content
+            if self.opt.loss_weight_content > 0:
                 self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
-
-            # patch style
+            # style
+            if self.opt.loss_weight_style > 0:
+                self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
+            # local style
             if self.opt.loss_weight_patch_style > 0:
-                self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
-        
+                self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
 
     def backward_D(self):
         if self.opt.D_cond:
@@ -210,22 +299,20 @@ class VUnetPoseTransferModel(BaseModel):
     def backward(self):
         loss = 0
         # KL
-        self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
-        loss += self.output['loss_kl'] * self.opt.loss_weight_kl
         # L1
         self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
-        # content & style
-        if self.opt.loss_weight_style > 0:
-            self.output['loss_content'], self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'all')
-            loss += self.output['loss_content'] * self.opt.loss_weight_content
-            loss += self.output['loss_style'] * self.opt.loss_weight_style
-        else:
+        # content
+        if self.opt.loss_weight_content > 0:
             self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
             loss += self.output['loss_content'] * self.opt.loss_weight_content
-        # patch style
+        # style
+        if self.opt.loss_weight_style > 0:
+            self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
+            loss += self.output['loss_style'] * self.opt.loss_weight_style
+        # local style
         if self.opt.loss_weight_patch_style > 0:
-            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
             loss += self.output['loss_patch_style'] * self.opt.loss_weight_patch_style
         # GAN
         if self.use_GAN:
@@ -258,7 +345,7 @@ class VUnetPoseTransferModel(BaseModel):
             grad = self.output['img_out'].grad.clone()
         # patch style 
         if self.opt.loss_weight_patch_style > 0:
-            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
             (self.output['loss_patch_style'] * self.opt.loss_weight_patch_style).backward(retain_graph=True)
             self.output['grad_patch_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
@@ -269,12 +356,8 @@ class VUnetPoseTransferModel(BaseModel):
             else:
                 D_input = self.output['img_out']
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
-            (self.output['loss_G'] * self.opt.loss_weight_gan).backward(retain_graph=True)
-            self.output['grad_gan'] = (self.output['img_out'].grad - grad).norm()
-        # KL 
-        self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
-        (self.output['loss_kl'] * self.opt.loss_weight_kl).backward()
-
+            (self.output['loss_G'] * self.opt.loss_weight_gan).backward()
+        
     def optimize_parameters(self, check_grad=False):
         # clear previous output
         self.output = {}
@@ -289,7 +372,6 @@ class VUnetPoseTransferModel(BaseModel):
         else:
             self.backward()
         self.optim.step()
-
 
     def get_pose_dim(self, pose_type):
         dim = 0
@@ -352,7 +434,7 @@ class VUnetPoseTransferModel(BaseModel):
         appr = torch.cat(appr, dim=1)
         return appr
 
-    def get_patch(self, images, coords, patch_size=32):
+    def get_patch(self, images, coords, patch_size=32, patch_indices=None):
         '''
         image_batch: images (bsz, c, h, w)
         coord: coordinates of joint points (bsz, 18, 2)
@@ -360,10 +442,11 @@ class VUnetPoseTransferModel(BaseModel):
         bsz, c, h, w = images.size()
 
         # use 0-None for face area, ignore [14-REye, 15-LEye, 16-REar, 17-LEar]
-        joint_index = [1,2,3,4,5,6,7,8,9,10,11,12,13]
-        patches = []
+        if patch_indices is None:
+            patch_indices = self.opt.patch_indices
 
-        for i in joint_index:
+        patches = []
+        for i in patch_indices:
             patch = []
             for j in range(bsz):
                 img = images[j]
@@ -390,8 +473,8 @@ class VUnetPoseTransferModel(BaseModel):
             patch = torch.cat(patch, dim=0)
             patches.append(patch)
         return patches
-    
-    def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32):
+
+    def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32, patch_indices=None):
         '''
         images_1: (bsz, h, w, h)
         images_2: (bsz, h, w, h)
@@ -406,8 +489,8 @@ class VUnetPoseTransferModel(BaseModel):
         vc_1[c_invalid] = -1
         vc_2[c_invalid] = -1
         # get patches
-        patches_1 = self.get_patch(images_1, vc_1, patch_size) # list: [patch_c1, patch_c2, ...]
-        patches_2 = self.get_patch(images_2, vc_2, patch_size)
+        patches_1 = self.get_patch(images_1, vc_1, patch_size, patch_indices) # list: [patch_c1, patch_c2, ...]
+        patches_2 = self.get_patch(images_2, vc_2, patch_size, patch_indices)
         n_patch = len(patches_1)
         # compute style loss
         patches_1 = torch.cat(patches_1, dim=0)
@@ -443,13 +526,14 @@ class VUnetPoseTransferModel(BaseModel):
             ('joint_tar', [self.output['joint_tar'].data.cpu(), 'pose']),
             ('stickman_tar', [self.output['stickman_tar'].data.cpu(), 'rgb']),
             ('img_tar', [self.output['img_tar'].data.cpu(), 'rgb']),
+            ('img_out_s1', [self.output['img_out_s1'].data.cpu(), 'rgb']),
             ('img_out', [self.output['img_out'].data.cpu(), 'rgb']),
             ])
         return visuals
 
     def save(self, label):
-        self.save_network(self.netT, 'netT', label, self.gpu_ids)
+        self.save_network(self.netT_s1, 'netT_s1', label, self.gpu_ids)
+        self.save_network(self.netT_s2e, 'netT_s2e', label, self.gpu_ids)
+        self.save_network(self.netT_s2d, 'netT_s2d', label, self.gpu_ids)
         if self.use_GAN:
             self.save_network(self.netD, 'netD', label, self.gpu_ids)
-
-

@@ -22,12 +22,13 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--pose_type', type=str, default='joint', help='pose format, combination ("+") of [joint, stickman, seg]')
         parser.add_argument('--joint_radius', type=int, default=8, help='radius of joint map')
         parser.add_argument('--joint_mode', type=str, default='binary', choices=['binary', 'gaussian'])
-        parser.add_argument('--seg_bin_size', type=int, default=16, help='bin size of downsampled seg mask')        
+        parser.add_argument('--seg_bin_size', type=int, default=16, help='bin size of downsampled seg mask')
+        parser.add_argument('--patch_indices', type=int, default=[0,1,2,3,4,5,6,7,8,9,10,11,12,13], nargs='+', help='indices of joint points to extract patches. see misc.pose_util.py for details')
         parser.add_argument('--patch_size', type=int, default=32, help='size of the local pathch for computing style loss')
         ##############################
         # Transformer Setting
         ##############################
-        parser.add_argument('--which_model_T', type=str, default='vunet', choices=['unet', 'resnet', 'vunet'], help='pose transfer network architecture')
+        parser.add_argument('--which_model_T', type=str, default='2stage', choices=['2stage', 'unet', 'resnet', 'vunet'], help='pose transfer network architecture')
         parser.add_argument('--T_nf', type=int, default=64, help='output channel number of the first conv layer in netT')
         ##############################
         # Transformer Setting - VUnet
@@ -35,9 +36,20 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--vunet_nf', type=int, default=32, help='vunet setting: channel number of the first conv layer')
         parser.add_argument('--vunet_max_nf', type=int, default=128, help='vunet setting: max channel number of mid-level conv layers')
         parser.add_argument('--vunet_n_latent_scales', type=int, default=2, help='vunet setting: layer number of latent space')
-        parser.add_argument('--vunet_bottleneck_factor', type=int, default=2, help='vunet setting: the bottlenect resolution will be 2**vunet_bottleneck_factor')
-        parser.add_argument('--vunet_box_factor', type=int, default=2, help='vunet setting: the pose input will be ')
+        parser.add_argument('--vunet_bottleneck_factor', type=int, default=2, help='vunet setting: the bottleneck resolution will be 2**#')
+        parser.add_argument('--vunet_box_factor', type=int, default=2, help='vunet setting: the size of pose input will be reduced 2**# times')
         parser.add_argument('--vunet_activation', type=str, default='relu', choices=['relu', 'elu'], help='activation type')
+        ##############################
+        # Transformer Setting - 2stage
+        ##############################
+        parser.add_argument('--which_model_stage_1', type=str, default='PoseTransfer_4.7.8', help='pretrained pose transfer model as stage-1 network')
+        parser.add_argument('--which_model_s2d', type=str, default='resnet', choices=['resnet', 'unet'], help='stage-2 decoder architecture')
+        parser.add_argument('--s2e_nf', type=int, default=32, help='2-stage model setting: channel number of the first encoder conv layer')
+        parser.add_argument('--s2e_max_nf', type=int, default=128, help='2-stage model setting: max channel number of encoder conv layers')
+        parser.add_argument('--s2e_nof', type=int, default=32, help='2-stage model setting: local embedding dimension')
+        parser.add_argument('--s2e_bottleneck_factor', type=int, default=2, help='2-stage model setting: the bottleneck resolution will be 2**#')
+        parser.add_argument('--s2d_nf', type=int, default=64, help='2-stage model setting: channel number of the first decoder conv layer')
+        parser.add_argument('--s2d_nblocks', type=int, default=6, help='2-stage model setting: resnet blocks in decoder (see networks.ResnetGenerator)')
         ##############################
         # Discriminator Setting
         ##############################
@@ -98,6 +110,9 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--loss_weight_patch_style', type=float, default=0., help='set loss_weight_patch_style > 0 to enable patch style loss')
         parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
         parser.add_argument('--loss_weight_kl', type=float, default=1e-6, help='vunet setting: kl loss weight')
+        # train 2-stage model
+        parser.add_argument('--train_s1', type=int, default=0, choices=[0,1], help='set 1 to jointly train stage-1 and stage-2 networks')
+        parser.add_argument('--lr_s1', type=float, default=2e-5, help='initial learning rate for stage-1 net when joint training')
 
 class TestPoseTransferOptions(BasePoseTransferOptions):
     def initialize(self):

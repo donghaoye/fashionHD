@@ -229,6 +229,14 @@ def test_V3Model():
     visuals = model.get_current_visuals(mode = 'input')
     visualizer.visualize_image(1, subset='input', visuals=visuals)
 
+def test_TwoStagePoseTrasferModel():
+    from data.data_loader import CreateDataLoader
+    from options.pose_transfer_options import TrainPoseTransferOptions
+    from models.two_stage_pose_transfer_model import TwoStagePoseTrasferModel
+    opt = TrainPoseTransferOptions().parse()
+    model = TwoStagePoseTrasferModel()
+    model.initialize(opt)
+    # data = iter(CreateDataLoader(opt)).next()
 
 if __name__ == '__main__':
     # test_AttributeEncoder()
@@ -241,4 +249,5 @@ if __name__ == '__main__':
     # test_upsample_generator()
     # test_MultiModalDesignerGAN_V2()
     # test_UnetResidualGenerator()
-    test_V3Model()
+    # test_V3Model()
+    test_TwoStagePoseTrasferModel()

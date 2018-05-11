@@ -21,6 +21,9 @@ if opt.which_model_T in {'unet', 'resnet'}:
 elif opt.which_model_T == 'vunet':
     from models.vunet_pose_transfer_model import VUnetPoseTransferModel
     model = VUnetPoseTransferModel()
+elif opt.which_model_T == '2stage':
+    from models.two_stage_pose_transfer_model import TwoStagePoseTransferModel
+    model = TwoStagePoseTransferModel()
 else:
     raise NotImplementedError()
 
