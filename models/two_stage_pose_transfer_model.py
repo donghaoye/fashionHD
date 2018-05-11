@@ -357,6 +357,7 @@ class TwoStagePoseTransferModel(BaseModel):
                 D_input = self.output['img_out']
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             (self.output['loss_G'] * self.opt.loss_weight_gan).backward()
+            self.output['grad_gan'] = (self.output['img_out'].grad - grad).norm()
         
     def optimize_parameters(self, check_grad=False):
         # clear previous output

@@ -1182,7 +1182,7 @@ class UnetGenerator_v2(nn.Module):
             outer_nc = min(max_nf, ngf*2**l)
             inner_nc = min(max_nf, ngf*2**(l+1))
             innermost = (l==num_downs-1)
-            unet_block = UnetSkipConnectionBlock(outer_nc, input_nc, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout, innermost=innermost)
+            unet_block = UnetSkipConnectionBlock(outer_nc, inner_nc, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout, innermost=innermost)
         # self.model = unet_block
         model = [
             nn.Conv2d(input_nc, ngf, kernel_size=7, padding=3, bias=use_bias),

@@ -360,7 +360,7 @@ class VUnetPoseTransferModel(BaseModel):
         bsz, c, h, w = images.size()
 
         # use 0-None for face area, ignore [14-REye, 15-LEye, 16-REar, 17-LEar]
-        joint_index = [1,2,3,4,5,6,7,8,9,10,11,12,13]
+        joint_index = [0,1,2,3,4,5,6,7,8,9,10,11,12,13]
         patches = []
 
         for i in joint_index:
