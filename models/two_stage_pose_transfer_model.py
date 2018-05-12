@@ -529,6 +529,7 @@ class TwoStagePoseTransferModel(BaseModel):
             ('img_tar', [self.output['img_tar'].data.cpu(), 'rgb']),
             ('img_out_s1', [self.output['img_out_s1'].data.cpu(), 'rgb']),
             ('img_out', [self.output['img_out'].data.cpu(), 'rgb']),
+            ('img_out_res', [self.output['img_out_res'].data.cpu(), 'rgb']),
             ])
         return visuals
 
