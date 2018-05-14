@@ -30,7 +30,7 @@ class VUnetPoseTransferModel(BaseModel):
         self.netT = networks.VariationalUnet(
             input_nc_dec = self.get_pose_dim(opt.pose_type),
             input_nc_enc = self.get_appearance_dim(opt.appearance_type),
-            output_nc = 3,
+            output_nc = self.get_output_dim(opt.output_type),
             nf = opt.vunet_nf,
             max_nf = opt.vunet_max_nf,
             input_size = opt.fine_size,
@@ -72,7 +72,6 @@ class VUnetPoseTransferModel(BaseModel):
         if self.is_train:
             self.schedulers = []
             self.optimizers =[]
-            self.crit_L1 = nn.L1Loss()
             self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
             # self.crit_vgg_old = networks.VGGLoss(self.gpu_ids)
             self.optim = torch.optim.Adam(self.netT.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
@@ -129,29 +128,32 @@ class VUnetPoseTransferModel(BaseModel):
     def forward(self, mode='train'):
         ''' mode in {'train', 'transfer'} '''
         if self.opt.supervised or mode == 'transfer':
-            appr_ref = self.get_appearance(self.opt.appearance_type, index='1')
-            pose_ref = self.get_pose(self.opt.pose_type, index='1')
-            pose_tar = self.get_pose(self.opt.pose_type, index='2')
-            img_tar = self.input['img_2']
-            # for visualization
-            self.output['joint_tar'] = self.input['joint_2']
-            self.output['joint_c_tar'] = self.input['joint_c_2']
-            self.output['stickman_tar'] = self.input['stickman_2']
+            ref_idx = '1'
+            tar_idx = '2'
         else:
-            appr_ref = self.get_appearance(self.opt.appearance_type, index='1')
-            pose_ref = pose_tar = self.get_pose(self.opt.pose_type, index='1')
-            img_tar = self.input['img_1']
-            # for visualization
-            self.output['joint_tar'] = self.input['joint_1']
-            self.output['joint_c_tar'] = self.input['joint_c_1']
-            self.output['stickman_tar'] = self.input['stickman_1']
+            ref_idx = '1'
+            tar_idx = '1'
+        
+        appr_ref = self.get_appearance(self.opt.appearance_type, index=ref_idx)
+        pose_ref = self.get_pose(self.opt.pose_type, index=ref_idx)
+        pose_tar = self.get_pose(self.opt.pose_type, index=tar_idx)
+        img_tar = self.input['img_%s'%tar_idx]
+        self.output['joint_tar'] = self.input['joint_%s'%tar_idx]
+        self.output['joint_c_tar'] = self.input['joint_c_%s'%tar_idx]
+        self.output['stickman_tar'] = self.input['stickman_%s'%tar_idx]
+
 
         netT_output, self.output['ps'], self.output['qs'] = self.netT(appr_ref, pose_ref, pose_tar, mode)
-        self.output['img_out'] = F.tanh(netT_output)
+        netT_output = self.parse_output(netT_output, self.opt.output_type)
+        self.output['img_out'] = F.tanh(netT_output['image'])
         self.output['img_tar'] = img_tar
         self.output['pose_tar'] = pose_tar
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
         self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
+
+        if 'seg' in self.opt.output_type:
+            self.output['seg_out'] = netT_output['seg'] #(bsz, 7, h, w)
+            self.output['seg_tar'] = self.input['seg_%s'%tar_idx] #(bsz, h, w)
 
     def test(self, compute_loss=False):
         with torch.no_grad():
@@ -182,16 +184,20 @@ class VUnetPoseTransferModel(BaseModel):
             # KL
             self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
             # L1
-            self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
+            self.output['loss_L1'] = F.l1_loss(self.output['img_out'], self.output['img_tar'])
             # content & style
             if self.opt.loss_weight_style > 0:
                 self.output['output_content'], self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'all')
             else:
                 self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
-
             # patch style
             if self.opt.loss_weight_patch_style > 0:
                 self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
+
+            # seg
+            if 'seg' in self.opt.output_type:
+                self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.output['seg_tar'].squeeze(dim=1).long())
+
         
 
     def backward_D(self):
@@ -215,7 +221,7 @@ class VUnetPoseTransferModel(BaseModel):
         self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
         loss += self.output['loss_kl'] * self.opt.loss_weight_kl
         # L1
-        self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
+        self.output['loss_L1'] = F.l1_loss(self.output['img_out'], self.output['img_tar'])
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
         # content & style
         if self.opt.loss_weight_style > 0:
@@ -237,13 +243,19 @@ class VUnetPoseTransferModel(BaseModel):
                 D_input = self.output['img_out']
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             loss  += self.output['loss_G'] * self.opt.loss_weight_gan
+        # seg
+        if 'seg' in self.opt.output_type:
+            self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.output['seg_tar'].squeeze(dim=1).long())
+            loss += self.output['loss_seg'] * self.opt.loss_weight_seg
+
         loss.backward()
+
 
     def backward_checkgrad(self):
         self.output['img_out'].retain_grad()
         loss = 0
         # L1
-        self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
+        self.output['loss_L1'] = F.l1_loss(self.output['img_out'], self.output['img_tar'])
         (self.output['loss_L1'] * self.opt.loss_weight_L1).backward(retain_graph=True)
         self.output['grad_L1'] = self.output['img_out'].grad.norm()
         grad = self.output['img_out'].grad.clone()
@@ -273,7 +285,10 @@ class VUnetPoseTransferModel(BaseModel):
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             (self.output['loss_G'] * self.opt.loss_weight_gan).backward(retain_graph=True)
             self.output['grad_gan'] = (self.output['img_out'].grad - grad).norm()
-        # KL 
+        # seg
+        self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.output['seg_tar'].squeeze(dim=1).long())
+        (self.output['loss_seg'] * self.opt.loss_weight_seg).backward(retain_graph=True)
+        # KL
         self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
         (self.output['loss_kl'] * self.opt.loss_weight_kl).backward()
 
@@ -292,11 +307,38 @@ class VUnetPoseTransferModel(BaseModel):
             self.backward()
         self.optim.step()
 
+    def get_output_dim(self, output_type):
+        dim = 0
+        output_items = output_type.split('+')
+        for item in output_items:
+            if item == 'image':
+                dim += 3
+            elif item == 'seg':
+                dim += 7
+            else:
+                raise Exception('invalid output type %s'%item)
+        return dim
+
+    def parse_output(self, output, output_type):
+        assert output.size(1) == self.get_output_dim(output_type)
+        output_items = output_type.split('+')
+        output_items.sort()
+        i = 0
+        rst = {}
+        for item in output_items:
+            if item == 'image':
+                rst['image'] = output[:,i:(i+3)]
+                i += 3
+            elif item == 'seg':
+                rst['seg'] = output[:,i:(i+7)]
+                i += 7
+            else:
+                raise Exception('invalid output type %s'%item)
+        return rst
 
     def get_pose_dim(self, pose_type):
         dim = 0
         pose_items = pose_type.split('+')
-        pose_items.sort()
         for item in pose_items:
             if item == 'joint':
                 dim += 18
@@ -432,7 +474,7 @@ class VUnetPoseTransferModel(BaseModel):
         return loss_patch_style
 
     def get_current_errors(self):
-        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_patch_style', 'loss_kl', 'loss_G', 'loss_D', 'grad_L1', 'grad_content', 'grad_style', 'grad_patch_style', 'grad_gan']
+        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_patch_style', 'loss_kl', 'loss_G', 'loss_D', 'loss_seg', 'grad_L1', 'grad_content', 'grad_style', 'grad_patch_style', 'grad_gan']
         errors = OrderedDict()
         for item in error_list:
             if item in self.output:
@@ -447,6 +489,9 @@ class VUnetPoseTransferModel(BaseModel):
             ('img_tar', [self.output['img_tar'].data.cpu(), 'rgb']),
             ('img_out', [self.output['img_out'].data.cpu(), 'rgb']),
             ])
+        if 'seg' in self.opt.output_type:
+            visuals['seg_out'] = [self.output['seg_out'], 'seg']
+            visuals['seg_tar'] = [self.output['seg_tar'], 'seg']
         return visuals
 
     def save(self, label):
