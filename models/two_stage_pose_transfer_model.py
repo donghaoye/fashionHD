@@ -49,6 +49,7 @@ class TwoStagePoseTransferModel(BaseModel):
                 activation = nn.ReLU(False),
                 use_dropout = False,
                 gpu_ids = opt.gpu_ids,
+                output_tanh = False,
                 )
             if opt.gpu_ids:
                 self.netT_s1.cuda()
@@ -92,6 +93,7 @@ class TwoStagePoseTransferModel(BaseModel):
                 use_dropout = False,
                 n_blocks = opt.s2d_nblocks,
                 gpu_ids = opt.gpu_ids,
+                
                 )
         elif self.opt.which_model_s2d == 'unet':
             self.netT_s2d = networks.UnetGenerator_v2(
@@ -212,11 +214,12 @@ class TwoStagePoseTransferModel(BaseModel):
         pose_ref_s1 = self.get_pose(self.opt_s1.pose_type, index=ref_idx)
         pose_tar_s1 = self.get_pose(self.opt_s1.pose_type, index=tar_idx)
 
-        if self.opt.train_s1 and self.is_train:
-            self.output['img_out_s1'], self.output['ps_s1'], self.output['qs_s1'] = self.netT_s1(appr_ref_s1, pose_ref_s1, pose_tar_s1, mode=mode)
+        if self.is_train and self.opt.train_s1:
+            output_s1, self.output['ps_s1'], self.output['qs_s1'] = self.netT_s1(appr_ref_s1, pose_ref_s1, pose_tar_s1, mode=mode)
         else:
             with torch.no_grad():
-                self.output['img_out_s1'], self.output['ps_s1'], self.output['qs_s1'] = self.netT_s1(appr_ref_s1, pose_ref_s1, pose_tar_s1, mode=mode)
+                output_s1, self.output['ps_s1'], self.output['qs_s1'] = self.netT_s1(appr_ref_s1, pose_ref_s1, pose_tar_s1, mode=mode)
+        self.output['img_out_s1'] = F.tanh(output_s1)
         ######################################
         # stage-2
         ######################################
@@ -229,8 +232,9 @@ class TwoStagePoseTransferModel(BaseModel):
         local_feat = self.netT_s2e(patch_ref, joint_tar)
         # decoder
         dec_input = torch.cat((self.output['img_out_s1'], local_feat), dim=1)
-        self.output['img_out_res'] = self.netT_s2d(dec_input)
-        self.output['img_out'] = self.output['img_out_s1'] + self.output['img_out_res']
+        output_s2 = self.netT_s2d(dec_input)
+        self.output['img_out'] = F.tanh(output_s1 + output_s2)
+        self.output['img_out_res'] = self.output['img_out'] - self.output['img_out_s1']
         ######################################
         # other
         ######################################

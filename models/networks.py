@@ -862,13 +862,14 @@ class ResnetBlock(nn.Module):
         print('ResnetBlock: x_dim=%d'%self.dim)
 
 class ResnetGenerator(nn.Module):
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, activation = nn.ReLU, use_dropout=False, n_blocks=6, gpu_ids=[], padding_type='reflect'):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, activation = nn.ReLU, use_dropout=False, n_blocks=6, gpu_ids=[], padding_type='reflect', output_tanh=True):
         assert(n_blocks >= 0)
         super(ResnetGenerator, self).__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.ngf = ngf
         self.gpu_ids = gpu_ids
+        self.output_tanh = output_tanh
 
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
@@ -904,7 +905,8 @@ class ResnetGenerator(nn.Module):
 
         model += [nn.ReflectionPad2d(3)]
         model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
-        model += [nn.Tanh()]
+        if output_tanh:
+            model += [nn.Tanh()]
 
         self.model = nn.Sequential(*model)
 
@@ -1162,9 +1164,10 @@ class UnetGenerator(nn.Module):
 
 class UnetGenerator_v2(nn.Module):
     def __init__(self, input_nc, output_nc, num_downs, ngf=64,
-                 norm_layer=nn.BatchNorm2d, use_dropout=False, gpu_ids=[], max_nf=512):
+                 norm_layer=nn.BatchNorm2d, use_dropout=False, gpu_ids=[], max_nf=512, output_tanh=True):
         super(UnetGenerator_v2, self).__init__()
         self.gpu_ids = gpu_ids
+        self.output_tanh = output_tanh
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
@@ -1189,9 +1192,9 @@ class UnetGenerator_v2(nn.Module):
             norm_layer(ngf),
             unet_block,
             nn.ReLU(True),
-            nn.Conv2d(2*ngf, output_nc, kernel_size=7, padding=3),
-            nn.Tanh()
-        ]
+            nn.Conv2d(2*ngf, output_nc, kernel_size=7, padding=3)]
+        if output_tanh:
+            model.append(nn.Tanh())
 
         self.model = nn.Sequential(*model)
 
@@ -1688,7 +1691,7 @@ class VUnetResidualBlock(nn.Module):
         return out
 
 class VariationalUnet(nn.Module):
-    def __init__(self, input_nc_dec, input_nc_enc, output_nc, nf, max_nf, input_size, n_latent_scales, bottleneck_factor, box_factor, n_residual_blocks, norm_layer, activation, use_dropout, gpu_ids):
+    def __init__(self, input_nc_dec, input_nc_enc, output_nc, nf, max_nf, input_size, n_latent_scales, bottleneck_factor, box_factor, n_residual_blocks, norm_layer, activation, use_dropout, gpu_ids, output_tanh=True):
         super(VariationalUnet, self).__init__()
         self.gpu_ids = gpu_ids
         self.output_nc = output_nc
@@ -1704,6 +1707,7 @@ class VariationalUnet(nn.Module):
         self.bottleneck_factor = bottleneck_factor
         self.box_factor = box_factor
         self.n_residual_blocks = n_residual_blocks
+        self.output_tanh = output_tanh
 
         if type(norm_layer) == functools.partial:
             self.use_bias = norm_layer.func == nn.InstanceNorm2d
@@ -1831,11 +1835,12 @@ class VariationalUnet(nn.Module):
                 self.__setattr__('dec_down_%d_upsample'%l, upsample)
                 c_in = c_out
         # define final decode layer
-        self.dec_output = nn.Sequential(
+        dec_output = [
             nn.ReflectionPad2d(3),
-            nn.Conv2d(c_in, output_nc, kernel_size=7, padding=0, bias=True),
-            nn.Tanh()
-            )
+            nn.Conv2d(c_in, output_nc, kernel_size=7, padding=0, bias=True)]
+        if output_tanh:
+            dec_output.append(nn.Tanh())
+        self.dec_output = nn.Sequential(*dec_output)
 
     def enc_up(self, x, c):
         '''
@@ -2075,7 +2080,7 @@ class VariationalUnet(nn.Module):
                 raise NotImplementedError()
 
 class VariationalAutoEncoder(nn.Module):
-    def __init__(self, input_nc, output_nc, nf, max_nf, latent_nf, input_size, bottleneck_factor, n_residual_blocks, norm_layer, activation, use_dropout, gpu_ids):
+    def __init__(self, input_nc, output_nc, nf, max_nf, latent_nf, input_size, bottleneck_factor, n_residual_blocks, norm_layer, activation, use_dropout, gpu_ids, output_tanh=True):
         super(VariationalAutoEncoder, self).__init__()
         self.gpu_ids = gpu_ids
         self.input_nc = input_nc
@@ -2083,6 +2088,7 @@ class VariationalAutoEncoder(nn.Module):
         self.latent_nf = latent_nf
         self.n_scales = 1 + int(np.round(np.log2(input_size))) - bottleneck_factor
         self.input_size = input_size
+        self.output_tanh = output_tanh
         if type(norm_layer) == functools.partial:
             self.use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
@@ -2139,8 +2145,9 @@ class VariationalAutoEncoder(nn.Module):
                     norm_layer(c_out)]
         decoder_layers += [
             nn.ReflectionPad2d(3),
-            nn.Conv2d(c_in, output_nc, kernel_size=7, padding=0, bias=True),
-            nn.Tanh()]
+            nn.Conv2d(c_in, output_nc, kernel_size=7, padding=0, bias=True)]
+        if output_tanh:
+            decoder_layers.append(nn.Tanh())
         self.decoder = nn.Sequential(*decoder_layers)
 
     def encode(self, x):
@@ -2388,7 +2395,6 @@ class LocalEncoder(nn.Module):
             rec_map = self.reducer(rec_map) # (bsz, output_dim, h, w)
 
             return rec_map
-
 
 ###############################################################################
 # Feature Spatial Transformer

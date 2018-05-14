@@ -42,6 +42,7 @@ class VUnetPoseTransferModel(BaseModel):
             activation = nn.ReLU(False),
             use_dropout = False,
             gpu_ids = opt.gpu_ids,
+            output_tanh = False,
             )
         if opt.gpu_ids:
             self.netT.cuda()
@@ -145,7 +146,8 @@ class VUnetPoseTransferModel(BaseModel):
             self.output['joint_c_tar'] = self.input['joint_c_1']
             self.output['stickman_tar'] = self.input['stickman_1']
 
-        self.output['img_out'], self.output['ps'], self.output['qs'] = self.netT(appr_ref, pose_ref, pose_tar, mode)
+        netT_output, self.output['ps'], self.output['qs'] = self.netT(appr_ref, pose_ref, pose_tar, mode)
+        self.output['img_out'] = F.tanh(netT_output)
         self.output['img_tar'] = img_tar
         self.output['pose_tar'] = pose_tar
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
