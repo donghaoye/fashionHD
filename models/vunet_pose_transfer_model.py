@@ -286,8 +286,9 @@ class VUnetPoseTransferModel(BaseModel):
             (self.output['loss_G'] * self.opt.loss_weight_gan).backward(retain_graph=True)
             self.output['grad_gan'] = (self.output['img_out'].grad - grad).norm()
         # seg
-        self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.output['seg_tar'].squeeze(dim=1).long())
-        (self.output['loss_seg'] * self.opt.loss_weight_seg).backward(retain_graph=True)
+        if 'seg' in self.opt.output_type:
+            self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.output['seg_tar'].squeeze(dim=1).long())
+            (self.output['loss_seg'] * self.opt.loss_weight_seg).backward(retain_graph=True)
         # KL
         self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
         (self.output['loss_kl'] * self.opt.loss_weight_kl).backward()

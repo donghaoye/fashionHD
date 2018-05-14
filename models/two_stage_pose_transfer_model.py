@@ -37,7 +37,7 @@ class TwoStagePoseTransferModel(BaseModel):
             self.netT_s1 = networks.VariationalUnet(
                 input_nc_dec = self.get_pose_dim(opt_s1.pose_type),
                 input_nc_enc = self.get_appearance_dim(opt_s1.appearance_type),
-                output_nc = 3,
+                output_nc = self.get_output_dim(opt_s1.output_type),
                 nf = opt_s1.vunet_nf,
                 max_nf = opt_s1.vunet_max_nf,
                 input_size = opt_s1.fine_size,
@@ -219,7 +219,9 @@ class TwoStagePoseTransferModel(BaseModel):
         else:
             with torch.no_grad():
                 output_s1, self.output['ps_s1'], self.output['qs_s1'] = self.netT_s1(appr_ref_s1, pose_ref_s1, pose_tar_s1, mode=mode)
-        self.output['img_out_s1'] = F.tanh(output_s1)
+
+        output_s1 = self.parse_output(output_s1, self.opt_s1.output_type)
+        self.output['img_out_s1'] = F.tanh(output_s1['image'])
         ######################################
         # stage-2
         ######################################
@@ -233,7 +235,7 @@ class TwoStagePoseTransferModel(BaseModel):
         # decoder
         dec_input = torch.cat((self.output['img_out_s1'], local_feat), dim=1)
         output_s2 = self.netT_s2d(dec_input)
-        self.output['img_out'] = F.tanh(output_s1 + output_s2)
+        self.output['img_out'] = F.tanh(output_s1['image'] + output_s2)
         self.output['img_out_res'] = self.output['img_out'] - self.output['img_out_s1']
         ######################################
         # other
@@ -377,6 +379,36 @@ class TwoStagePoseTransferModel(BaseModel):
         else:
             self.backward()
         self.optim.step()
+
+
+    def get_output_dim(self, output_type):
+        dim = 0
+        output_items = output_type.split('+')
+        for item in output_items:
+            if item == 'image':
+                dim += 3
+            elif item == 'seg':
+                dim += 7
+            else:
+                raise Exception('invalid output type %s'%item)
+        return dim
+
+    def parse_output(self, output, output_type):
+        assert output.size(1) == self.get_output_dim(output_type)
+        output_items = output_type.split('+')
+        output_items.sort()
+        i = 0
+        rst = {}
+        for item in output_items:
+            if item == 'image':
+                rst['image'] = output[:,i:(i+3)]
+                i += 3
+            elif item == 'seg':
+                rst['seg'] = output[:,i:(i+7)]
+                i += 7
+            else:
+                raise Exception('invalid output type %s'%item)
+        return rst
 
     def get_pose_dim(self, pose_type):
         dim = 0
