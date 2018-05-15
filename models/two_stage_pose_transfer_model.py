@@ -93,7 +93,7 @@ class TwoStagePoseTransferModel(BaseModel):
                 use_dropout = False,
                 n_blocks = opt.s2d_nblocks,
                 gpu_ids = opt.gpu_ids,
-                
+                output_tanh = False,
                 )
         elif self.opt.which_model_s2d == 'unet':
             self.netT_s2d = networks.UnetGenerator_v2(
@@ -105,6 +105,7 @@ class TwoStagePoseTransferModel(BaseModel):
                 norm_layer = networks.get_norm_layer(opt.norm),
                 use_dropout = False,
                 gpu_ids = opt.gpu_ids,
+                output_tanh = False,
                 )
         else:
             raise NotImplementedError()
@@ -245,6 +246,7 @@ class TwoStagePoseTransferModel(BaseModel):
         self.output['joint_tar'] = self.input['joint_%s'%tar_idx]
         self.output['joint_c_tar'] = self.input['joint_c_%s'%tar_idx]
         self.output['stickman_tar'] = self.input['stickman_%s'%tar_idx]
+        self.output['stickman_ref'] = self.input['stickman_%s'%ref_idx]
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
         self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
 
@@ -560,7 +562,7 @@ class TwoStagePoseTransferModel(BaseModel):
     def get_current_visuals(self):
         visuals = OrderedDict([
             ('img_ref', [self.input['img_1'].data.cpu(), 'rgb']),
-            ('joint_tar', [self.output['joint_tar'].data.cpu(), 'pose']),
+            ('stickman_ref', [self.output['stickman_ref'].data.cpu(), 'rgb']),
             ('stickman_tar', [self.output['stickman_tar'].data.cpu(), 'rgb']),
             ('img_tar', [self.output['img_tar'].data.cpu(), 'rgb']),
             ('img_out_s1', [self.output['img_out_s1'].data.cpu(), 'rgb']),

@@ -28,5 +28,5 @@ class LossBuffer():
         errors = OrderedDict()
         for k, buff in self.buffer.iteritems():
             errors[k] = np.mean(buff[-self.size::])
-
+        # print('[loss buffer] length: %d'%(len(buff[-self.size::])))
         return errors

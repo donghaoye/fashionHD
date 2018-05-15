@@ -84,7 +84,7 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
 
         for i, data in enumerate(train_loader):
             model.set_input(data)
-            model.test()
+            model.test(compute_loss=False)
             visuals = model.get_current_visuals()
             if train_visuals is None:
                 train_visuals = visuals
@@ -98,7 +98,7 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
         
         for i, data in enumerate(val_loader):
             model.set_input(data)
-            model.test()
+            model.test(compute_loss=False)
             visuals = model.get_current_visuals()
             if val_visuals is None:
                 val_visuals = visuals

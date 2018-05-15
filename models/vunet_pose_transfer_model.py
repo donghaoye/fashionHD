@@ -141,6 +141,7 @@ class VUnetPoseTransferModel(BaseModel):
         self.output['joint_tar'] = self.input['joint_%s'%tar_idx]
         self.output['joint_c_tar'] = self.input['joint_c_%s'%tar_idx]
         self.output['stickman_tar'] = self.input['stickman_%s'%tar_idx]
+        self.output['stickman_ref'] = self.input['stickman_%s'%ref_idx]
 
 
         netT_output, self.output['ps'], self.output['qs'] = self.netT(appr_ref, pose_ref, pose_tar, mode)
@@ -485,7 +486,7 @@ class VUnetPoseTransferModel(BaseModel):
     def get_current_visuals(self):
         visuals = OrderedDict([
             ('img_ref', [self.input['img_1'].data.cpu(), 'rgb']),
-            ('joint_tar', [self.output['joint_tar'].data.cpu(), 'pose']),
+            ('stickman_ref', [self.output['stickman_ref'].data.cpu(), 'rgb']),
             ('stickman_tar', [self.output['stickman_tar'].data.cpu(), 'rgb']),
             ('img_tar', [self.output['img_tar'].data.cpu(), 'rgb']),
             ('img_out', [self.output['img_out'].data.cpu(), 'rgb']),
