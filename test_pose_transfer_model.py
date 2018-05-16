@@ -54,7 +54,7 @@ for i, data in enumerate(val_loader):
         break
 
     model.set_input(data)
-    model.test(compute_loss=True)
+    model.test(compute_loss=False)
     loss_buffer.add(model.get_current_errors())
     print('\rTesting %d/%d (%.2f%%)' % (i, len(val_loader), 100.*i/len(val_loader)), end = '')
     sys.stdout.flush()

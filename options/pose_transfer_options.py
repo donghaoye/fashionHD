@@ -68,6 +68,7 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--seg_dir', type=str, default='Img/seg_df/')
         parser.add_argument('--fn_pose', type=str, default='Label/pose_label.pkl')
         parser.add_argument('--debug', action='store_true', help='debug')
+        parser.add_argument('--use_limb', type=int, default=0, choices=[0,1], help='get limb information from the dataset')
 
     def auto_set(self):
         super(BasePoseTransferOptions, self).auto_set()

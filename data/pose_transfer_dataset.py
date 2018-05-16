@@ -214,7 +214,7 @@ class PoseTransferDataset(BaseDataset):
         ######################
         # create limb crops
         ######################
-        if 'limb' in self.opt.appearance_type:
+        if 'limb' in self.opt.appearance_type or ('use_limb' in self.opt and self.opt.use_limb):
             o_h, o_w = img_1.shape[0:2]
             w = o_w // 2**self.opt.vunet_box_factor
             h = o_h // 2**self.opt.vunet_box_factor
