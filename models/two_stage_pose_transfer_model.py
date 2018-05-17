@@ -631,7 +631,8 @@ def show_patch():
     
     opt = TrainPoseTransferOptions().parse()
 
-    output_dir = 'temp/visualize_patch/%d/' % opt.patch_size
+    # output_dir = 'temp/visualize_patch/%d/' % opt.patch_size
+    output_dir = 'temp/visualize_patch/ext_1/'
     io.mkdir_if_missing(output_dir)
     
     loader = iter(CreateDataLoader(opt, 'test'))
@@ -662,7 +663,7 @@ def show_patch():
                 p = _tensor_to_numpy(patches[i][j][idx])
                 imageio.imwrite(fn_p, p)
 
-                x_c, y_c = joints[i][idx, j]
+                x_c, y_c = joints[i][idx, joint_idx]
                 if x_c > 0 and y_c > 0:
                     x_1, y_1 = x_c - opt.patch_size//2, y_c - opt.patch_size//2
                     x_2, y_2 = x_c + opt.patch_size//2, y_c + opt.patch_size//2

@@ -185,22 +185,20 @@ class PoseTransferDataset(BaseDataset):
 
     def extend_pose(self, joint_c):
         joint_ext = []
-        # body center
+        # extend keypoints on body
         x_l = self._get_center(joint_c[5][0], joint_c[11][0])
         x_r = self._get_center(joint_c[2][0], joint_c[8][0])
         y_t = self._get_center(joint_c[5][1], joint_c[2][1])
         y_b = self._get_center(joint_c[11][1], joint_c[8][1])
-
-        if x_l < 0 or x_r < 0 or y_t < 0 or y_b < 0:
-            p_body = [-1, -1]
-        else:
-            p_body = [0.5*(x_l+x_r), 0.5*(y_t+y_b)]
+        p_b0 = [0.5*(x_l+x_r), 0.5*(y_t+y_b)] if (x_l > 0 and x_r > 0 and y_t > 0 and y_b > 0) else [-1, -1]
+        p_b1 = [x_l, 0.5*(y_t+y_b)] if (x_l > 0 and y_t > 0 and y_b > 0) else [-1, -1]
+        p_b2 = [x_r, 0.5*(y_t+y_b)] if (x_l > 0 and y_t > 0 and y_b > 0) else [-1, -1]
+        p_b3 = [0.5*(x_l+x_r), y_b] if (x_l > 0 and x_r > 0 and y_b > 0) else [-1, -1]
         
-        joint_ext.append(p_body)
+        joint_ext += [p_b0, p_b1, p_b2, p_b3]
 
         return joint_c + joint_ext
-
-
+        
 
     def __getitem__(self, index):
         sid_1, sid_2 = self.id_list[index]
