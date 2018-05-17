@@ -190,15 +190,16 @@ class PoseTransferDataset(BaseDataset):
         x_r = self._get_center(joint_c[2][0], joint_c[8][0])
         y_t = self._get_center(joint_c[5][1], joint_c[2][1])
         y_b = self._get_center(joint_c[11][1], joint_c[8][1])
-        p_b0 = [0.5*(x_l+x_r), 0.5*(y_t+y_b)] if (x_l > 0 and x_r > 0 and y_t > 0 and y_b > 0) else [-1, -1]
-        p_b1 = [x_l, 0.5*(y_t+y_b)] if (x_l > 0 and y_t > 0 and y_b > 0) else [-1, -1]
-        p_b2 = [x_r, 0.5*(y_t+y_b)] if (x_l > 0 and y_t > 0 and y_b > 0) else [-1, -1]
-        p_b3 = [0.5*(x_l+x_r), y_b] if (x_l > 0 and x_r > 0 and y_b > 0) else [-1, -1]
+        p_b0 = [0.5*(x_l+x_r), 0.5*(y_t+y_b)] if (x_l > 0 and x_r > 0 and y_t > 0 and y_b > 0) else [-1, -1] #18
+        p_b1 = [x_l, 0.5*(y_t+y_b)] if (x_l > 0 and y_t > 0 and y_b > 0) else [-1, -1] #19
+        p_b2 = [x_r, 0.5*(y_t+y_b)] if (x_l > 0 and y_t > 0 and y_b > 0) else [-1, -1] #20
+        p_b3 = [0.5*(x_l+x_r), y_t] if (x_l > 0 and x_r > 0 and y_t > 0) else [-1, -1] #21
+        p_b4 = [0.5*(x_l+x_r), y_b] if (x_l > 0 and x_r > 0 and y_b > 0) else [-1, -1] #22
         
-        joint_ext += [p_b0, p_b1, p_b2, p_b3]
+        joint_ext += [p_b0, p_b1, p_b2, p_b3, p_b4]
 
         return joint_c + joint_ext
-        
+
 
     def __getitem__(self, index):
         sid_1, sid_2 = self.id_list[index]
