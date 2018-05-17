@@ -148,7 +148,6 @@ class TwoStagePoseTransferModel(BaseModel):
         if self.is_train:
             self.schedulers = []
             self.optimizers = []
-            self.crit_L1 = nn.L1Loss()
             self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
 
             self.optim = torch.optim.Adam([
@@ -250,6 +249,7 @@ class TwoStagePoseTransferModel(BaseModel):
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
         self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
 
+
     def test(self, compute_loss=False):
         with torch.no_grad():
             self.forward(mode='transfer')
@@ -278,16 +278,19 @@ class TwoStagePoseTransferModel(BaseModel):
                 self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             # KL: Add if using VAE model
             # L1
-            self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
+            self.output['loss_L1'] = F.l1_loss(self.output['img_out'], self.output['img_tar'])
             # content
             if self.opt.loss_weight_content > 0:
                 self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
             # style
             if self.opt.loss_weight_style > 0:
                 self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
-            # local style
+            # patch style
             if self.opt.loss_weight_patch_style > 0:
                 self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
+            # patch l1
+            if self.opt.loss_weight_patch_l1 > 0:
+                self.otuput['loss_patch_l1'] = self.compute_patch_l1_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
 
     def backward_D(self):
         if self.opt.D_cond:
@@ -308,7 +311,7 @@ class TwoStagePoseTransferModel(BaseModel):
         loss = 0
         # KL
         # L1
-        self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
+        self.output['loss_L1'] = F.l1_loss(self.output['img_out'], self.output['img_tar'])
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
         # content
         if self.opt.loss_weight_content > 0:
@@ -322,6 +325,10 @@ class TwoStagePoseTransferModel(BaseModel):
         if self.opt.loss_weight_patch_style > 0:
             self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
             loss += self.output['loss_patch_style'] * self.opt.loss_weight_patch_style
+        # local l1
+        if self.opt.loss_weight_patch_l1 > 0:
+            self.otuput['loss_patch_l1'] = self.compute_patch_l1_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
+            loss += self.output['loss_patch_l1'] * self.opt.loss_weight_patch_l1
         # GAN
         if self.use_GAN:
             if self.opt.D_cond:
@@ -336,7 +343,7 @@ class TwoStagePoseTransferModel(BaseModel):
         self.output['img_out'].retain_grad()
         loss = 0
         # L1
-        self.output['loss_L1'] = self.crit_L1(self.output['img_out'], self.output['img_tar'])
+        self.output['loss_L1'] = F.l1_loss(self.output['img_out'], self.output['img_tar'])
         (self.output['loss_L1'] * self.opt.loss_weight_L1).backward(retain_graph=True)
         self.output['grad_L1'] = self.output['img_out'].grad.norm()
         grad = self.output['img_out'].grad.clone()
@@ -356,6 +363,12 @@ class TwoStagePoseTransferModel(BaseModel):
             self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
             (self.output['loss_patch_style'] * self.opt.loss_weight_patch_style).backward(retain_graph=True)
             self.output['grad_patch_style'] = (self.output['img_out'].grad - grad).norm()
+            grad = self.output['img_out'].grad.clone()
+        # patch l1
+        if self.opt.loss_weight_patch_l1 > 0:
+            self.otuput['loss_patch_l1'] = self.compute_patch_l1_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
+            (self.output['loss_patch_l1'] * self.opt.loss_weight_patch_l1).backward(retain_graph=True)
+            self.output['grad_patch_l1'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
         # gan 
         if self.use_GAN:
@@ -475,8 +488,11 @@ class TwoStagePoseTransferModel(BaseModel):
 
     def get_patch(self, images, coords, patch_size=32, patch_indices=None):
         '''
-        image_batch: images (bsz, c, h, w)
-        coord: coordinates of joint points (bsz, 18, 2)
+        Input:
+            image_batch: images (bsz, c, h, w)
+            coord: coordinates of joint points (bsz, 18, 2)
+        Output:
+            list
         '''
         bsz, c, h, w = images.size()
 
@@ -513,6 +529,7 @@ class TwoStagePoseTransferModel(BaseModel):
             patches.append(patch)
         return patches
 
+    
     def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32, patch_indices=None):
         '''
         images_1: (bsz, h, w, h)
@@ -551,8 +568,32 @@ class TwoStagePoseTransferModel(BaseModel):
         # exit()
         return loss_patch_style
 
+    def compute_patch_l1_loss(self, images_1, c_1, images_2, c_2, patch_size=32, patch_indices=None):
+        '''
+        images_1: (bsz, h, w, h)
+        images_2: (bsz, h, w, h)
+        c_1: (bsz, 18, 2) # patch center coordinates of images_1
+        c_2: (bsz, 18, 2) # patch center coordinates of images_2
+        '''
+        bsz = images_1.size(0)
+        # remove invalid joint point
+        c_invalid = (c_1 < 0) | (c_2 < 0)
+        vc_1 = c_1.clone()
+        vc_2 = c_2.clone()
+        vc_1[c_invalid] = -1
+        vc_2[c_invalid] = -1
+        # get patches
+        patches_1 = self.get_patch(images_1, vc_1, patch_size, patch_indices) # list: [patch_c1, patch_c2, ...]
+        patches_2 = self.get_patch(images_2, vc_2, patch_size, patch_indices)
+        n_patch = len(patches_1)
+        # compute style loss
+        patches_1 = torch.cat(patches_1, dim=0)
+        patches_2 = torch.cat(patches_2, dim=0)
+        loss_patch_l1 = F.l1_loss(patches_1, patches_2)
+        return loss_patch_l1
+
     def get_current_errors(self):
-        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_patch_style', 'loss_kl', 'loss_G', 'loss_D', 'grad_L1', 'grad_content', 'grad_style', 'grad_patch_style', 'grad_gan']
+        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_patch_style', 'loss_patch_l1', 'loss_kl', 'loss_G', 'loss_D', 'grad_L1', 'grad_content', 'grad_style', 'grad_patch_style', 'grad_patch_l1', 'grad_gan']
         errors = OrderedDict()
         for item in error_list:
             if item in self.output:
@@ -577,3 +618,60 @@ class TwoStagePoseTransferModel(BaseModel):
         self.save_network(self.netT_s2d, 'netT_s2d', label, self.gpu_ids)
         if self.use_GAN:
             self.save_network(self.netD, 'netD', label, self.gpu_ids)
+
+
+###############################
+# other functions
+###############################
+def show_patch():
+    from options.pose_transfer_options import TrainPoseTransferOptions
+    from data.data_loader import CreateDataLoader
+    import imageio
+    import cv2
+    
+    opt = TrainPoseTransferOptions().parse()
+
+    output_dir = 'temp/visualize_patch/%d/' % opt.patch_size
+    io.mkdir_if_missing(output_dir)
+    
+    loader = iter(CreateDataLoader(opt, 'test'))
+    model = TwoStagePoseTransferModel()
+    model.initialize(opt)
+    data = next(loader)
+    model.set_input(data)
+    
+    patch_1 = model.get_patch(model.input['img_1'], model.input['joint_c_1'], opt.patch_size, opt.patch_indices)
+    patch_2 = model.get_patch(model.input['img_2'], model.input['joint_c_2'], opt.patch_size, opt.patch_indices)
+    images = [model.input['img_1'], model.input['img_2']]
+    patches = [patch_1, patch_2]
+    joints = [model.input['joint_c_1'], model.input['joint_c_2']]
+    id_list = model.input['id']
+
+
+    def _tensor_to_numpy(img_t):
+        img = img_t.cpu().detach().numpy().transpose(1,2,0)
+        img = (img*127.5 + 127.5).clip(0,255).astype(np.uint8)
+        return img
+
+    for idx in range(opt.batch_size):
+        for i in range(2):
+            fn_i = output_dir + '%d_%d.jpg'%(idx,i)
+            img = _tensor_to_numpy(images[i][idx])
+            for j, joint_idx in enumerate(opt.patch_indices):
+                fn_p = output_dir + '%d_%d_%d.jpg' % (idx, i, joint_idx)
+                p = _tensor_to_numpy(patches[i][j][idx])
+                imageio.imwrite(fn_p, p)
+
+                x_c, y_c = joints[i][idx, j]
+                if x_c > 0 and y_c > 0:
+                    x_1, y_1 = x_c - opt.patch_size//2, y_c - opt.patch_size//2
+                    x_2, y_2 = x_c + opt.patch_size//2, y_c + opt.patch_size//2
+                    cv2.rectangle(img, (x_1, y_1), (x_2, y_2), color=(0,255,0))
+                    cv2.putText(img, str(joint_idx).encode('ascii', 'replace'), (x_c, y_c), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0,255,0))
+
+            imageio.imwrite(fn_i, img)
+
+
+if __name__ == '__main__':
+    show_patch()
+    

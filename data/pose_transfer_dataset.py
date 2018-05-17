@@ -172,6 +172,36 @@ class PoseTransferDataset(BaseDataset):
         crops = np.concatenate(crops, axis=2)
         return crops
 
+    @staticmethod
+    def _get_center(x1, x2):
+        if x1 < 0 and x2 < 0:
+            return -1
+        elif x1 < 0:
+            return x2
+        elif x2 < 0:
+            return x1
+        else:
+            return (x1+x2)*0.5
+
+    def extend_pose(self, joint_c):
+        joint_ext = []
+        # body center
+        x_l = self._get_center(joint_c[5][0], joint_c[11][0])
+        x_r = self._get_center(joint_c[2][0], joint_c[8][0])
+        y_t = self._get_center(joint_c[5][1], joint_c[2][1])
+        y_b = self._get_center(joint_c[11][1], joint_c[8][1])
+
+        if x_l < 0 or x_r < 0 or y_t < 0 or y_b < 0:
+            p_body = [-1, -1]
+        else:
+            p_body = [0.5*(x_l+x_r), 0.5*(y_t+y_b)]
+        
+        joint_ext.append(p_body)
+
+        return joint_c + joint_ext
+
+
+
     def __getitem__(self, index):
         sid_1, sid_2 = self.id_list[index]
         ######################
@@ -179,10 +209,10 @@ class PoseTransferDataset(BaseDataset):
         ######################
         img_1 = self.read_image(sid_1)
         img_2 = self.read_image(sid_2)
-        joint_c_1 = self.pose_label[sid_1]
-        joint_c_2 = self.pose_label[sid_2]
         seg_1 = self.read_seg(sid_1)
         seg_2 = self.read_seg(sid_2)
+        joint_c_1 = self.pose_label[sid_1]
+        joint_c_2 = self.pose_label[sid_2]
         ######################
         # augmentation
         ######################
@@ -241,6 +271,13 @@ class PoseTransferDataset(BaseDataset):
         # t_seg_2 = self.to_tensor(seg_2)
         # t_seg_mask_1 = self.to_tensor(segmap_to_mask_v2(seg_1, nc=7, bin_size=self.opt.seg_bin_size))
         # t_seg_mask_2 = self.to_tensor(segmap_to_mask_v2(seg_2, nc=7, bin_size=self.opt.seg_bin_size))
+
+        # ######################
+        # extend key points
+        ######################
+        if 'extend_pose' in self.opt and self.opt.extend_pose:
+            joint_c_1 = self.extend_pose(joint_c_1)
+            joint_c_2 = self.extend_pose(joint_c_2)
         # ######################
         # output
         ######################

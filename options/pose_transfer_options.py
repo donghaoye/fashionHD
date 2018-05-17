@@ -69,6 +69,7 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--fn_pose', type=str, default='Label/pose_label.pkl')
         parser.add_argument('--debug', action='store_true', help='debug')
         parser.add_argument('--use_limb', type=int, default=0, choices=[0,1], help='get limb information from the dataset')
+        parser.add_argument('--extend_pose', type=int, default=0, choices=[0,1])
 
     def auto_set(self):
         super(BasePoseTransferOptions, self).auto_set()
@@ -114,6 +115,7 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--loss_weight_content', type=float, default=1.)
         parser.add_argument('--loss_weight_style', type=float, default=0., help='set loss_weight_style > 0 to enable global style loss')
         parser.add_argument('--loss_weight_patch_style', type=float, default=0., help='set loss_weight_patch_style > 0 to enable patch style loss')
+        parser.add_argument('--loss_weight_patch_l1', type=float, default=0., help='set loss_weight_patch_l1 > 0 to enable patch l1 loss')
         parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
         parser.add_argument('--loss_weight_kl', type=float, default=1e-6, help='vunet setting: kl loss weight')
         parser.add_argument('--loss_weight_seg', type=float, default=0.1, help='weight of cross entropy loss on additional segmentation outputs')
