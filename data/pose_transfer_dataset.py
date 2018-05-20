@@ -233,6 +233,12 @@ class PoseTransferDataset(BaseDataset):
                 img_1, img_2 = img_2, img_1
                 joint_c_1, joint_c_2 = joint_c_2, joint_c_1
                 seg_1, seg_2 = seg_2, seg_1
+        # ####################
+        # extend key points
+        ######################
+        if 'extend_pose' in self.opt and self.opt.extend_pose:
+            joint_c_1 = self.extend_pose(joint_c_1)
+            joint_c_2 = self.extend_pose(joint_c_2)
         ######################
         # create pose representation
         ######################
@@ -271,12 +277,6 @@ class PoseTransferDataset(BaseDataset):
         # t_seg_mask_1 = self.to_tensor(segmap_to_mask_v2(seg_1, nc=7, bin_size=self.opt.seg_bin_size))
         # t_seg_mask_2 = self.to_tensor(segmap_to_mask_v2(seg_2, nc=7, bin_size=self.opt.seg_bin_size))
 
-        # ######################
-        # extend key points
-        ######################
-        if 'extend_pose' in self.opt and self.opt.extend_pose:
-            joint_c_1 = self.extend_pose(joint_c_1)
-            joint_c_2 = self.extend_pose(joint_c_2)
         # ######################
         # output
         ######################

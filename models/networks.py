@@ -2393,7 +2393,6 @@ class LocalEncoder(nn.Module):
             patch_feat = patch_feat.view(bsz, n_patch, self.output_nc, 1, 1)
             rec_map = self.reconstruct(patch_feat, joint_tar) # (bsz, n_patch*output_dim, h, w)
             rec_map = self.reducer(rec_map) # (bsz, output_dim, h, w)
-
             return rec_map
 
 ###############################################################################
