@@ -230,7 +230,6 @@ class TwoStagePoseTransferModel(BaseModel):
         joint_tar = self.get_pose(pose_type='joint', index=tar_idx)
         # encoder
         patch_ref = self.get_patch(img_ref, joint_c_ref, self.opt.patch_size, self.opt.patch_indices)
-        patch_ref = torch.stack(patch_ref, dim=1)
         local_feat = self.netT_s2e(patch_ref, joint_tar)
         # decoder
         dec_input = torch.cat((self.output['img_out_s1'], local_feat), dim=1)
@@ -492,7 +491,7 @@ class TwoStagePoseTransferModel(BaseModel):
             image_batch: images (bsz, c, h, w)
             coord: coordinates of joint points (bsz, 18, 2)
         Output:
-            list
+            patches: (bsz, npatch, c, hp, ww)
         '''
         bsz, c, h, w = images.size()
 
@@ -501,12 +500,13 @@ class TwoStagePoseTransferModel(BaseModel):
             patch_indices = self.opt.patch_indices
 
         patches = []
-        for i in patch_indices:
+        for i in range(bsz):
             patch = []
-            for j in range(bsz):
-                img = images[j]
-                x = int(coords[j, i, 0].item())
-                y = int(coords[j, i, 1].item())
+            img = images[i]
+            for j in patch_indices:
+                x = int(coords[i,j,0].item())
+                y = int(coords[i,j,1].item())
+
                 if x < 0 or y < 0:
                     p = img.new(1, c, patch_size, patch_size).fill_(0)
                 else:
@@ -523,13 +523,14 @@ class TwoStagePoseTransferModel(BaseModel):
                     p = img[:, top:bottom, left:right].unsqueeze(dim=0)
                     if not (p_l == p_r == p_t == p_b == 0):
                         p = F.pad(p, pad=(p_l, p_r, p_t, p_b), mode='constant')
-
                 patch.append(p)
-            patch = torch.cat(patch, dim=0)
+            patch = torch.cat(patch, dim=0)#[npatch, c, hp, wp]
             patches.append(patch)
+        patches = torch.stack(patches)#[bsz, npatch, c, hp, wp]
+
         return patches
 
-    
+
     def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32, patch_indices=None):
         '''
         images_1: (bsz, h, w, h)
@@ -537,7 +538,6 @@ class TwoStagePoseTransferModel(BaseModel):
         c_1: (bsz, 18, 2) # patch center coordinates of images_1
         c_2: (bsz, 18, 2) # patch center coordinates of images_2
         '''
-        bsz = images_1.size(0)
         # remove invalid joint point
         c_invalid = (c_1 < 0) | (c_2 < 0)
         vc_1 = c_1.clone()
@@ -547,10 +547,10 @@ class TwoStagePoseTransferModel(BaseModel):
         # get patches
         patches_1 = self.get_patch(images_1, vc_1, patch_size, patch_indices) # list: [patch_c1, patch_c2, ...]
         patches_2 = self.get_patch(images_2, vc_2, patch_size, patch_indices)
-        n_patch = len(patches_1)
         # compute style loss
-        patches_1 = torch.cat(patches_1, dim=0)
-        patches_2 = torch.cat(patches_2, dim=0)
+        bsz, npatch, c, h, w = patches_1.size()
+        patches_1 = patches_1.view(bsz*npatch, c, h, w)
+        patches_2 = patches_2.view(bsz*npatch, c, h, w)
         loss_patch_style = self.crit_vgg(patches_1, patches_2, 'style')
 
         # output = {
@@ -560,7 +560,7 @@ class TwoStagePoseTransferModel(BaseModel):
         #     'c_2': c_2.cpu(),
         #     'patches_1': patches_1.cpu(),
         #     'patches_2': patches_2.cpu(),
-        #     'n_patch': n_patch,
+        #     'npatch': npatch,
         #     'id': self.input['id']
         # }
 
@@ -575,7 +575,7 @@ class TwoStagePoseTransferModel(BaseModel):
         c_1: (bsz, 18, 2) # patch center coordinates of images_1
         c_2: (bsz, 18, 2) # patch center coordinates of images_2
         '''
-        bsz = images_1.size(0)
+
         # remove invalid joint point
         c_invalid = (c_1 < 0) | (c_2 < 0)
         vc_1 = c_1.clone()
@@ -585,10 +585,7 @@ class TwoStagePoseTransferModel(BaseModel):
         # get patches
         patches_1 = self.get_patch(images_1, vc_1, patch_size, patch_indices) # list: [patch_c1, patch_c2, ...]
         patches_2 = self.get_patch(images_2, vc_2, patch_size, patch_indices)
-        n_patch = len(patches_1)
         # compute style loss
-        patches_1 = torch.cat(patches_1, dim=0)
-        patches_2 = torch.cat(patches_2, dim=0)
         loss_patch_l1 = F.l1_loss(patches_1, patches_2)
         return loss_patch_l1
 
@@ -632,7 +629,7 @@ def show_patch():
     opt = TrainPoseTransferOptions().parse()
 
     # output_dir = 'temp/visualize_patch/%d/' % opt.patch_size
-    output_dir = 'temp/visualize_patch/ext_1/'
+    output_dir = 'temp/visualize_patch/test/'
     io.mkdir_if_missing(output_dir)
     
     loader = iter(CreateDataLoader(opt, 'test'))
@@ -660,7 +657,7 @@ def show_patch():
             img = _tensor_to_numpy(images[i][idx])
             for j, joint_idx in enumerate(opt.patch_indices):
                 fn_p = output_dir + '%d_%d_%d.jpg' % (idx, i, joint_idx)
-                p = _tensor_to_numpy(patches[i][j][idx])
+                p = _tensor_to_numpy(patches[i][idx,j])
                 imageio.imwrite(fn_p, p)
 
                 x_c, y_c = joints[i][idx, joint_idx]
