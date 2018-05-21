@@ -88,6 +88,20 @@ class TwoStagePoseTransferModel(BaseModel):
                 image_size = opt.fine_size,
                 )
             s2e_nof = 3
+        elif opt.which_model_s2e == 'seg_embed':
+            self.netT_s2e = networks.SegmentRegionEncoder(
+                seg_nc = 7,
+                input_nc = 3,
+                output_nc = opt.s2e_nof,
+                nf = opt.s2d_nf,
+                input_size = opt.fine_size,
+                n_blocks = 3,
+                norm_layer = networks.get_norm_layer(opt.norm),
+                activation = nn.ReLU,
+                use_dropout = False,
+                gpu_ids = opt.gpu_ids,
+                )
+            s2e_nof = opt.s2e_nof
         else:
             raise NotImplementedError()
         if opt.gpu_ids:
@@ -249,6 +263,13 @@ class TwoStagePoseTransferModel(BaseModel):
             patch_ref = self.get_patch(img_ref, joint_c_ref, self.opt.patch_size, self.opt.patch_indices)
             joint_c_tar = self.input['joint_c_%s'%tar_idx][:,self.opt.patch_indices]
             s2e_out = self.netT_s2e(patch_ref, joint_c_tar)
+        elif self.opt.which_model_s2e == 'seg_embed':
+            img_ref = self.input['img_%s'%ref_idx]
+            seg_ref = self.input['seg_mask_%s'%ref_idx]
+            seg_tar = self.input['seg_mask_%s'%tar_idx]
+            s2e_out = self.netT_s2e(img_ref, seg_ref, seg_tar)
+        else:
+            raise NotImplementedError()
         # decoder
         dec_input = torch.cat((self.output['img_out_s1'], s2e_out), dim=1)
         s2d_out = self.netT_s2d(dec_input)

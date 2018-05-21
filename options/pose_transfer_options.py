@@ -22,7 +22,7 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--pose_type', type=str, default='joint', help='pose format, combination ("+") of [joint, stickman, seg]')
         parser.add_argument('--joint_radius', type=int, default=8, help='radius of joint map')
         parser.add_argument('--joint_mode', type=str, default='binary', choices=['binary', 'gaussian'])
-        parser.add_argument('--seg_bin_size', type=int, default=16, help='bin size of downsampled seg mask')
+        parser.add_argument('--seg_bin_size', type=int, default=1, help='bin size of downsampled seg mask')
         parser.add_argument('--patch_indices', type=int, default=[0,1,2,3,4,5,6,7,8,9,10,11,12,13], nargs='+', help='indices of joint points to extract patches. see misc.pose_util.py for details')
         parser.add_argument('--patch_size', type=int, default=32, help='size of the local pathch for computing style loss')
         ##############################

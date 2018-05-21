@@ -2385,7 +2385,7 @@ class LocalPatchEncoder(nn.Module):
             return nn.parallel.data_parallel(self, (patches, joint_tar), module_kwargs={'single_device':True})
         else:
             bsz, n_patch, c, h, w = patches.size()
-            assert n_patch == self.n_patch            
+            assert n_patch == self.n_patch
             patches = patches.view(bsz*n_patch, c, h, w)
             patch_feat = self.encoder(patches) # (bsz*n_patch, output_dim, 1, 1)
             patch_feat = patch_feat.view(bsz, n_patch, self.output_nc, 1, 1)
@@ -2424,9 +2424,40 @@ class LocalPatchRearranger(nn.Module):
                 pb = yb - (yc-h//2)
 
                 out[i, :, yt:yb, xl:xr] = patches[i, j, :, pt:pb, pl:pr]
-
         return out
-                
+
+class SegmentRegionEncoder(nn.Module):
+    def __init__(self, seg_nc, input_nc, output_nc, nf, input_size, n_blocks, norm_layer, activation, use_dropout, gpu_ids):
+        super(SegmentRegionEncoder, self).__init__()
+        self.encoder = ResnetGenerator(
+            input_nc = input_nc,
+            output_nc = output_nc,
+            ngf = nf,
+            norm_layer = norm_layer,
+            activation = activation,
+            use_dropout = use_dropout,
+            n_blocks = n_blocks,
+            gpu_ids = gpu_ids,
+            output_tanh = False,
+            )
+        self.gpu_ids = gpu_ids
+        self.seg_nc = seg_nc
+
+    def forward(self, image_ref, seg_ref, seg_tar):
+        assert seg_ref.size(1) == seg_tar.size(1) == self.seg_nc
+        feat_ref = self.encoder(image_ref)
+        # region pooling
+        feat_out = 0
+        for i in range(self.seg_nc):
+            feat = feat_ref * seg_ref[:,i:(i+1)].sum(dim=3, keepdim=True).sum(dim=2, keepdim=True) #(bsz, c, 1, 1)
+            feat = feat / (seg_ref[:,i:(i+1)].sum(dim=3, keepdim=True).sum(dim=2, keepdim=True) + 1e-7) #(bsz, c, 1, 1)
+            feat = feat * seg_tar[:,i:(i+1)]
+            feat_out += feat
+
+        return feat_out
+
+
+
 
 ###############################################################################
 # Feature Spatial Transformer
