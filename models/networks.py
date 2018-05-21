@@ -2375,8 +2375,6 @@ class LocalEncoder(nn.Module):
         rec_map = torch.cat(rec_map, dim=1)
         return rec_map
         
-
-
     def forward(self, patches, joint_tar, single_device=False):
         '''
         Inputs:
@@ -2394,6 +2392,24 @@ class LocalEncoder(nn.Module):
             rec_map = self.reconstruct(patch_feat, joint_tar) # (bsz, n_patch*output_dim, h, w)
             rec_map = self.reducer(rec_map) # (bsz, output_dim, h, w)
             return rec_map
+
+
+# class LocalPatchRearranger(nn.Module):
+#     '''
+#     Non-parametric module. Spatically rearrange local patches according to target pose
+#     '''
+#     def __init__(self, n_patch, image_size):
+#         super(LocalPatchRearranger, self).__init__()
+#         self.n_patch = n_patch
+#         self.image_size = image_size
+
+#     def forward(self, patches, joint_c_tar):
+#         bsz, n_patch, c, h, w = patches.size()
+#         H, W = self.input_size_enc
+#         assert n_patch == self.n_patch
+#         out = patches.new(bsz, c, H, W)
+
+
 
 ###############################################################################
 # Feature Spatial Transformer

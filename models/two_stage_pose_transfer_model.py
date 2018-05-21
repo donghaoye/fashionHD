@@ -227,7 +227,7 @@ class TwoStagePoseTransferModel(BaseModel):
         ######################################
         img_ref = self.input['img_%s'%ref_idx]
         joint_c_ref = self.input['joint_c_%s'%ref_idx]
-        joint_tar = self.get_pose(pose_type='joint_ext', index=tar_idx)
+        joint_tar = self.get_pose(pose_type='joint_ext', index=tar_idx)[:,self.opt.patch_indices]
         # encoder
         patch_ref = self.get_patch(img_ref, joint_c_ref, self.opt.patch_size, self.opt.patch_indices)
         local_feat = self.netT_s2e(patch_ref, joint_tar)
