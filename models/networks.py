@@ -2316,9 +2316,9 @@ class VUnetLatentTransformer(nn.Module):
             else:
                 raise Exception('invalid mode "%s"'%mode)
 
-class LocalEncoder(nn.Module):
+class LocalPatchEncoder(nn.Module):
     def __init__(self, n_patch, input_nc, output_nc, nf, max_nf, input_size, bottleneck_factor, n_residual_blocks, norm_layer, activation, use_dropout, gpu_ids):
-        super(LocalEncoder, self).__init__()
+        super(LocalPatchEncoder, self).__init__()
         self.gpu_ids = gpu_ids
         self.input_nc = input_nc
         self.output_nc = output_nc
@@ -2393,23 +2393,40 @@ class LocalEncoder(nn.Module):
             rec_map = self.reducer(rec_map) # (bsz, output_dim, h, w)
             return rec_map
 
+class LocalPatchRearranger(nn.Module):
+    '''
+    Non-parametric module. Spatically rearrange local patches according to target pose
+    '''
+    def __init__(self, n_patch, image_size):
+        super(LocalPatchRearranger, self).__init__()
+        self.n_patch = n_patch
+        if isinstance(image_size, int):
+            self.image_size = [image_size, image_size]
+        else:
+            self.image_size = image_size
 
-# class LocalPatchRearranger(nn.Module):
-#     '''
-#     Non-parametric module. Spatically rearrange local patches according to target pose
-#     '''
-#     def __init__(self, n_patch, image_size):
-#         super(LocalPatchRearranger, self).__init__()
-#         self.n_patch = n_patch
-#         self.image_size = image_size
+    def forward(self, patches, joint_c_tar):
+        bsz, n_patch, c, h, w = patches.size()
+        H, W = self.image_size
+        assert n_patch == self.n_patch
+        out = patches.new(bsz, c, H, W)
+        for i in range(bsz):
+            for j in range(n_patch):
+                xc, yc = int(joint_c_tar[i,j,0]), int(joint_c_tar[i,j,1])
+                xl = max(0, xc-w//2)
+                xr = min(W, xc-w//2+w)
+                yt = max(0, yc-h//2)
+                yb = min(H, yc-h//2+h)
 
-#     def forward(self, patches, joint_c_tar):
-#         bsz, n_patch, c, h, w = patches.size()
-#         H, W = self.input_size_enc
-#         assert n_patch == self.n_patch
-#         out = patches.new(bsz, c, H, W)
+                pl = xl - (xc-w//2)
+                pr = xr - (xc-w//2)
+                pt = yt - (yc-h//2)
+                pb = yb - (yc-h//2)
 
+                out[i, :, yt:yb, xl:xr] = patches[i, j, :, pt:pb, pl:pr]
 
+        return out
+                
 
 ###############################################################################
 # Feature Spatial Transformer

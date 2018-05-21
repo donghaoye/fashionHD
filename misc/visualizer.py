@@ -99,7 +99,7 @@ class BaseVisualizer(object):
         eta = ((self.opt.niter + self.opt.niter_decay) * num_batch - iter_num) * t_per_step / 3600
 
 
-        log = '[%s] Train [Iter: %d, Epoch: %d, Prog: %d/%d (%.2f%%)] t_cost: %.2f, ETA: %.1fh, lr: %.3e]  ' % \
+        log = '[%s] Train [Iter: %d, Epoch: %d, Prog: %d/%d (%.2f%%), t_cost: %.2f, ETA: %.1fh, lr: %.3e]  ' % \
             (self.opt.id, iter_num, epoch, epoch_step, num_batch, 100.*epoch_step/num_batch, t_per_step, eta, lr)
         log += '  '.join(['%s: %.6f' % (k,v) for k,v in errors.iteritems()])
 

@@ -66,26 +66,37 @@ class TwoStagePoseTransferModel(BaseModel):
         # define stage-2 (refine) network
         ###################################
         # local patch encoder
-        self.netT_s2e = networks.LocalEncoder(
-            n_patch = len(opt.patch_indices),
-            input_nc = 3,
-            output_nc = opt.s2e_nof,
-            nf = opt.s2e_nf,
-            max_nf = opt.s2e_max_nf,
-            input_size = opt.patch_size,
-            bottleneck_factor = opt.s2e_bottleneck_factor,
-            n_residual_blocks = 2,
-            norm_layer = networks.get_norm_layer(opt.norm),
-            activation = nn.ReLU(False),
-            use_dropout = False,
-            gpu_ids = opt.gpu_ids,
-            )
+        if opt.which_model_s2e == 'patch_embed':
+            self.netT_s2e = networks.LocalPatchEncoder(
+                n_patch = len(opt.patch_indices),
+                input_nc = 3,
+                output_nc = opt.s2e_nof,
+                nf = opt.s2e_nf,
+                max_nf = opt.s2e_max_nf,
+                input_size = opt.patch_size,
+                bottleneck_factor = opt.s2e_bottleneck_factor,
+                n_residual_blocks = 2,
+                norm_layer = networks.get_norm_layer(opt.norm),
+                activation = nn.ReLU(False),
+                use_dropout = False,
+                gpu_ids = opt.gpu_ids,
+                )
+            s2e_nof = opt.s2e_nof
+        elif opt.which_model_s2e == 'patch':
+            self.netT_s2e = networks.LocalPatchRearranger(
+                n_patch = len(opt.patch_indices),
+                image_size = opt.fine_size,
+                )
+            s2e_nof = 3
+        else:
+            raise NotImplementedError()
         if opt.gpu_ids:
             self.netT_s2e.cuda()
+        
         # decoder
         if self.opt.which_model_s2d == 'resnet':
             self.netT_s2d = networks.ResnetGenerator(
-                input_nc = 3 + opt.s2e_nof,
+                input_nc = 3 + s2e_nof,
                 output_nc = 3,
                 ngf = opt.s2d_nf,
                 norm_layer = networks.get_norm_layer(opt.norm),
@@ -97,7 +108,7 @@ class TwoStagePoseTransferModel(BaseModel):
                 )
         elif self.opt.which_model_s2d == 'unet':
             self.netT_s2d = networks.UnetGenerator_v2(
-                input_nc = 3 + opt.s2e_nof,
+                input_nc = 3 + s2e_nof,
                 output_nc = 3,
                 num_downs = 8,
                 ngf = opt.s2d_nf,
@@ -225,16 +236,23 @@ class TwoStagePoseTransferModel(BaseModel):
         ######################################
         # stage-2
         ######################################
-        img_ref = self.input['img_%s'%ref_idx]
-        joint_c_ref = self.input['joint_c_%s'%ref_idx]
-        joint_tar = self.get_pose(pose_type='joint_ext', index=tar_idx)[:,self.opt.patch_indices]
         # encoder
-        patch_ref = self.get_patch(img_ref, joint_c_ref, self.opt.patch_size, self.opt.patch_indices)
-        local_feat = self.netT_s2e(patch_ref, joint_tar)
+        if self.opt.which_model_s2e == 'patch_embed':
+            img_ref = self.input['img_%s'%ref_idx]
+            joint_c_ref = self.input['joint_c_%s'%ref_idx]
+            patch_ref = self.get_patch(img_ref, joint_c_ref, self.opt.patch_size, self.opt.patch_indices)
+            joint_tar = self.get_pose(pose_type='joint_ext', index=tar_idx)[:,self.opt.patch_indices]
+            s2e_out = self.netT_s2e(patch_ref, joint_tar)
+        elif self.opt.which_model_s2e == 'patch':
+            img_ref = self.input['img_%s'%ref_idx]
+            joint_c_ref = self.input['joint_c_%s'%ref_idx]
+            patch_ref = self.get_patch(img_ref, joint_c_ref, self.opt.patch_size, self.opt.patch_indices)
+            joint_c_tar = self.input['joint_c_%s'%tar_idx][:,self.opt.patch_indices]
+            s2e_out = self.netT_s2e(patch_ref, joint_c_tar)
         # decoder
-        dec_input = torch.cat((self.output['img_out_s1'], local_feat), dim=1)
-        output_s2 = self.netT_s2d(dec_input)
-        self.output['img_out'] = F.tanh(output_s1['image'] + output_s2)
+        dec_input = torch.cat((self.output['img_out_s1'], s2e_out), dim=1)
+        s2d_out = self.netT_s2d(dec_input)
+        self.output['img_out'] = F.tanh(output_s1['image'] + s2d_out)
         self.output['img_out_res'] = self.output['img_out'] - self.output['img_out_s1']
         ######################################
         # other

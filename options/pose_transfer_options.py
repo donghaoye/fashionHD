@@ -44,6 +44,7 @@ class BasePoseTransferOptions(BaseOptions):
         # Transformer Setting - 2stage
         ##############################
         parser.add_argument('--which_model_stage_1', type=str, default='PoseTransfer_4.3', help='pretrained pose transfer model as stage-1 network')
+        parser.add_argument('--which_model_s2e', type=str, default='patch_embed', choices=['patch_embed', 'patch', 'seg_embed'])
         parser.add_argument('--which_model_s2d', type=str, default='resnet', choices=['resnet', 'unet'], help='stage-2 decoder architecture')
         parser.add_argument('--s2e_nf', type=int, default=32, help='2-stage model setting: channel number of the first encoder conv layer')
         parser.add_argument('--s2e_max_nf', type=int, default=128, help='2-stage model setting: max channel number of encoder conv layers')
