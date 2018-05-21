@@ -252,7 +252,10 @@ class TwoStagePoseTransferModel(BaseModel):
         # decoder
         dec_input = torch.cat((self.output['img_out_s1'], s2e_out), dim=1)
         s2d_out = self.netT_s2d(dec_input)
-        self.output['img_out'] = F.tanh(output_s1['image'] + s2d_out)
+        if self.opt.which_model_s2d == 'unet':
+            self.output['img_out'] = F.tanh(output_s1['image'] + s2d_out)
+        else:
+            self.output['img_out'] = F.tanh(s2d_out)
         self.output['img_out_res'] = self.output['img_out'] - self.output['img_out_s1']
         ######################################
         # other
