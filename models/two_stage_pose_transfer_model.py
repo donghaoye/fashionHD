@@ -277,7 +277,7 @@ class TwoStagePoseTransferModel(BaseModel):
             if self.opt.s2e_seg_src == 'gt':
                 seg_tar = self.input['seg_mask_%s'%tar_idx]
             else:
-                seg_fake = output_s1['seg']
+                seg_fake = output_s1['seg'].detach()
                 if (not self.is_train) or self.opt.s2e_seg_src == 'fake':
                     seg_tar = seg_fake
                 else:
