@@ -266,8 +266,19 @@ class TwoStagePoseTransferModel(BaseModel):
         elif self.opt.which_model_s2e == 'seg_embed':
             img_ref = self.input['img_%s'%ref_idx]
             seg_ref = self.input['seg_mask_%s'%ref_idx]
-            seg_tar = self.input['seg_mask_%s'%tar_idx]
+            if self.opt.s2e_seg_src == 'gt':
+                seg_tar = self.input['seg_mask_%s'%tar_idx]
+            else:
+                seg_fake = output_s1['seg']
+                if (not self.is_train) or self.opt.s2e_seg_src == 'fake':
+                    seg_tar = seg_fake
+                else:
+                    bsz, c = seg_fake.size()[0:2]
+                    mask = seg_fake.new(bsz, c, 1, 1).bernoulli_()
+                    seg_tar = seg_fake * mask + self.input['seg_mask_%s'%tar_idx] * (1-mask)
             s2e_out = self.netT_s2e(img_ref, seg_ref, seg_tar)
+            self.output['seg_ref'] = seg_ref
+            self.output['seg_tar'] = seg_tar
         else:
             raise NotImplementedError()
         # decoder
@@ -653,6 +664,10 @@ class TwoStagePoseTransferModel(BaseModel):
             ('img_out', [self.output['img_out'].data.cpu(), 'rgb']),
             ('img_out_res', [self.output['img_out_res'].data.cpu(), 'rgb']),
             ])
+        if 'seg_ref' in self.output:
+            visuals['seg_ref'] = [self.output['seg_ref'].data.cpu(), 'seg']
+        if 'seg_tar' in self.output:
+            visuals['seg_tar'] = [self.output['seg_tar'].data.cpu(), 'seg']
         return visuals
 
     def save(self, label):
