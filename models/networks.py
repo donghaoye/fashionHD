@@ -298,6 +298,31 @@ class GANLoss(nn.Module):
         target_tensor = self.get_target_tensor(input, target_is_real)
         return self.loss(input, target_tensor)
 
+class SegGANLoss(nn.Module):
+    def __init__(self, num_cls = 7, tensor=torch.FloatTensor):
+        super(SegGANLoss, self).__init__()
+        self.Tensor = tensor
+        self.num_cls = num_cls
+        self.fake_tensor = None
+    
+    def get_target_tensor(self, seg, target_is_real):
+        if target_is_real:
+            target_tensor = seg
+        else:
+            if (self.fake_tensor is None) or (not self.fake_tensor.is_same_size(seg)):
+                self.fake_tensor = seg.new(seg.size()).fill_(self.num_cls)
+            target_tensor = self.fake_tensor
+        return target_tensor
+
+    def __call__(self, input, seg, target_is_real):
+        assert input.size(1) == self.num_cls + 1
+        if seg.ndimension() == 4:
+            seg = seg.squeeze(dim=1)
+        seg = seg.long()
+        target_tensor = self.get_target_tensor(seg, target_is_real)
+        loss = F.cross_entropy(input, target_tensor)
+        return loss
+
 
 # Vgg19 and VGGLoss is borrowed from pix2pixHD
 class Vgg19(nn.Module):
@@ -1255,6 +1280,8 @@ class NLayerDiscriminator(nn.Module):
         else:
             return self.model(input)
 
+# class SegDiscriminator(nn.Module):
+#     def __init__(self, input_nc, )
 
 class PixelDiscriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, norm_layer=nn.BatchNorm2d, use_sigmoid=False, gpu_ids=[]):

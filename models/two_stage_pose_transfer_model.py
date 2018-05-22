@@ -257,6 +257,14 @@ class TwoStagePoseTransferModel(BaseModel):
             patch_ref = self.get_patch(img_ref, joint_c_ref, self.opt.patch_size, self.opt.patch_indices)
             joint_tar = self.get_pose(pose_type='joint_ext', index=tar_idx)[:,self.opt.patch_indices]
             s2e_out = self.netT_s2e(patch_ref, joint_tar)
+            # data = {
+            #     'img_1': self.input['img_1'].cpu(),
+            #     'img_2': self.input['img_2'].cpu(),
+            #     'patch_ref': patch_ref.cpu(),
+            #     'joint_tar': joint_tar.cpu(),
+            # }
+            # torch.save(data, 'data.pth')
+            # exit(0)
         elif self.opt.which_model_s2e == 'patch':
             img_ref = self.input['img_%s'%ref_idx]
             joint_c_ref = self.input['joint_c_%s'%ref_idx]
@@ -484,6 +492,8 @@ class TwoStagePoseTransferModel(BaseModel):
         for item in pose_items:
             if item == 'joint':
                 dim += 18
+            elif item == 'joint_ext':
+                dim += 23
             elif item == 'seg':
                 dim += 7
             elif item == 'stickman':

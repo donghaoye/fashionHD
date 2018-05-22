@@ -194,13 +194,11 @@ class VUnetPoseTransferModel(BaseModel):
             # patch style
             if self.opt.loss_weight_patch_style > 0:
                 self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
-
             # seg
             if 'seg' in self.opt.output_type:
                 self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.output['seg_tar'].squeeze(dim=1).long())
 
         
-
     def backward_D(self):
         if self.opt.D_cond:
             D_input_fake = torch.cat((self.output['img_out'].detach(), self.output['pose_tar']), dim=1)
