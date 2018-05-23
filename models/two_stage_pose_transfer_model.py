@@ -275,18 +275,19 @@ class TwoStagePoseTransferModel(BaseModel):
             img_ref = self.input['img_%s'%ref_idx]
             seg_ref = self.input['seg_mask_%s'%ref_idx]
             if self.opt.s2e_seg_src == 'gt':
-                seg_tar = self.input['seg_mask_%s'%tar_idx]
+                seg_gen = self.input['seg_mask_%s'%tar_idx]
             else:
                 seg_fake = output_s1['seg'].detach()
                 if (not self.is_train) or self.opt.s2e_seg_src == 'fake':
-                    seg_tar = seg_fake
+                    seg_gen = seg_fake
                 else:
                     bsz, c = seg_fake.size()[0:2]
                     mask = seg_fake.new(bsz, c, 1, 1).bernoulli_()
-                    seg_tar = seg_fake * mask + self.input['seg_mask_%s'%tar_idx] * (1-mask)
-            s2e_out = self.netT_s2e(img_ref, seg_ref, seg_tar)
+                    seg_gen = seg_fake * mask + self.input['seg_mask_%s'%tar_idx] * (1-mask)
+            s2e_out = self.netT_s2e(img_ref, seg_ref, seg_gen)
             self.output['seg_ref'] = seg_ref
-            self.output['seg_tar'] = seg_tar
+            self.output['seg_gen'] = seg_gen
+            self.output['seg_tar'] = self.input['seg_mask_%s'%tar_idx]
         else:
             raise NotImplementedError()
         # decoder
