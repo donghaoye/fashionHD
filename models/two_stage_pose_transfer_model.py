@@ -677,6 +677,8 @@ class TwoStagePoseTransferModel(BaseModel):
             ])
         if 'seg_ref' in self.output:
             visuals['seg_ref'] = [self.output['seg_ref'].data.cpu(), 'seg']
+        if 'seg_gen' in self.output:
+            visuals['seg_gen'] = [self.output['sge_gen'].data.cpu(), 'seg']
         if 'seg_tar' in self.output:
             visuals['seg_tar'] = [self.output['seg_tar'].data.cpu(), 'seg']
         return visuals

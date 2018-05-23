@@ -2454,7 +2454,7 @@ class LocalPatchRearranger(nn.Module):
         return out
 
 class SegmentRegionEncoder(nn.Module):
-    def __init__(self, seg_nc, input_nc, output_nc, nf, input_size, n_blocks, norm_layer, activation, use_dropout, gpu_ids):
+    def __init__(self, seg_nc, input_nc, output_nc, nf, input_size, n_blocks, norm_layer, activation, use_dropout, gpu_ids, grid_level=0):
         super(SegmentRegionEncoder, self).__init__()
         self.encoder = ResnetGenerator(
             input_nc = input_nc,
@@ -2469,6 +2469,21 @@ class SegmentRegionEncoder(nn.Module):
             )
         self.gpu_ids = gpu_ids
         self.seg_nc = seg_nc
+        self.grid_level = grid_level
+        self.grid = None
+
+    def create_grid(self, grid_level, input):
+        bsz, c, h, w = input.size()
+        grid = []
+        seed = np.array([[-1,1], [1,-1]], dtype=float32)
+        for n in range(grid_level):
+            g = seed.repeat(2**n, 0).repeat(2**n, 1)
+            g = np.tile(g, [h/2**n, w/2**n])
+            grid.append(g)
+        grid = np.stack(grid)
+        grid = np.stack([grid]*bsz)
+        return input.new(grid)
+
 
     def forward(self, image_ref, seg_ref, seg_tar):
         assert seg_ref.size(1) == seg_tar.size(1) == self.seg_nc
@@ -2481,6 +2496,11 @@ class SegmentRegionEncoder(nn.Module):
             feat = feat * seg_tar[:,i:(i+1)]
             feat_out += feat
 
+        if self.grid_level > 0:
+            if self.grid is None or (self.grid.size(0)!=image_ref.size(0)) or (self.grid.size(2)!=image_ref.size(2)) or (self.grid.size(3)!=image_ref.size(3)):
+                self.grid = self.create_grid(self.grid_level, image_ref)
+            feat_out = torch.cat((feat_out, self.grid.detach()), dim=1)
+            
         return feat_out
 
 
