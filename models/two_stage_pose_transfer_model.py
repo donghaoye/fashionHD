@@ -99,9 +99,10 @@ class TwoStagePoseTransferModel(BaseModel):
                 norm_layer = networks.get_norm_layer(opt.norm),
                 activation = nn.ReLU,
                 use_dropout = False,
+                grid_level = opt.s2e_grid_level,
                 gpu_ids = opt.gpu_ids,
                 )
-            s2e_nof = opt.s2e_nof
+            s2e_nof = opt.s2e_nof + opt.s2e_grid_level
         else:
             raise NotImplementedError()
         if opt.gpu_ids:
@@ -277,7 +278,7 @@ class TwoStagePoseTransferModel(BaseModel):
             if self.opt.s2e_seg_src == 'gt':
                 seg_gen = self.input['seg_mask_%s'%tar_idx]
             else:
-                seg_fake = output_s1['seg'].detach()
+                seg_fake = output_s1['seg_mask']
                 if (not self.is_train) or self.opt.s2e_seg_src == 'fake':
                     seg_gen = seg_fake
                 else:
@@ -481,6 +482,13 @@ class TwoStagePoseTransferModel(BaseModel):
                 i += 3
             elif item == 'seg':
                 rst['seg'] = output[:,i:(i+7)]
+                # convert raw output to seg_mask
+                max_index = rst['seg'].argmax(dim=1)
+                seg_mask = []
+                for idx in range(7):
+                    seg_mask.append(max_index==idx)
+                rst['seg_mask'] = torch.stack(seg_mask, dim=1).float()
+
                 i += 7
             else:
                 raise Exception('invalid output type %s'%item)
@@ -678,7 +686,7 @@ class TwoStagePoseTransferModel(BaseModel):
         if 'seg_ref' in self.output:
             visuals['seg_ref'] = [self.output['seg_ref'].data.cpu(), 'seg']
         if 'seg_gen' in self.output:
-            visuals['seg_gen'] = [self.output['sge_gen'].data.cpu(), 'seg']
+            visuals['seg_gen'] = [self.output['seg_gen'].data.cpu(), 'seg']
         if 'seg_tar' in self.output:
             visuals['seg_tar'] = [self.output['seg_tar'].data.cpu(), 'seg']
         return visuals

@@ -2475,10 +2475,10 @@ class SegmentRegionEncoder(nn.Module):
     def create_grid(self, grid_level, input):
         bsz, c, h, w = input.size()
         grid = []
-        seed = np.array([[-1,1], [1,-1]], dtype=float32)
+        seed = np.array([[-1,1], [1,-1]], dtype=np.float32)
         for n in range(grid_level):
             g = seed.repeat(2**n, 0).repeat(2**n, 1)
-            g = np.tile(g, [h/2**n, w/2**n])
+            g = np.tile(g, [h//2**(n+1), w//2**(n+1)])
             grid.append(g)
         grid = np.stack(grid)
         grid = np.stack([grid]*bsz)

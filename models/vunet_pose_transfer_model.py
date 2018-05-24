@@ -396,23 +396,28 @@ class VUnetPoseTransferModel(BaseModel):
         appr = torch.cat(appr, dim=1)
         return appr
 
-    def get_patch(self, images, coords, patch_size=32):
+    def get_patch(self, images, coords, patch_size=32, patch_indices=None):
         '''
-        image_batch: images (bsz, c, h, w)
-        coord: coordinates of joint points (bsz, 18, 2)
+        Input:
+            image_batch: images (bsz, c, h, w)
+            coord: coordinates of joint points (bsz, 18, 2)
+        Output:
+            patches: (bsz, npatch, c, hp, ww)
         '''
         bsz, c, h, w = images.size()
 
         # use 0-None for face area, ignore [14-REye, 15-LEye, 16-REar, 17-LEar]
-        joint_index = [0,1,2,3,4,5,6,7,8,9,10,11,12,13]
-        patches = []
+        if patch_indices is None:
+            patch_indices = self.opt.patch_indices
 
-        for i in joint_index:
+        patches = []
+        for i in range(bsz):
             patch = []
-            for j in range(bsz):
-                img = images[j]
-                x = int(coords[j, i, 0].item())
-                y = int(coords[j, i, 1].item())
+            img = images[i]
+            for j in patch_indices:
+                x = int(coords[i,j,0].item())
+                y = int(coords[i,j,1].item())
+
                 if x < 0 or y < 0:
                     p = img.new(1, c, patch_size, patch_size).fill_(0)
                 else:
@@ -429,20 +434,21 @@ class VUnetPoseTransferModel(BaseModel):
                     p = img[:, top:bottom, left:right].unsqueeze(dim=0)
                     if not (p_l == p_r == p_t == p_b == 0):
                         p = F.pad(p, pad=(p_l, p_r, p_t, p_b), mode='constant')
-
                 patch.append(p)
-            patch = torch.cat(patch, dim=0)
+            patch = torch.cat(patch, dim=0)#[npatch, c, hp, wp]
             patches.append(patch)
+        patches = torch.stack(patches)#[bsz, npatch, c, hp, wp]
+
         return patches
-    
-    def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32):
+
+
+    def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32, patch_indices=None):
         '''
         images_1: (bsz, h, w, h)
         images_2: (bsz, h, w, h)
         c_1: (bsz, 18, 2) # patch center coordinates of images_1
         c_2: (bsz, 18, 2) # patch center coordinates of images_2
         '''
-        bsz = images_1.size(0)
         # remove invalid joint point
         c_invalid = (c_1 < 0) | (c_2 < 0)
         vc_1 = c_1.clone()
@@ -450,12 +456,12 @@ class VUnetPoseTransferModel(BaseModel):
         vc_1[c_invalid] = -1
         vc_2[c_invalid] = -1
         # get patches
-        patches_1 = self.get_patch(images_1, vc_1, patch_size) # list: [patch_c1, patch_c2, ...]
-        patches_2 = self.get_patch(images_2, vc_2, patch_size)
-        n_patch = len(patches_1)
+        patches_1 = self.get_patch(images_1, vc_1, patch_size, patch_indices) # list: [patch_c1, patch_c2, ...]
+        patches_2 = self.get_patch(images_2, vc_2, patch_size, patch_indices)
         # compute style loss
-        patches_1 = torch.cat(patches_1, dim=0)
-        patches_2 = torch.cat(patches_2, dim=0)
+        bsz, npatch, c, h, w = patches_1.size()
+        patches_1 = patches_1.view(bsz*npatch, c, h, w)
+        patches_2 = patches_2.view(bsz*npatch, c, h, w)
         loss_patch_style = self.crit_vgg(patches_1, patches_2, 'style')
 
         # output = {
@@ -465,7 +471,7 @@ class VUnetPoseTransferModel(BaseModel):
         #     'c_2': c_2.cpu(),
         #     'patches_1': patches_1.cpu(),
         #     'patches_2': patches_2.cpu(),
-        #     'n_patch': n_patch,
+        #     'npatch': npatch,
         #     'id': self.input['id']
         # }
 
