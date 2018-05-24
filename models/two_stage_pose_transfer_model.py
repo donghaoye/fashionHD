@@ -279,11 +279,11 @@ class TwoStagePoseTransferModel(BaseModel):
                 seg_gen = self.input['seg_mask_%s'%tar_idx]
             else:
                 seg_fake = output_s1['seg_mask']
-                if (not self.is_train) or self.opt.s2e_seg_src == 'fake':
+                if mode != 'train' or self.opt.s2e_seg_src == 'fake':
                     seg_gen = seg_fake
                 else:
                     bsz, c = seg_fake.size()[0:2]
-                    mask = seg_fake.new(bsz, c, 1, 1).bernoulli_()
+                    mask = seg_fake.new(bsz, 1, 1, 1).bernoulli_()
                     seg_gen = seg_fake * mask + self.input['seg_mask_%s'%tar_idx] * (1-mask)
             s2e_out = self.netT_s2e(img_ref, seg_ref, seg_gen)
             self.output['seg_ref'] = seg_ref
