@@ -72,7 +72,7 @@ class VUnetPoseTransferModel(BaseModel):
         if self.is_train:
             self.schedulers = []
             self.optimizers =[]
-            self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
+            self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids, opt.shifted_style)
             # self.crit_vgg_old = networks.VGGLoss(self.gpu_ids)
             self.optim = torch.optim.Adam(self.netT.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
             self.optimizers += [self.optim]
@@ -187,10 +187,11 @@ class VUnetPoseTransferModel(BaseModel):
             # L1
             self.output['loss_L1'] = F.l1_loss(self.output['img_out'], self.output['img_tar'])
             # content & style
-            if self.opt.loss_weight_style > 0:
-                self.output['output_content'], self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'all')
-            else:
+            if self.opt.loss_weight_content > 0:
                 self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
+            # style
+            if self.opt.loss_weight_style > 0:
+                self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
             # patch style
             if self.opt.loss_weight_patch_style > 0:
                 self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
@@ -222,14 +223,14 @@ class VUnetPoseTransferModel(BaseModel):
         # L1
         self.output['loss_L1'] = F.l1_loss(self.output['img_out'], self.output['img_tar'])
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
-        # content & style
-        if self.opt.loss_weight_style > 0:
-            self.output['loss_content'], self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'all')
-            loss += self.output['loss_content'] * self.opt.loss_weight_content
-            loss += self.output['loss_style'] * self.opt.loss_weight_style
-        else:
+        # content
+        if self.opt.loss_weight_content > 0:
             self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
             loss += self.output['loss_content'] * self.opt.loss_weight_content
+        # styel
+        if self.opt.loss_weight_style > 0:
+            self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
+            loss += self.output['loss_style'] * self.opt.loss_weight_style
         # patch style
         if self.opt.loss_weight_patch_style > 0:
             self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
@@ -259,10 +260,11 @@ class VUnetPoseTransferModel(BaseModel):
         self.output['grad_L1'] = self.output['img_out'].grad.norm()
         grad = self.output['img_out'].grad.clone()
         # content 
-        self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
-        (self.output['loss_content'] * self.opt.loss_weight_content).backward(retain_graph=True)
-        self.output['grad_content'] = (self.output['img_out'].grad - grad).norm()
-        grad = self.output['img_out'].grad.clone()
+        if self.opt.loss_weight_content > 0:
+            self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
+            (self.output['loss_content'] * self.opt.loss_weight_content).backward(retain_graph=True)
+            self.output['grad_content'] = (self.output['img_out'].grad - grad).norm()
+            grad = self.output['img_out'].grad.clone()
         # style
         if self.opt.loss_weight_style > 0:
             self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')

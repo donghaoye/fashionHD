@@ -174,7 +174,7 @@ class TwoStagePoseTransferModel(BaseModel):
         if self.is_train:
             self.schedulers = []
             self.optimizers = []
-            self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids)
+            self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids, shifted_stype=opt.shifted_stype)
 
             self.optim = torch.optim.Adam([
                     {'params': self.netT_s2e.parameters()},

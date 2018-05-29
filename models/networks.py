@@ -379,11 +379,13 @@ class VGGLoss(nn.Module):
             return self.vgg(x, y).mean()
 
 class VGGLoss_v2(nn.Module):
-    def __init__(self, gpu_ids):
+    def __init__(self, gpu_ids, shifted_style=False):
         super(VGGLoss_v2, self).__init__()
         self.gpu_ids = gpu_ids
+        self.shifted_style = shifted_style
         self.content_weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
         self.style_weights = [1,1,1,1,1]
+        self.shift_delta = [[0,2,4,8,16], [0,2,4,8], [0,2,4], [0,2], [0]]
         # self.style_weights = [0,0,1,0,0] # use relu-3 layer feature to compure style loss
         # define vgg
         vgg_pretrained_features = torchvision.models.vgg19(pretrained=True).features
@@ -393,15 +395,15 @@ class VGGLoss_v2(nn.Module):
         self.slice4 = torch.nn.Sequential()
         self.slice5 = torch.nn.Sequential()
         for x in range(2):
-            self.slice1.add_module(str(x), vgg_pretrained_features[x])
+            self.slice1.add_module(str(x), vgg_pretrained_features[x]) # relu1_1
         for x in range(2, 7):
-            self.slice2.add_module(str(x), vgg_pretrained_features[x])
+            self.slice2.add_module(str(x), vgg_pretrained_features[x]) # relu2_1
         for x in range(7, 12):
-            self.slice3.add_module(str(x), vgg_pretrained_features[x])
+            self.slice3.add_module(str(x), vgg_pretrained_features[x]) # relu3_1
         for x in range(12, 21):
-            self.slice4.add_module(str(x), vgg_pretrained_features[x])
+            self.slice4.add_module(str(x), vgg_pretrained_features[x]) # relu4_1
         for x in range(21, 30):
-            self.slice5.add_module(str(x), vgg_pretrained_features[x])
+            self.slice5.add_module(str(x), vgg_pretrained_features[x]) # relu5_1
         for param in self.parameters():
             param.requires_grad = False
 
@@ -419,7 +421,7 @@ class VGGLoss_v2(nn.Module):
 
     def forward(self, X, Y, loss_type='content', device_mode=None):
         '''
-        loss_type: 'all', 'content', 'style'
+        loss_type: 'content', 'style'
         device_mode: multi, single, sub
         '''
         bsz = X.size(0)
@@ -427,37 +429,40 @@ class VGGLoss_v2(nn.Module):
             device_mode = 'multi' if len(self.gpu_ids) > 1 else 'single'
 
         if device_mode == 'multi':
-            if loss_type != 'all':
-                return nn.parallel.data_parallel(self, (X, Y), module_kwargs={'loss_type': loss_type, 'device_mode': 'sub'}).mean(dim=0)
-            else:
-                loss_content, loss_style = nn.parallel.data_parallel(self, (X, Y), module_kwargs={'loss_type': loss_type, 'device_mode': 'sub'})
-                return loss_content.mean(dim=0), loss_style.mean(dim=0)
+            return nn.parallel.data_parallel(self, (X, Y), module_kwargs={'loss_type': loss_type, 'device_mode': 'sub'}).mean(dim=0)
         else:
             features_x = self.compute_feature(self.normalize(X))
             features_y = self.compute_feature(self.normalize(Y))
             # compute content loss
-            if loss_type in {'all', 'content'}:
-                loss_content = 0
-                for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
-                    loss_content += self.content_weights[i] * F.l1_loss(feat_x, feat_y, reduce=False).view(bsz, -1).mean(dim=1)
-                if device_mode == 'single':
-                    loss_content = loss_content.mean(dim=0)
-            # compute style loss
-            if loss_type in {'all', 'style'}:
-                loss_style = 0
-                for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
-                    if self.style_weights[i] > 0:
-                        loss_style += self.style_weights[i] * F.mse_loss(self.gram_matrix(feat_x), self.gram_matrix(feat_y), reduce=False).view(bsz, -1).sum(dim=1)
-                        # loss_style += self.style_weights[i] * ((self.gram_matrix(feat_x) - self.gram_matrix(feat_y))**2).view(bsz, -1).mean(dim=1)
-                if device_mode == 'single':
-                    loss_style = loss_style.mean(dim=0)
-
             if loss_type == 'content':
-                return loss_content
-            elif loss_type == 'style':
-                return loss_style
-            elif loss_type == 'all':
-                return loss_content, loss_style
+                loss = 0
+                for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
+                    loss += self.content_weights[i] * F.l1_loss(feat_x, feat_y, reduce=False).view(bsz, -1).mean(dim=1)
+            # compute style loss
+            if loss_type == 'style':
+                loss = 0
+                if self.shifted_style:
+                    # with cross_correlation
+                    for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
+                        if self.style_weights[i] > 0:
+                            for delta in self.shift_delta[i]:
+                                if delta == 0:
+                                    loss += self.style_weights[i] * F.mse_loss(self.gram_matrix(feat_x), self.gram_matrix(feat_y), reduce=False).view(bsz, -1).sum(dim=1)
+                                else:
+                                    loss += 0.5*self.style_weights[i] * \
+                                            (F.mse_loss(self.shifted_gram_matrix(feat_x, delta, 0), self.shifted_gram_matrix(feat_y, delta, 0), reduce=False) \
+                                            +F.mse_loss(self.shifted_gram_matrix(feat_x, 0, delta), self.shifted_gram_matrix(feat_y, 0, delta), reduce=False)).view(bsz, -1).sum(dim=1)
+                
+                else:
+                    # without cross_correlation
+                    for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):
+                        if self.style_weights[i] > 0:
+                            loss += self.style_weights[i] * F.mse_loss(self.gram_matrix(feat_x), self.gram_matrix(feat_y), reduce=False).view(bsz, -1).sum(dim=1)
+                            # loss += self.style_weights[i] * ((self.gram_matrix(feat_x) - self.gram_matrix(feat_y))**2).view(bsz, -1).mean(dim=1)
+                
+            if device_mode == 'single':
+                loss = loss.mean(dim=0)
+            return loss
 
     def normalize(self, x):
         # normalization parameters of input
@@ -474,6 +479,14 @@ class VGGLoss_v2(nn.Module):
         feat = feat.view(bsz, c, h*w)
         feat_T = feat.transpose(1,2)
         g = torch.matmul(feat, feat_T) / (c*h*w)
+        return g
+
+    def shifted_gram_matrix(self, feat, shift_x, shift_y):
+        bsz, c, h, w = feat.size()
+        assert shift_x<w and shift_y<h
+        feat1 = feat[:,:,shift_y:, shift_x:].contiguous().view(bsz, c, -1)
+        feat2 = feat[:,:,:(h-shift_y),:(w-shift_x)].contiguous().view(bsz, c, -1)
+        g = torch.matmul(feat1, feat2.transpose(1,2)) / (c*h*w)
         return g
 
 class TotalVariationLoss(nn.Module):

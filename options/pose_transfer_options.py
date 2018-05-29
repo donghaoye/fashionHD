@@ -123,6 +123,7 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
         parser.add_argument('--loss_weight_kl', type=float, default=1e-6, help='vunet setting: kl loss weight')
         parser.add_argument('--loss_weight_seg', type=float, default=0.1, help='weight of cross entropy loss on additional segmentation outputs')
+        parser.add_argument('--shifted_style', type=int, default=0, choices=[0,1], help='seg shifted_style=1 to use shifted_style_loss (style loss with cross correlation)')
         # train 2-stage model
         parser.add_argument('--train_s1', type=int, default=0, choices=[0,1], help='set 1 to jointly train stage-1 and stage-2 networks')
         parser.add_argument('--lr_s1', type=float, default=2e-5, help='initial learning rate for stage-1 net when joint training')
