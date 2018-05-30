@@ -2504,7 +2504,7 @@ class SegmentRegionEncoder(nn.Module):
         # region pooling
         feat_out = 0
         for i in range(self.seg_nc):
-            feat = feat_ref * seg_ref[:,i:(i+1)].sum(dim=3, keepdim=True).sum(dim=2, keepdim=True) #(bsz, c, 1, 1)
+            feat = (feat_ref * seg_ref[:,i:(i+1)]).sum(dim=3, keepdim=True).sum(dim=2, keepdim=True) #(bsz, c, 1, 1)
             feat = feat / (seg_ref[:,i:(i+1)].sum(dim=3, keepdim=True).sum(dim=2, keepdim=True) + 1e-7) #(bsz, c, 1, 1)
             feat = feat * seg_tar[:,i:(i+1)]
             feat_out += feat
@@ -2515,7 +2515,6 @@ class SegmentRegionEncoder(nn.Module):
             feat_out = torch.cat((feat_out, self.grid.detach()), dim=1)
             
         return feat_out
-
 
 
 
@@ -2997,7 +2996,6 @@ class ImageDecoder(nn.Module):
             return nn.parallel.data_parallel(self.model, input)
         else:
             return self.model(input)
-
 
 
 ###############################################################################

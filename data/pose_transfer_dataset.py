@@ -192,11 +192,18 @@ class PoseTransferDataset(BaseDataset):
         y_b = self._get_center(joint_c[11][1], joint_c[8][1])
         p_b0 = [0.5*(x_l+x_r), 0.5*(y_t+y_b)] if (x_l > 0 and x_r > 0 and y_t > 0 and y_b > 0) else [-1, -1] #18
         p_b1 = [x_l, 0.5*(y_t+y_b)] if (x_l > 0 and y_t > 0 and y_b > 0) else [-1, -1] #19
-        p_b2 = [x_r, 0.5*(y_t+y_b)] if (x_l > 0 and y_t > 0 and y_b > 0) else [-1, -1] #20
+        p_b2 = [x_r, 0.5*(y_t+y_b)] if (x_r > 0 and y_t > 0 and y_b > 0) else [-1, -1] #20
         p_b3 = [0.5*(x_l+x_r), y_t] if (x_l > 0 and x_r > 0 and y_t > 0) else [-1, -1] #21
         p_b4 = [0.5*(x_l+x_r), y_b] if (x_l > 0 and x_r > 0 and y_b > 0) else [-1, -1] #22
         
-        joint_ext += [p_b0, p_b1, p_b2, p_b3, p_b4]
+        p_b5 = [x_l, 0.75*y_t+0.25*y_b] if (x_l>0 and y_t>0 and y_b>0) else [-1,-1] #23
+        p_b6 = [0.5*x_l+0.5*x_r, 0.75*y_t+0.25*y_b] if (x_l>0 and x_r>0 and y_t>0 and y_b>0) else [-1,-1] #24
+        p_b7 = [x_r, 0.75*y_t+0.25*y_b] if (x_r>0 and y_t>0 and y_b>0) else [-1,-1] # 25
+        p_b8 = [x_l, 0.25*y_t+0.75*y_b] if (x_l>0 and y_t>0 and y_b>0) else [-1,-1] #26
+        p_b9 = [0.5*x_l+0.5*x_r, 0.25*y_t+0.75*y_b] if (x_l>0 and x_r>0 and y_t>0 and y_b>0) else [-1,-1] #27
+        p_b10 = [x_r, 0.25*y_t+0.75*y_b] if (x_r>0 and y_t>0 and y_b>0) else [-1,-1] # 28
+
+        joint_ext += [p_b0, p_b1, p_b2, p_b3, p_b4, p_b5, p_b6, p_b7, p_b8, p_b9, p_b10]
 
         return joint_c + joint_ext
 
