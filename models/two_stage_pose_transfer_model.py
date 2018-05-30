@@ -502,7 +502,7 @@ class TwoStagePoseTransferModel(BaseModel):
             if item == 'joint':
                 dim += 18
             elif item == 'joint_ext':
-                dim += 23
+                dim += 29
             elif item == 'seg':
                 dim += 7
             elif item == 'stickman':

@@ -359,7 +359,7 @@ class VUnetPoseTransferModel(BaseModel):
         pose_items.sort()
         for item in pose_items:
             if item == 'joint':
-                pose.append(self.input['joint_%s'%index])
+                pose.append(self.input['joint_%s'%index][0:18])
             elif item == 'seg':
                 pose.append(self.input['seg_mask_%s'%index])
             elif item == 'stickman':
