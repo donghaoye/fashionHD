@@ -7,6 +7,7 @@ import torchvision
 import networks
 from torch.autograd import Variable
 from misc.image_pool import ImagePool
+from misc.color_space import rgb2lab
 from base_model import BaseModel
 from misc import pose_util
 
@@ -163,50 +164,27 @@ class VUnetPoseTransferModel(BaseModel):
         self.output['SSIM'] = self.crit_ssim(self.output['img_out'], self.output['img_tar'])
         # compute loss
         if compute_loss:
-            if self.use_GAN:
-                # D loss
-                if self.opt.D_cond:
-                    D_input_fake = torch.cat((self.output['img_out'].detach(), self.output['pose_tar']), dim=1)
-                    D_input_real = torch.cat((self.output['img_tar'], self.output['pose_tar']), dim=1)
-                else:
-                    D_input_fake = self.output['img_out'].detach()
-                    D_input_real = self.output['img_tar']
-                
-                D_input_fake = self.fake_pool.query(D_input_fake.data)
-                loss_D_fake = self.crit_GAN(self.netD(D_input_fake), False)
-                loss_D_real = self.crit_GAN(self.netD(D_input_real), True)
-                self.output['loss_D'] = 0.5*(loss_D_fake + loss_D_real)
-                # G loss
-                if self.opt.D_cond:
-                    D_input = torch.cat((self.output['img_out'], self.output['pose_tar']), dim=1)
-                else:
-                    D_input = self.output['img_out']
-                self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
-            # KL
-            self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
-            # L1
-            self.output['loss_L1'] = F.l1_loss(self.output['img_out'], self.output['img_tar'])
-            # content & style
-            if self.opt.loss_weight_content > 0:
-                self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
-            # style
-            if self.opt.loss_weight_style > 0:
-                self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
-            # patch style
-            if self.opt.loss_weight_patch_style > 0:
-                self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
-            # seg
-            if 'seg' in self.opt.output_type:
-                self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.output['seg_tar'].squeeze(dim=1).long())
-
+            self.compute_loss()
         
     def backward_D(self):
-        if self.opt.D_cond:
-            D_input_fake = torch.cat((self.output['img_out'].detach(), self.output['pose_tar']), dim=1)
-            D_input_real = torch.cat((self.output['img_tar'], self.output['pose_tar']), dim=1)
+        if 'loss_in_lab' in self.opt and self.opt.loss_in_lab:
+            # compute loss in Lab space
+            lab_out = rgb2lab(self.output['img_out'])
+            img_out = ((lab_out[:,0:1]-50.)/50.).repeat(1,3,1,1)
+
+            lab_tar = rgb2lab(self.output['img_tar'])
+            img_tar = ((lab_tar[:,0:1]-50.)/50.).repeat(1,3,1,1)
         else:
-            D_input_fake = self.output['img_out'].detach()
-            D_input_real = self.output['img_tar']
+            # compute loss in RGB space
+            img_out = self.output['img_out']
+            img_tar = self.output['img_tar']
+
+        if self.opt.D_cond:
+            D_input_fake = torch.cat((img_out.detach(), self.output['pose_tar']), dim=1)
+            D_input_real = torch.cat((img_tar, self.output['pose_tar']), dim=1)
+        else:
+            D_input_fake = img_out.detach()
+            D_input_real = img_tar
 
         D_input_fake = self.fake_pool.query(D_input_fake.data)
 
@@ -216,76 +194,113 @@ class VUnetPoseTransferModel(BaseModel):
         (self.output['loss_D'] * self.opt.loss_weight_gan).backward()
 
     def backward(self):
+        loss = self.compute_loss()
+        loss.backward()
+
+    def compute_loss(self):
+        if 'loss_in_lab' in self.opt and self.opt.loss_in_lab:
+            # compute loss in Lab space
+            lab_out = rgb2lab(self.output['img_out'])
+            img_out, color_out = ((lab_out[:,0:1]-50.)/50.).repeat(1,3,1,1), lab_out[:,1:]/100.
+
+            lab_tar = rgb2lab(self.output['img_tar'])
+            img_tar, color_tar = ((lab_tar[:,0:1]-50.)/50.).repeat(1,3,1,1), lab_tar[:,1:]/100.
+        else:
+            # compute loss in RGB space
+            img_out = self.output['img_out']
+            img_tar = self.output['img_tar']
+        
         loss = 0
         # KL
         self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
         loss += self.output['loss_kl'] * self.opt.loss_weight_kl
         # L1
-        self.output['loss_L1'] = F.l1_loss(self.output['img_out'], self.output['img_tar'])
+        self.output['loss_L1'] = F.l1_loss(img_out, img_tar)
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
         # content
         if self.opt.loss_weight_content > 0:
-            self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
+            self.output['loss_content'] = self.crit_vgg(img_out, img_tar, 'content')
             loss += self.output['loss_content'] * self.opt.loss_weight_content
-        # styel
+        # style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
+            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, 'style')
             loss += self.output['loss_style'] * self.opt.loss_weight_style
-        # patch style
+        # local style
         if self.opt.loss_weight_patch_style > 0:
-            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
             loss += self.output['loss_patch_style'] * self.opt.loss_weight_patch_style
         # GAN
         if self.use_GAN:
             if self.opt.D_cond:
-                D_input = torch.cat((self.output['img_out'], self.output['pose_tar']), dim=1)
+                D_input = torch.cat((img_out, self.output['pose_tar']), dim=1)
             else:
-                D_input = self.output['img_out']
+                D_input = img_out
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
-            loss  += self.output['loss_G'] * self.opt.loss_weight_gan
+            loss += self.output['loss_G'] * self.opt.loss_weight_gan
         # seg
         if 'seg' in self.opt.output_type:
             self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.output['seg_tar'].squeeze(dim=1).long())
             loss += self.output['loss_seg'] * self.opt.loss_weight_seg
+        # color (only Lab)
+        if 'loss_in_lab' in self.opt and self.opt.loss_in_lab:
+            self.output['loss_color'] = F.mse_loss(color_out, color_tar)
+            loss += self.output['loss_color'] * self.opt.loss_weight_color
 
-        loss.backward()
-
+        return loss
 
     def backward_checkgrad(self):
+        if 'loss_in_lab' in self.opt and self.opt.loss_in_lab:
+            # compute loss in Lab space
+            lab_out = rgb2lab(self.output['img_out'])
+            img_out, color_out = ((lab_out[:,0:1]-50.)/50.).repeat(1,3,1,1), lab_out[:,1:]/100.
+
+            lab_tar = rgb2lab(self.output['img_tar'])
+            img_tar, color_tar = ((lab_tar[:,0:1]-50.)/50.).repeat(1,3,1,1), lab_tar[:,1:]/100.
+        else:
+            # compute loss in RGB space
+            img_out = self.output['img_out']
+            img_tar = self.output['img_tar']
+
         self.output['img_out'].retain_grad()
         loss = 0
         # L1
-        self.output['loss_L1'] = F.l1_loss(self.output['img_out'], self.output['img_tar'])
+        self.output['loss_L1'] = F.l1_loss(img_out, img_tar)
         (self.output['loss_L1'] * self.opt.loss_weight_L1).backward(retain_graph=True)
         self.output['grad_L1'] = self.output['img_out'].grad.norm()
         grad = self.output['img_out'].grad.clone()
         # content 
         if self.opt.loss_weight_content > 0:
-            self.output['loss_content'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'content')
+            self.output['loss_content'] = self.crit_vgg(img_out, img_tar, 'content')
             (self.output['loss_content'] * self.opt.loss_weight_content).backward(retain_graph=True)
             self.output['grad_content'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
         # style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.crit_vgg(self.output['img_out'], self.output['img_tar'], 'style')
+            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, 'style')
             (self.output['loss_style'] * self.opt.loss_weight_style).backward(retain_graph=True)
             self.output['grad_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
         # patch style 
         if self.opt.loss_weight_patch_style > 0:
-            self.output['loss_patch_style'] = self.compute_patch_style_loss(self.output['img_out'], self.output['joint_c_tar'], self.output['img_tar'], self.output['joint_c_tar'], self.opt.patch_size)
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size)
             (self.output['loss_patch_style'] * self.opt.loss_weight_patch_style).backward(retain_graph=True)
             self.output['grad_patch_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
         # gan 
         if self.use_GAN:
             if self.opt.D_cond:
-                D_input = torch.cat((self.output['img_out'], self.output['pose_tar']), dim=1)
+                D_input = torch.cat((img_out, self.output['pose_tar']), dim=1)
             else:
                 D_input = self.output['img_out']
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             (self.output['loss_G'] * self.opt.loss_weight_gan).backward(retain_graph=True)
             self.output['grad_gan'] = (self.output['img_out'].grad - grad).norm()
+        # color
+        if 'loss_in_lab' in self.opt and self.opt.loss_in_lab:
+            self.output['loss_color'] = F.mse_loss(color_out, color_tar)
+            (self.output['loss_color'] * self.opt.loss_weight_color).backward(retain_graph=True)
+            self.output['grad_color'] = (self.output['img_out'].grad - grad).norm()
+            grad = self.output['img_out'].grad.clone()
         # seg
         if 'seg' in self.opt.output_type:
             self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.output['seg_tar'].squeeze(dim=1).long())
@@ -341,9 +356,12 @@ class VUnetPoseTransferModel(BaseModel):
     def get_pose_dim(self, pose_type):
         dim = 0
         pose_items = pose_type.split('+')
+        pose_items.sort()
         for item in pose_items:
             if item == 'joint':
                 dim += 18
+            elif item == 'joint_ext':
+                dim += 29
             elif item == 'seg':
                 dim += 7
             elif item == 'stickman':
@@ -359,7 +377,11 @@ class VUnetPoseTransferModel(BaseModel):
         pose_items.sort()
         for item in pose_items:
             if item == 'joint':
-                pose.append(self.input['joint_%s'%index][0:18])
+                # joint 0-17 are for pose
+                joint_for_pose = self.input['joint_%s'%index][:,0:18]
+                pose.append(joint_for_pose)
+            elif item == 'joint_ext':
+                pose.append(self.input['joint_%s'%index])
             elif item == 'seg':
                 pose.append(self.input['seg_mask_%s'%index])
             elif item == 'stickman':
@@ -482,7 +504,7 @@ class VUnetPoseTransferModel(BaseModel):
         return loss_patch_style
 
     def get_current_errors(self):
-        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_patch_style', 'loss_kl', 'loss_G', 'loss_D', 'loss_seg', 'grad_L1', 'grad_content', 'grad_style', 'grad_patch_style', 'grad_gan']
+        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_patch_style', 'loss_kl', 'loss_G', 'loss_D', 'loss_seg', 'loss_color', 'grad_L1', 'grad_content', 'grad_style', 'grad_patch_style', 'grad_gan', 'grad_color']
         errors = OrderedDict()
         for item in error_list:
             if item in self.output:

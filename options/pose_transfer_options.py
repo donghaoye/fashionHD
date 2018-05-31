@@ -116,7 +116,9 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--vis_epoch_freq', type = int, default = 1, help='frequency of visualizing generated images')
         parser.add_argument('--check_grad_freq', type = int, default = 100, help = 'frequency of checking gradient of each loss')
         parser.add_argument('--max_n_vis', type = int, default = 64, help='max number of visualized images')
-        # loss weights
+        # losses
+        parser.add_argument('--loss_in_lab', type=int, default=0, choices=[0,1], help='compute loss in Lab space: use a,b channel to compute color loss, and L channel to compute all other losses')
+        parser.add_argument('--shifted_style', type=int, default=0, choices=[0,1], help='seg shifted_style=1 to use shifted_style_loss (style loss with cross correlation)')
         parser.add_argument('--loss_weight_L1', type=float, default=1.)
         parser.add_argument('--loss_weight_content', type=float, default=1.)
         parser.add_argument('--loss_weight_style', type=float, default=0., help='set loss_weight_style > 0 to enable global style loss')
@@ -125,7 +127,8 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
         parser.add_argument('--loss_weight_kl', type=float, default=1e-6, help='vunet setting: kl loss weight')
         parser.add_argument('--loss_weight_seg', type=float, default=0.1, help='weight of cross entropy loss on additional segmentation outputs')
-        parser.add_argument('--shifted_style', type=int, default=0, choices=[0,1], help='seg shifted_style=1 to use shifted_style_loss (style loss with cross correlation)')
+        parser.add_argument('--loss_weight_color', type=float, default=1, help='weight of color L2 loss. only valid when loss_in_lab==1')
+        
         # train 2-stage model
         parser.add_argument('--train_s1', type=int, default=0, choices=[0,1], help='set 1 to jointly train stage-1 and stage-2 networks')
         parser.add_argument('--lr_s1', type=float, default=2e-5, help='initial learning rate for stage-1 net when joint training')
