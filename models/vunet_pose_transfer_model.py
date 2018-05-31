@@ -155,7 +155,7 @@ class VUnetPoseTransferModel(BaseModel):
 
         if 'seg' in self.opt.output_type:
             self.output['seg_out'] = netT_output['seg'] #(bsz, 7, h, w)
-            self.output['seg_tar'] = self.input['seg_%s'%tar_idx] #(bsz, h, w)
+            self.output['seg_tar'] = self.input['seg_%s'%tar_idx] #(bsz, 7, h, w)
 
     def test(self, compute_loss=False):
         with torch.no_grad():
@@ -295,6 +295,7 @@ class VUnetPoseTransferModel(BaseModel):
             self.output['loss_G'] = self.crit_GAN(self.netD(D_input), True)
             (self.output['loss_G'] * self.opt.loss_weight_gan).backward(retain_graph=True)
             self.output['grad_gan'] = (self.output['img_out'].grad - grad).norm()
+            grad = self.output['img_out'].grad.clone()
         # color
         if 'loss_in_lab' in self.opt and self.opt.loss_in_lab:
             self.output['loss_color'] = F.mse_loss(color_out, color_tar)
@@ -322,7 +323,7 @@ class VUnetPoseTransferModel(BaseModel):
             self.backward_checkgrad()
         else:
             self.backward()
-        self.optim.step()
+#self.optim.step()
 
     def get_output_dim(self, output_type):
         dim = 0

@@ -13,7 +13,7 @@ def rgb2lab(img_in):
     '''
     bsz, c, h, w = img_in.size()
     # convert value to [0,1]
-    rgb = (img_in + 1) * 0.5
+    rgb = (img_in + 1 + 1e-5) * 0.5
     # convert to XYZ space
     # rgb = torch.where(rgb>0.04045, torch.pow((rgb+0.055)/1.055, 2.4), rgb/12.92)
     # x = (rgb[:,0]*0.4124 + rgb[:,1]*0.3576 + rgb[:,2]*0.1805) / 0.95047
@@ -29,7 +29,7 @@ def rgb2lab(img_in):
     M1 = rgb.new(M1).view(1,3,3)
     xyz = torch.matmul(M1, rgb.view(bsz, c, h*w)).view(bsz, c, h, w)
     m2 = (xyz>0.008856).float()
-    xyz = torch.pow(xyz, 1./3)*m2 + (xyz*7.787)*(1-m2) +16./116
+    xyz = torch.pow(xyz, 1./3)*m2 + (xyz*7.787+16./116)*(1-m2)
     # convert to Lab space
     l = 116. * xyz[:,1] - 16
     a = 500. * (xyz[:,0] - xyz[:,1])
