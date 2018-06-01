@@ -384,7 +384,7 @@ class TwoStagePoseTransferModel(BaseModel):
             loss += self.output['loss_patch_style'] * self.opt.loss_weight_patch_style
         # local l1
         if self.opt.loss_weight_patch_l1 > 0:
-            self.output['loss_patch_l1'] = self.compute_patch_l1_loss(img_out self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
+            self.output['loss_patch_l1'] = self.compute_patch_l1_loss(img_out,self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
             loss += self.output['loss_patch_l1'] * self.opt.loss_weight_patch_l1
         # GAN
         if self.use_GAN:

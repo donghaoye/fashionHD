@@ -323,7 +323,7 @@ class VUnetPoseTransferModel(BaseModel):
             self.backward_checkgrad()
         else:
             self.backward()
-#self.optim.step()
+        self.optim.step()
 
     def get_output_dim(self, output_type):
         dim = 0

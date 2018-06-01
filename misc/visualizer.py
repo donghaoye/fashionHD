@@ -499,8 +499,10 @@ class GANVisualizer_V3(BaseVisualizer):
             imgs.append(vis.cpu())
             vis_list.append(name)
 
-        num_vis = min(opt.max_n_vis, imgs[0].size(0))
-        imgs = torch.stack(imgs, dim=1)[0:num_vis]
+        # num_vis = min(opt.max_n_vis, imgs[0].size(0))
+        # imgs = torch.stack(imgs, dim=1)[0:num_vis]
+        imgs = torch.stack(imgs, dim=1)
+        num_vis = imgs.size(0)
         imgs = imgs.view(imgs.size(0)*imgs.size(1), imgs.size(2), imgs.size(3), imgs.size(4))
         imgs.clamp_(-1.0, 1.0)
         nrow = int(imgs.size(0)/num_vis)
