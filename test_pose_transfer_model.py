@@ -62,7 +62,8 @@ if opt.nvis > 0:
                 val_visuals[name][0] = torch.cat((val_visuals[name][0], v[0]),dim=0)
     visualizer.visualize_image(epoch = opt.which_epoch, subset = 'test', visuals = val_visuals)
         
-
+if opt.vis_only:
+    exit()
 
 
 # test
