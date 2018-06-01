@@ -506,7 +506,7 @@ class GANVisualizer_V3(BaseVisualizer):
         imgs = imgs.view(imgs.size(0)*imgs.size(1), imgs.size(2), imgs.size(3), imgs.size(4))
         imgs.clamp_(-1.0, 1.0)
         nrow = int(imgs.size(0)/num_vis)
-        fn_img = os.path.join(vis_dir, '%s_epoch%d.jpg' % (subset, epoch))
+        fn_img = os.path.join(vis_dir, '%s_epoch%s.jpg' % (subset, epoch))
         torchvision.utils.save_image(imgs, fn_img, nrow = nrow, normalize = True)
         io.save_str_list(vis_list, os.path.join(vis_dir, 'vis_name_list.txt'))
 
