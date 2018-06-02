@@ -24,6 +24,7 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--joint_mode', type=str, default='binary', choices=['binary', 'gaussian'])
         parser.add_argument('--seg_bin_size', type=int, default=1, help='bin size of downsampled seg mask')
         parser.add_argument('--patch_indices', type=int, default=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,18,19,20,21,22,23,24,25,26,27,28], nargs='+', help='indices of joint points to extract patches. see misc.pose_util.py for details')
+        parser.add_argument('--patch_indices_for_loss', type=int, default=[1,2,3,4,5,6,7,8,9,10,11,12,13,18,19,20,21,22,23,24,25,26,27,28], nargs='+', help='indices of joint points to extract patches. see misc.pose_util.py for details')
         # parser.add_argument('--patch_indices', type=str, default='0-13', help='indices of joint points to extract patches. see misc.pose_util.py for details')
         parser.add_argument('--patch_size', type=int, default=32, help='size of the local pathch for computing style loss')
         ##############################
@@ -48,6 +49,7 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--which_model_stage_1', type=str, default='PoseTransfer_4.3', help='pretrained pose transfer model as stage-1 network')
         parser.add_argument('--which_model_s2e', type=str, default='patch_embed', choices=['patch_embed', 'patch', 'seg_embed'])
         parser.add_argument('--which_model_s2d', type=str, default='resnet', choices=['resnet', 'unet'], help='stage-2 decoder architecture')
+        parser.add_argument('--s2e_src', type=str, default='ref', choices=['ref', 'tar'], help='s2e input source: ref: reference image; tar: target image')
         parser.add_argument('--s2e_nf', type=int, default=32, help='2-stage model setting: channel number of the first encoder conv layer')
         parser.add_argument('--s2e_max_nf', type=int, default=128, help='2-stage model setting: max channel number of encoder conv layers')
         parser.add_argument('--s2e_nof', type=int, default=32, help='2-stage model setting: local embedding dimension')

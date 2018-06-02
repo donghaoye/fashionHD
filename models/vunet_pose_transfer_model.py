@@ -227,7 +227,7 @@ class VUnetPoseTransferModel(BaseModel):
             loss += self.output['loss_style'] * self.opt.loss_weight_style
         # local style
         if self.opt.loss_weight_patch_style > 0:
-            self.output['loss_patch_style'] = self.compute_patch_style_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices_for_loss)
             loss += self.output['loss_patch_style'] * self.opt.loss_weight_patch_style
         # GAN
         if self.use_GAN:
@@ -282,7 +282,7 @@ class VUnetPoseTransferModel(BaseModel):
             grad = self.output['img_out'].grad.clone()
         # patch style 
         if self.opt.loss_weight_patch_style > 0:
-            self.output['loss_patch_style'] = self.compute_patch_style_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size)
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices_for_loss)
             (self.output['loss_patch_style'] * self.opt.loss_weight_patch_style).backward(retain_graph=True)
             self.output['grad_patch_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()

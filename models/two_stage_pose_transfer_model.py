@@ -254,9 +254,12 @@ class TwoStagePoseTransferModel(BaseModel):
         ######################################
         # encoder
         if self.opt.which_model_s2e == 'patch_embed':
-            img_ref = self.input['img_%s'%ref_idx]
-            joint_c_ref = self.input['joint_c_%s'%ref_idx]
-            patch_ref = self.get_patch(img_ref, joint_c_ref, self.opt.patch_size, self.opt.patch_indices)
+            # img_ref = self.input['img_%s'%ref_idx]
+            # joint_c_ref = self.input['joint_c_%s'%ref_idx]
+            if self.opt.s2e_src == 'ref' or mode == 'transfer':
+                patch_ref = self.get_patch(self.input['img_%s'%ref_idx], self.input['joint_c_%s'%ref_idx], self.opt.patch_size, self.opt.patch_indices)
+            else:
+                patch_ref = self.get_patch(self.input['img_%s'%tar_idx], self.input['joint_c_%s'%tar_idx], self.opt.patch_size, self.opt.patch_indices)
             joint_tar = self.get_pose(pose_type='joint_ext', index=tar_idx)[:,self.opt.patch_indices]
             s2e_out = self.netT_s2e(patch_ref, joint_tar)
             # data = {
@@ -268,14 +271,19 @@ class TwoStagePoseTransferModel(BaseModel):
             # torch.save(data, 'data.pth')
             # exit(0)
         elif self.opt.which_model_s2e == 'patch':
-            img_ref = self.input['img_%s'%ref_idx]
-            joint_c_ref = self.input['joint_c_%s'%ref_idx]
-            patch_ref = self.get_patch(img_ref, joint_c_ref, self.opt.patch_size, self.opt.patch_indices)
+            if self.opt.s2e_src == 'ref' or mode == 'transfer':
+                patch_ref = self.get_patch(self.input['img_%s'%ref_idx], self.input['joint_c_%s'%ref_idx], self.opt.patch_size, self.opt.patch_indices)
+            else:
+                patch_ref = self.get_patch(self.input['img_%s'%tar_idx], self.input['joint_c_%s'%tar_idx], self.opt.patch_size, self.opt.patch_indices)
             joint_c_tar = self.input['joint_c_%s'%tar_idx][:,self.opt.patch_indices]
             s2e_out = self.netT_s2e(patch_ref, joint_c_tar)
         elif self.opt.which_model_s2e == 'seg_embed':
-            img_ref = self.input['img_%s'%ref_idx]
-            seg_ref = self.input['seg_mask_%s'%ref_idx]
+            if self.opt.s2e_src == 'ref' or mode == 'transfer':
+                img_ref = self.input['img_%s'%ref_idx]
+                seg_ref = self.input['seg_mask_%s'%ref_idx]
+            else:
+                img_ref = self.input['img_%s'%tar_idx]
+                seg_ref = self.input['seg_mask_%s'%tar_idx]
             if self.opt.s2e_seg_src == 'gt':
                 seg_gen = self.input['seg_mask_%s'%tar_idx]
             else:
@@ -380,11 +388,11 @@ class TwoStagePoseTransferModel(BaseModel):
             loss += self.output['loss_style'] * self.opt.loss_weight_style
         # local style
         if self.opt.loss_weight_patch_style > 0:
-            self.output['loss_patch_style'] = self.compute_patch_style_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices_for_loss)
             loss += self.output['loss_patch_style'] * self.opt.loss_weight_patch_style
         # local l1
         if self.opt.loss_weight_patch_l1 > 0:
-            self.output['loss_patch_l1'] = self.compute_patch_l1_loss(img_out,self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
+            self.output['loss_patch_l1'] = self.compute_patch_l1_loss(img_out,self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices_for_loss)
             loss += self.output['loss_patch_l1'] * self.opt.loss_weight_patch_l1
         # GAN
         if self.use_GAN:
@@ -435,13 +443,13 @@ class TwoStagePoseTransferModel(BaseModel):
             grad = self.output['img_out'].grad.clone()
         # patch style 
         if self.opt.loss_weight_patch_style > 0:
-            self.output['loss_patch_style'] = self.compute_patch_style_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
+            self.output['loss_patch_style'] = self.compute_patch_style_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices_for_loss)
             (self.output['loss_patch_style'] * self.opt.loss_weight_patch_style).backward(retain_graph=True)
             self.output['grad_patch_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
         # patch l1
         if self.opt.loss_weight_patch_l1 > 0:
-            self.output['loss_patch_l1'] = self.compute_patch_l1_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices)
+            self.output['loss_patch_l1'] = self.compute_patch_l1_loss(img_out, self.output['joint_c_tar'], img_tar, self.output['joint_c_tar'], self.opt.patch_size, self.opt.patch_indices_for_loss)
             (self.output['loss_patch_l1'] * self.opt.loss_weight_patch_l1).backward(retain_graph=True)
             self.output['grad_patch_l1'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()

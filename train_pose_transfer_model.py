@@ -86,7 +86,8 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
             if i == num_vis_batch:
                 break
             model.set_input(data)
-            model.test(compute_loss=False)
+            # model.test(compute_loss=False)
+            model.forward()
             visuals = model.get_current_visuals()
             if train_visuals is None:
                 train_visuals = visuals
