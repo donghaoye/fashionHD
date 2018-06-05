@@ -134,6 +134,18 @@ class TwoStagePoseTransferModel(BaseModel):
                 gpu_ids = opt.gpu_ids,
                 output_tanh = False,
                 )
+        elif self.opt.which_model_s2d == 'rpresnet':
+            self.netT_s2d = networks.RegionPropagationResnetGenerator(
+                input_nc_enc = 3 + s2e_nof,
+                output_nc = 3,
+                ngf = opt.s2d_nf,
+                norm_layer = networks.get_norm_layer(opt.norm),
+                activation = nn.ReLU,
+                use_dropout = False,
+                n_blocks = opt.s2d_nblocks,
+                gpu_ids = opt.gpu_ids,
+                output_tanh = False
+                )
         else:
             raise NotImplementedError()
         if opt.gpu_ids:
@@ -147,7 +159,7 @@ class TwoStagePoseTransferModel(BaseModel):
                 input_nc = 3 + self.get_pose_dim(opt.pose_type) if opt.D_cond else 3,
                 ndf = opt.D_nf,
                 which_model_netD = 'n_layers',
-                n_layers_D = 3,
+                n_layers_D = opt.D_n_layer,
                 norm = opt.norm,
                 which_gan = opt.which_gan,
                 init_type = opt.init_type,
@@ -175,7 +187,7 @@ class TwoStagePoseTransferModel(BaseModel):
         if self.is_train:
             self.schedulers = []
             self.optimizers = []
-            self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids, shifted_style=opt.shifted_style)
+            self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids, opt.content_layer_weight, opt.style_layer_weight, opt.shifted_style)
 
             self.optim = torch.optim.Adam([
                     {'params': self.netT_s2e.parameters()},
@@ -262,14 +274,6 @@ class TwoStagePoseTransferModel(BaseModel):
                 patch_ref = self.get_patch(self.input['img_%s'%tar_idx], self.input['joint_c_%s'%tar_idx], self.opt.patch_size, self.opt.patch_indices)
             joint_tar = self.get_pose(pose_type='joint_ext', index=tar_idx)[:,self.opt.patch_indices]
             s2e_out = self.netT_s2e(patch_ref, joint_tar)
-            # data = {
-            #     'img_1': self.input['img_1'].cpu(),
-            #     'img_2': self.input['img_2'].cpu(),
-            #     'patch_ref': patch_ref.cpu(),
-            #     'joint_tar': joint_tar.cpu(),
-            # }
-            # torch.save(data, 'data.pth')
-            # exit(0)
         elif self.opt.which_model_s2e == 'patch':
             if self.opt.s2e_src == 'ref' or mode == 'transfer':
                 patch_ref = self.get_patch(self.input['img_%s'%ref_idx], self.input['joint_c_%s'%ref_idx], self.opt.patch_size, self.opt.patch_indices)
@@ -288,7 +292,7 @@ class TwoStagePoseTransferModel(BaseModel):
                 seg_gen = self.input['seg_mask_%s'%tar_idx]
             else:
                 seg_fake = output_s1['seg_mask']
-                if mode != 'train' or self.opt.s2e_seg_src == 'fake':
+                if mode == 'transfer' or self.opt.s2e_seg_src == 'fake':
                     seg_gen = seg_fake
                 else:
                     bsz, c = seg_fake.size()[0:2]
@@ -302,7 +306,23 @@ class TwoStagePoseTransferModel(BaseModel):
             raise NotImplementedError()
         # decoder
         dec_input = torch.cat((self.output['img_out_s1'], s2e_out), dim=1)
-        s2d_out = self.netT_s2d(dec_input)
+        if self.opt.which_model_s2d != 'rpresnet':
+            s2d_out = self.netT_s2d(dec_input)
+        else:
+            if self.opt.s2e_seg_src == 'gt':
+                seg_gen = self.input['seg_mask_%s'%tar_idx]
+            else:
+                seg_fake = output_s1['seg_mask']
+                if mode == 'transfer' or self.opt.s2e_seg_src == 'fake':
+                    seg_gen = seg_fake
+                else:
+                    bsz, c = seg_fake.size()[0:2]
+                    mask = seg_fake.new(bsz, 1, 1, 1).bernoulli_()
+                    seg_gen = seg_fake * mask + self.input['seg_mask_%s'%tar_idx] * (1-mask)
+                    self.output['seg_gen'] = seg_gen
+                    self.output['seg_tar'] = self.input['seg_mask_%s'%tar_idx]
+            s2d_out = self.netT_s2d(torch.cat(dec_input, seg_gen))
+
         if self.opt.which_model_s2d == 'unet':
             self.output['img_out'] = F.tanh(output_s1['image'] + s2d_out)
         else:

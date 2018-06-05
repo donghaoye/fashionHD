@@ -379,12 +379,12 @@ class VGGLoss(nn.Module):
             return self.vgg(x, y).mean()
 
 class VGGLoss_v2(nn.Module):
-    def __init__(self, gpu_ids, shifted_style=False):
+    def __init__(self, gpu_ids, content_weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0], style_weights=[1.,1.,1.,1.,1.],shifted_style=False):
         super(VGGLoss_v2, self).__init__()
         self.gpu_ids = gpu_ids
         self.shifted_style = shifted_style
-        self.content_weights = [1.0/32, 1.0/16, 1.0/8, 1.0/4, 1.0]
-        self.style_weights = [1,1,1,1,1]
+        self.content_weights = content_weights
+        self.style_weights = style_weights
         self.shift_delta = [[0,2,4,8,16], [0,2,4,8], [0,2,4], [0,2], [0]]
         # self.style_weights = [0,0,1,0,0] # use relu-3 layer feature to compure style loss
         # define vgg
@@ -2516,6 +2516,89 @@ class SegmentRegionEncoder(nn.Module):
             
         return feat_out
 
+class RegionPropagationResnetGenerator(nn.Module):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, activation = nn.ReLU, use_dropout=False, nblocks=6, gpu_ids=[], padding_type='reflect', output_tanh=True):
+        assert(nblocks >=0)
+        super(RegionPropagationResnetGenerator, self).__init__()
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        self.gpu_ids = gpu_ids
+        self.output_tanh = output_tanh
+        self.nblocks = nblocks
+
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        n_downsampling = 2
+        downsample = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
+                 norm_layer(ngf),
+                 activation()]
+        for i in range(n_downsampling):
+            mult = 2**i
+            downsample += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
+                      norm_layer(ngf * mult * 2),
+                      activation()]
+        self.downsample = nn.Sequential(*downsample)
+
+        mult = 2**n_downsampling
+        for i in range(nblocks):
+            self.__setattr__('block%d'%i, ConditionedResnetBlock(ngf*mult, ngf*mult, padding_type, norm_layer, use_bias, activation(), use_dropout, output_c=False))
+
+        upsample = []
+        for i in range(n_downsampling):
+            mult = 2**(n_downsampling-i)
+            # upsample += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
+            #                              kernel_size=3, stride=2,
+            #                              padding=1, output_padding=1,
+            #                              bias=use_bias),
+            #           norm_layer(int(ngf * mult / 2)),
+            #           activation()]
+            upsample += [
+                nn.Conv2d(ngf*mult, int(ngf*mult/2)*4, kernel_size=3, padding=1, bias=use_bias),
+                nn.PixelShuffle(2),
+                norm_layer(int(ngf*mult/2)),
+                activation()
+            ]
+        upsample += [nn.ReflectionPad2d(3),
+            nn.Conv2d(int(ngf*mult/2), output_nc, kernel_size=7, padding=0, bias=True)]
+        if output_tanh:
+            upsample.append(nn.Tanh())
+        self.upsample = nn.Sequential(*upsample)
+
+    def region_propagate(self, x, s):
+        bsz, c, h, w = x.size()
+        ns = s.size(1)
+        x = x.view(bsz, 1, c, h*w)
+        s = s.view(bsz, ns, 1, h*w)
+        x_pool = (x*s).max(dim=3, keepdim=True)[0] # max pooling in each region. x_pool.size()=[bsz,ns,c,1]
+        x_prop = (x_pool*s).sum(dim=1).view(bsz, c, h, w)
+
+        return x_prop
+
+    def forward(self, input_x, input_s, single_device=False):
+        '''
+        input_x: Tensor(bsz, c, h, w)
+        input_s: Tensor(bsz, n_region, hs, ws)
+        '''
+        if self.gpu_ids and len(self.gpu_ids) > 1 and (not single_device):
+            return nn.parallel.data_parallel(self, (input_x, input_s), module_kwargs={'single_device': True})
+        else:
+            # downsample
+            x = self.downsample(input_x)
+            bsz, c_x, h_x, w_x = x.size()
+            # downsample region segmentation map
+            seg = F.adaptive_max_pool2d(input_s, (h_x, w_x))
+            # resnet blocks
+            for i in range(self.nblocks):
+                x_prop = self.region_propagate(x, seg)
+                x = self.__getattr__('block%d'%i)(torch.cat((x, x_prop), dim=1))
+            # upsample
+            output = self.upsample(x)
+            return output
 
 
 ###############################################################################
