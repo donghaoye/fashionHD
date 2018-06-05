@@ -79,38 +79,39 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
 
     if epoch % opt.vis_epoch_freq == 0:
         num_vis_batch = int(np.ceil(1.0*opt.nvis/opt.batch_size))
-        train_visuals = None
-        val_visuals = None
+        visuals = None
 
         for i, data in enumerate(train_loader):
             if i == num_vis_batch:
                 break
             model.set_input(data)
             # model.test(compute_loss=False)
-            model.forward()
-            visuals = model.get_current_visuals()
-            if train_visuals is None:
-                train_visuals = visuals
+            with torch.no_grad():
+                model.forward()
+            v = model.get_current_visuals()
+            if visuals is None:
+                visuals = v
             else:
-                for name, v in visuals.iteritems():
-                    train_visuals[name][0] = torch.cat((train_visuals[name][0], v[0]),dim=0)
+                for name, item in v.iteritems():
+                    visuals[name][0] = torch.cat((visuals[name][0], item[0]),dim=0)
             
-        visualizer.visualize_image(epoch = epoch, subset = 'train', visuals = train_visuals)
+        visualizer.visualize_image(epoch = epoch, subset = 'train', visuals = visuals)
 
-        
+        visuals = None
         for i, data in enumerate(val_loader):
             if i == num_vis_batch:
                 break
             model.set_input(data)
             model.test(compute_loss=False)
             visuals = model.get_current_visuals()
-            if val_visuals is None:
-                val_visuals = visuals
+            if visuals is None:
+                visuals = v
             else:
-                for name, v in visuals.iteritems():
-                    val_visuals[name][0] = torch.cat((val_visuals[name][0], v[0]),dim=0)
+                for name, item in v.iteritems():
+                    visuals[name][0] = torch.cat((visuals[name][0], item[0]),dim=0)
             
-        visualizer.visualize_image(epoch = epoch, subset = 'test', visuals = val_visuals)
+        visualizer.visualize_image(epoch = epoch, subset = 'test', visuals = visuals)
+        visuals = None
     
     if epoch % opt.save_epoch_freq == 0:
         model.save(epoch)
