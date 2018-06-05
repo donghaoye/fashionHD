@@ -64,7 +64,7 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--which_gan', type=str, default='dcgan', choices=['dcgan', 'lsgan'], help='gan loss type')
         parser.add_argument('--D_nf', type=int, default=64, help='output channel number of the first conv layer in netD')
         parser.add_argument('--D_cond', type=int, default=0, choices=[0,1], help='use conditioned discriminator')
-        parser.add_argument('--D_n_layer', type=int, default=3, help='conv layers in discriminator')
+        parser.add_argument('--D_n_layer', type=int, default=6, help='conv layers in discriminator')
         parser.add_argument('--pool_size', type=int, default=50, help='size of fake pool')
         ##############################
         # data setting (dataset_mode == pose_transfer_dataset)
@@ -123,7 +123,7 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--content_layer_weight', type=float, default=[1./32,1./16,1./8,1./4,1.,], nargs='+', help='content loss weights of vgg layers: relu1_1, relu2_1, relu3_1, relu4_1, relu5_1')
         parser.add_argument('--style_layer_weight', type=float, default=[1.,1.,1.,1.,1.,], nargs='+', help='style loss weights of vgg layers: relu1_1, relu2_1, relu3_1, relu4_1, relu5_1')
         parser.add_argument('--loss_in_lab', type=int, default=0, choices=[0,1], help='compute loss in Lab space: use a,b channel to compute color loss, and L channel to compute all other losses')
-        parser.add_argument('--shifted_style', type=int, default=0, choices=[0,1], help='seg shifted_style=1 to use shifted_style_loss (style loss with cross correlation)')
+        parser.add_argument('--shifted_style', type=int, default=1, choices=[0,1], help='seg shifted_style=1 to use shifted_style_loss (style loss with cross correlation)')
         # loss weight
         parser.add_argument('--loss_weight_L1', type=float, default=1.)
         parser.add_argument('--loss_weight_content', type=float, default=1.)

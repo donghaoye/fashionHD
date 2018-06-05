@@ -136,13 +136,13 @@ class TwoStagePoseTransferModel(BaseModel):
                 )
         elif self.opt.which_model_s2d == 'rpresnet':
             self.netT_s2d = networks.RegionPropagationResnetGenerator(
-                input_nc_enc = 3 + s2e_nof,
+                input_nc = 3 + s2e_nof,
                 output_nc = 3,
                 ngf = opt.s2d_nf,
                 norm_layer = networks.get_norm_layer(opt.norm),
                 activation = nn.ReLU,
                 use_dropout = False,
-                n_blocks = opt.s2d_nblocks,
+                nblocks = opt.s2d_nblocks,
                 gpu_ids = opt.gpu_ids,
                 output_tanh = False
                 )
@@ -319,9 +319,9 @@ class TwoStagePoseTransferModel(BaseModel):
                     bsz, c = seg_fake.size()[0:2]
                     mask = seg_fake.new(bsz, 1, 1, 1).bernoulli_()
                     seg_gen = seg_fake * mask + self.input['seg_mask_%s'%tar_idx] * (1-mask)
-                    self.output['seg_gen'] = seg_gen
-                    self.output['seg_tar'] = self.input['seg_mask_%s'%tar_idx]
-            s2d_out = self.netT_s2d(torch.cat(dec_input, seg_gen))
+            self.output['seg_gen'] = seg_gen
+            self.output['seg_tar'] = self.input['seg_mask_%s'%tar_idx]
+            s2d_out = self.netT_s2d(dec_input, seg_gen)
 
         if self.opt.which_model_s2d == 'unet':
             self.output['img_out'] = F.tanh(output_s1['image'] + s2d_out)
