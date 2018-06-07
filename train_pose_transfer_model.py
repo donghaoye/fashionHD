@@ -37,9 +37,14 @@ visualizer = GANVisualizer_V3(opt)
 pavi_upper_list = ['PSNR', 'SSIM']
 pavi_lower_list = ['loss_L1', 'loss_content', 'loss_style', 'loss_G', 'loss_D', 'loss_pose', 'loss_kl']
 
-total_steps = 0
+if opt.continue_train:
+    total_steps = 0
+    epoch_count = 1
+else:
+    epoch_count = 1 + int(opt.which_epoch)
+    total_steps = len(train_loader)*int(opt.which_epoch)
 
-for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
+for epoch in range(epoch_count, opt.niter + opt.niter_decay + 1):
     model.update_learning_rate()
     for i, data in enumerate(train_loader):
         total_steps += 1

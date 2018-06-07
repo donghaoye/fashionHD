@@ -47,7 +47,7 @@ class BaseModel(object):
     def save(self, label):
         pass
 
-
+    # helper loading function that can be used by subclasses
     def save_network(self, network, network_label, epoch_label, gpu_ids):
         save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
         save_path = os.path.join(self.save_dir, save_filename)
@@ -56,7 +56,6 @@ class BaseModel(object):
         if len(gpu_ids) and torch.cuda.is_available():
             network.cuda(gpu_ids[0])
 
-    # helper loading function that can be used by subclasses
     def load_network(self, network, network_label, epoch_label, model_id = None, forced = True):
         save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
         if model_id is None:
@@ -71,6 +70,16 @@ class BaseModel(object):
         else:
             network.load_state_dict(torch.load(save_path))
             print('[%s] load [%s] parameters from %s' % (self.name(), network_label, save_path))
+
+    def save_optim(self, optim, optim_label, epoch_label):
+        save_filename = '%s_optim_%s.pth'%(epoch_label, optim_label)
+        save_path = os.path.join(self.save_dir, save_filename)
+        torch.save(optim.state_dict(), save_path)
+        
+    def load_optim(self, optim, optim_label, epoch_label):
+        save_filename = '%s_optim_%s.pth'%(epoch_label, optim_label)
+        save_path = os.path.join(self.save_dir, save_filename)
+        optim.load_state_dict(torch.load(save_path))
 
     # update learning rate (called once every epoch)
     def update_learning_rate(self):

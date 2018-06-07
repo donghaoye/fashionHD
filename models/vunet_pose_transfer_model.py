@@ -71,7 +71,6 @@ class VUnetPoseTransferModel(BaseModel):
         self.crit_ssim = networks.SSIM()
 
         if self.is_train:
-            self.schedulers = []
             self.optimizers =[]
             self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids, opt.content_layer_weight, opt.style_layer_weight, opt.shifted_style)
             # self.crit_vgg_old = networks.VGGLoss(self.gpu_ids)
@@ -83,8 +82,6 @@ class VUnetPoseTransferModel(BaseModel):
                 self.optim_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr_D, betas=(opt.beta1, opt.beta2))
                 self.optimizers.append(self.optim_D)
             # todo: add pose loss
-            for optim in self.optimizers:
-                self.schedulers.append(networks.get_scheduler(optim, opt))
             self.fake_pool = ImagePool(opt.pool_size)
 
         ###################################
@@ -92,6 +89,20 @@ class VUnetPoseTransferModel(BaseModel):
         ###################################
         if not self.is_train:
             self.load_network(self.netT, 'netT', opt.which_epoch)
+        elif opt.continue_train:
+            self.load_network(self.netT, 'netT', opt.which_epoch)
+            self.load_optim(self.optim, 'optim', opt.which_epoch)
+            if self.use_GAN:
+                self.load_network(self.netD, 'netD', opt.which_epoch)
+                self.load_optim(self.optim_D, 'optim_D', opt.which_epoch)
+        ###################################
+        # schedulers
+        ###################################
+        if self.is_train:
+            self.schedulers = []
+            for optim in self.optimizers:
+                self.schedulers.append(networks.get_scheduler(optim, opt))
+
 
     def set_input(self, data):
         input_list = [
@@ -529,5 +540,9 @@ class VUnetPoseTransferModel(BaseModel):
         self.save_network(self.netT, 'netT', label, self.gpu_ids)
         if self.use_GAN:
             self.save_network(self.netD, 'netD', label, self.gpu_ids)
+        if self.is_train:
+            self.save_optim(self.optim, 'optim', label)
+            if self.use_GAN:
+                self.save_optim(self.optim_D, 'optim_D', label)
 
 
