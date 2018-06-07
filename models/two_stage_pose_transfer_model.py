@@ -215,7 +215,7 @@ class TwoStagePoseTransferModel(BaseModel):
             self.load_network(self.netT_s2e, 'netT_s2e', opt.which_epoch)
             self.load_network(self.netT_s2d, 'netT_s2d', opt.which_epoch)
         ###################################
-        # init/load model
+        # schedulers
         ###################################
         if self.is_train:
             self.schedulers = []
@@ -249,7 +249,12 @@ class TwoStagePoseTransferModel(BaseModel):
         self.input['joint_c_2'] = data['joint_c_2']
 
     def forward(self, mode='train'):
-        ''' mode in {'train', 'transfer'} '''
+        ''' 
+        mode: one of {'train', 'transfer', 'transfer_gt'} 
+        train: VAE sampling on; target information on (when opt.s2e_src==tar)
+        transfer: VAE sampling off (use mean); target information off (groundtruth not available in testing)
+        transfer_gt: VAE sampling off (use mean); target information on (this should be used for visualization, not testing)
+        '''
         ######################################
         # set reference/target index
         ######################################
@@ -267,11 +272,12 @@ class TwoStagePoseTransferModel(BaseModel):
         pose_ref_s1 = self.get_pose(self.opt_s1.pose_type, index=ref_idx)
         pose_tar_s1 = self.get_pose(self.opt_s1.pose_type, index=tar_idx)
 
+        s1_mode = 'train' if mode == 'train' else 'transfer'
         if self.is_train and self.opt.train_s1:
-            output_s1, self.output['ps_s1'], self.output['qs_s1'] = self.netT_s1(appr_ref_s1, pose_ref_s1, pose_tar_s1, mode=mode)
+            output_s1, self.output['ps_s1'], self.output['qs_s1'] = self.netT_s1(appr_ref_s1, pose_ref_s1, pose_tar_s1, mode=s1_mode)
         else:
             with torch.no_grad():
-                output_s1, self.output['ps_s1'], self.output['qs_s1'] = self.netT_s1(appr_ref_s1, pose_ref_s1, pose_tar_s1, mode=mode)
+                output_s1, self.output['ps_s1'], self.output['qs_s1'] = self.netT_s1(appr_ref_s1, pose_ref_s1, pose_tar_s1, mode=s1_mode)
 
         output_s1 = self.parse_output(output_s1, self.opt_s1.output_type)
         self.output['img_out_s1'] = F.tanh(output_s1['image'])
@@ -280,8 +286,6 @@ class TwoStagePoseTransferModel(BaseModel):
         ######################################
         # encoder
         if self.opt.which_model_s2e == 'patch_embed':
-            # img_ref = self.input['img_%s'%ref_idx]
-            # joint_c_ref = self.input['joint_c_%s'%ref_idx]
             if self.opt.s2e_src == 'ref' or mode == 'transfer':
                 patch_ref = self.get_patch(self.input['img_%s'%ref_idx], self.input['joint_c_%s'%ref_idx], self.opt.patch_size, self.opt.patch_indices)
             else:
@@ -355,9 +359,9 @@ class TwoStagePoseTransferModel(BaseModel):
         self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
 
 
-    def test(self, compute_loss=False):
+    def test(self, mode='transfer', compute_loss=False):
         with torch.no_grad():
-            self.forward(mode='transfer')
+            self.forward(mode = mode)
         # compute ssim
         self.output['SSIM'] = self.crit_ssim(self.output['img_out'], self.output['img_tar'])
         # compute loss

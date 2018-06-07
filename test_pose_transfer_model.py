@@ -61,7 +61,25 @@ if opt.nvis > 0:
             for name, v in visuals.iteritems():
                 val_visuals[name][0] = torch.cat((val_visuals[name][0], v[0]),dim=0)
     visualizer.visualize_image(epoch = opt.which_epoch, subset = 'test', visuals = val_visuals)
-        
+
+if opt.nvis > 0 and opt.s2e_src == 'tar':
+    # when opt.s2e_src==tar, use target information (transfer_gt mode)
+    print('visulizing first %d samples ("transfer_gt" mode)' % opt.nvis)
+    num_vis_batch = int(np.ceil(1.0*opt.nvis/opt.batch_size))
+    val_visuals = None
+    for i, data in enumerate(val_loader):
+        if i == num_vis_batch:
+            break
+        model.set_input(data)
+        model.test(mode='transfer_gt', compute_loss=False)
+        visuals = model.get_current_visuals()
+        if val_visuals is None:
+            val_visuals = visuals
+        else:
+            for name, v in visuals.iteritems():
+                val_visuals[name][0] = torch.cat((val_visuals[name][0], v[0]),dim=0)
+    visualizer.visualize_image(epoch = opt.which_epoch+'(gt)', subset = 'test', visuals = val_visuals)
+
 if opt.vis_only:
     exit()
 

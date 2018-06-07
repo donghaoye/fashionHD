@@ -138,7 +138,7 @@ class VUnetPoseTransferModel(BaseModel):
         return kl_loss
 
     def forward(self, mode='train'):
-        ''' mode in {'train', 'transfer'} '''
+        ''' mode in {'train', 'transfer', 'transfer_gt'} '''
         if self.opt.supervised or mode == 'transfer':
             ref_idx = '1'
             tar_idx = '2'
@@ -168,9 +168,9 @@ class VUnetPoseTransferModel(BaseModel):
             self.output['seg_out'] = netT_output['seg'] #(bsz, 7, h, w)
             self.output['seg_tar'] = self.input['seg_%s'%tar_idx] #(bsz, 7, h, w)
 
-    def test(self, compute_loss=False):
+    def test(self, mode='transfer', compute_loss=False):
         with torch.no_grad():
-            self.forward(mode='transfer')
+            self.forward(mode=mode)
         # compute ssim
         self.output['SSIM'] = self.crit_ssim(self.output['img_out'], self.output['img_tar'])
         # compute loss
@@ -230,11 +230,11 @@ class VUnetPoseTransferModel(BaseModel):
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
         # content
         if self.opt.loss_weight_content > 0:
-            self.output['loss_content'] = self.crit_vgg(img_out, img_tar, 'content')
+            self.output['loss_content'] = self.crit_vgg(img_out, img_tar, loss_type='content')
             loss += self.output['loss_content'] * self.opt.loss_weight_content
         # style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, 'style')
+            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, loss_type='style')
             loss += self.output['loss_style'] * self.opt.loss_weight_style
         # local style
         if self.opt.loss_weight_patch_style > 0:
@@ -281,13 +281,13 @@ class VUnetPoseTransferModel(BaseModel):
         grad = self.output['img_out'].grad.clone()
         # content 
         if self.opt.loss_weight_content > 0:
-            self.output['loss_content'] = self.crit_vgg(img_out, img_tar, 'content')
+            self.output['loss_content'] = self.crit_vgg(img_out, img_tar, loss_type='content')
             (self.output['loss_content'] * self.opt.loss_weight_content).backward(retain_graph=True)
             self.output['grad_content'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
         # style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, 'style')
+            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, loss_type='style')
             (self.output['loss_style'] * self.opt.loss_weight_style).backward(retain_graph=True)
             self.output['grad_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
@@ -498,7 +498,7 @@ class VUnetPoseTransferModel(BaseModel):
         bsz, npatch, c, h, w = patches_1.size()
         patches_1 = patches_1.view(bsz*npatch, c, h, w)
         patches_2 = patches_2.view(bsz*npatch, c, h, w)
-        loss_patch_style = self.crit_vgg(patches_1, patches_2, 'style')
+        loss_patch_style = self.crit_vgg(patches_1, patches_2, loss_type='style')
 
         # output = {
         #     'images_1': images_1.cpu(),

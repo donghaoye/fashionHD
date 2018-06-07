@@ -419,7 +419,13 @@ class VGGLoss_v2(nn.Module):
         out = [h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]
         return out
 
-    def forward(self, X, Y, loss_type='content', device_mode=None):
+    def apply_mask(self, feat, mask):
+        if mask is None:
+            return feat
+        else:
+            return feat * F.adaptive_max_pool2d(mask, (feat.size(3), feat.size(4)))
+
+    def forward(self, X, Y, mask=None, loss_type='content', device_mode=None):
         '''
         loss_type: 'content', 'style'
         device_mode: multi, single, sub
@@ -429,10 +435,17 @@ class VGGLoss_v2(nn.Module):
             device_mode = 'multi' if len(self.gpu_ids) > 1 else 'single'
 
         if device_mode == 'multi':
-            return nn.parallel.data_parallel(self, (X, Y), module_kwargs={'loss_type': loss_type, 'device_mode': 'sub'}).mean(dim=0)
+            if mask is None:
+                return nn.parallel.data_parallel(self, (X, Y), module_kwargs={'loss_type': loss_type, 'device_mode': 'sub', 'mask': None}).mean(dim=0)
+            else:
+                return nn.parallel.data_parallel(self, (X, Y, mask), module_kwargs={'loss_type': loss_type, 'device_mode': 'sub'}).mean(dim=0)
         else:
             features_x = self.compute_feature(self.normalize(X))
             features_y = self.compute_feature(self.normalize(Y))
+            if mask is not None:
+                features_x = [feat * F.adaptive_max_pool2d(mask, (feat.size(3), feat.size(4))) for feat in features_x]
+                features_y = [feat * F.adaptive_max_pool2d(mask, (feat.size(3), feat.size(4))) for feat in features_y]
+
             # compute content loss
             if loss_type == 'content':
                 loss = 0
@@ -452,7 +465,6 @@ class VGGLoss_v2(nn.Module):
                                     loss += 0.5*self.style_weights[i] * \
                                             (F.mse_loss(self.shifted_gram_matrix(feat_x, delta, 0), self.shifted_gram_matrix(feat_y, delta, 0), reduce=False) \
                                             +F.mse_loss(self.shifted_gram_matrix(feat_x, 0, delta), self.shifted_gram_matrix(feat_y, 0, delta), reduce=False)).view(bsz, -1).sum(dim=1)
-                
                 else:
                     # without cross_correlation
                     for i, (feat_x, feat_y) in enumerate(zip(features_x, features_y)):

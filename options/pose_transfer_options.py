@@ -124,6 +124,7 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--style_layer_weight', type=float, default=[1.,1.,1.,1.,1.,], nargs='+', help='style loss weights of vgg layers: relu1_1, relu2_1, relu3_1, relu4_1, relu5_1')
         parser.add_argument('--loss_in_lab', type=int, default=0, choices=[0,1], help='compute loss in Lab space: use a,b channel to compute color loss, and L channel to compute all other losses')
         parser.add_argument('--shifted_style', type=int, default=1, choices=[0,1], help='seg shifted_style=1 to use shifted_style_loss (style loss with cross correlation)')
+        parser.add_argument('--masked_style', type=int, default=0, choices=[0,1], help='compute style loss only insided masked region (upper/lower body)')
         # loss weight
         parser.add_argument('--loss_weight_L1', type=float, default=1.)
         parser.add_argument('--loss_weight_content', type=float, default=1.)

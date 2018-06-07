@@ -37,7 +37,7 @@ visualizer = GANVisualizer_V3(opt)
 pavi_upper_list = ['PSNR', 'SSIM']
 pavi_lower_list = ['loss_L1', 'loss_content', 'loss_style', 'loss_G', 'loss_D', 'loss_pose', 'loss_kl']
 
-if opt.continue_train:
+if not opt.continue_train:
     total_steps = 0
     epoch_count = 1
 else:
@@ -108,7 +108,7 @@ for epoch in range(epoch_count, opt.niter + opt.niter_decay + 1):
                 break
             model.set_input(data)
             model.test(compute_loss=False)
-            visuals = model.get_current_visuals()
+            v = model.get_current_visuals()
             if visuals is None:
                 visuals = v
             else:

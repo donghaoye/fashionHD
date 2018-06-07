@@ -24,7 +24,7 @@ def CreateDataLoader(opt, split = None):
         shuffle = shuffle, 
         num_workers = int(opt.nThreads), 
         drop_last = True, # set this True in both training and testing to avoid bug when using multigpu
-        pin_memory = True)
+        pin_memory = False)
 
     return dataloader
 
