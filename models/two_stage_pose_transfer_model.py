@@ -422,7 +422,7 @@ class TwoStagePoseTransferModel(BaseModel):
         # style
         if self.opt.loss_weight_style > 0:
             if self.opt.masked_style:
-                mask = self.output['seg_tar'][:,3:5]
+                mask = self.output['seg_tar'][:,3:5].sum(dim=1, keepdim=True)
             else:
                 mask = None
             self.output['loss_style'] = self.crit_vgg(img_out, img_tar, mask, loss_type='style')
@@ -479,7 +479,7 @@ class TwoStagePoseTransferModel(BaseModel):
         # style
         if self.opt.loss_weight_style > 0:
             if self.opt.masked_style:
-                mask = self.output['seg_tar'][:,3:5]
+                mask = self.output['seg_tar'][:,3:5].sum(dim=1, keepdim=True)
             else:
                 mask = None
             self.output['loss_style'] = self.crit_vgg(img_out, img_tar, mask, loss_type='style')

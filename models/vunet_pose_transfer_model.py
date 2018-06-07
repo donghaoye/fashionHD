@@ -235,7 +235,7 @@ class VUnetPoseTransferModel(BaseModel):
         # style
         if self.opt.loss_weight_style > 0:
             if self.opt.masked_style:
-                mask = self.output['seg_tar'][:,3:5]
+                mask = self.output['seg_tar'][:,3:5].sum(dim=1, keepdim=True)
             else:
                 mask = None
             self.output['loss_style'] = self.crit_vgg(img_out, img_tar, mask, loss_type='style')
@@ -291,7 +291,11 @@ class VUnetPoseTransferModel(BaseModel):
             grad = self.output['img_out'].grad.clone()
         # style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, loss_type='style')
+            if self.opt.masked_style:
+                mask = self.output['seg_tar'][:,3:5].sum(dim=1, keepdim=True)
+            else:
+                mask = None
+            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, mask, loss_type='style')
             (self.output['loss_style'] * self.opt.loss_weight_style).backward(retain_graph=True)
             self.output['grad_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
