@@ -28,6 +28,8 @@ else:
     raise NotImplementedError()
 
 model.initialize(opt)
+# save terminal order line
+io.save_str_list([' '.join(sys.argv)], os.path.join(model.save_dir, 'train_order_line.txt'))
 # create data loader
 train_loader = CreateDataLoader(opt, split = 'train')
 val_loader = CreateDataLoader(opt, split = 'test')

@@ -163,10 +163,10 @@ class VUnetPoseTransferModel(BaseModel):
         self.output['pose_tar'] = pose_tar
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
         self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
-
+        self.output['seg_tar'] = self.input['seg_%s'%tar_idx] #(bsz, 7, h, w)
         if 'seg' in self.opt.output_type:
             self.output['seg_out'] = netT_output['seg'] #(bsz, 7, h, w)
-            self.output['seg_tar'] = self.input['seg_%s'%tar_idx] #(bsz, 7, h, w)
+            
 
     def test(self, mode='transfer', compute_loss=False):
         with torch.no_grad():
@@ -234,7 +234,11 @@ class VUnetPoseTransferModel(BaseModel):
             loss += self.output['loss_content'] * self.opt.loss_weight_content
         # style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, loss_type='style')
+            if self.opt.masked_style:
+                mask = self.output['seg_tar'][:,3:5]
+            else:
+                mask = None
+            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, mask, loss_type='style')
             loss += self.output['loss_style'] * self.opt.loss_weight_style
         # local style
         if self.opt.loss_weight_patch_style > 0:

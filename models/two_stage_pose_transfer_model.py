@@ -310,7 +310,7 @@ class TwoStagePoseTransferModel(BaseModel):
                 seg_gen = self.input['seg_mask_%s'%tar_idx]
             else:
                 seg_fake = output_s1['seg_mask']
-                if mode == 'transfer' or self.opt.s2e_seg_src == 'fake':
+                if mode != 'train' or self.opt.s2e_seg_src == 'fake':
                     seg_gen = seg_fake
                 else:
                     bsz, c = seg_fake.size()[0:2]
@@ -319,7 +319,6 @@ class TwoStagePoseTransferModel(BaseModel):
             s2e_out = self.netT_s2e(img_ref, seg_ref, seg_gen)
             self.output['seg_ref'] = seg_ref
             self.output['seg_gen'] = seg_gen
-            self.output['seg_tar'] = self.input['seg_mask_%s'%tar_idx]
         else:
             raise NotImplementedError()
         # decoder
@@ -338,7 +337,6 @@ class TwoStagePoseTransferModel(BaseModel):
                     mask = seg_fake.new(bsz, 1, 1, 1).bernoulli_()
                     seg_gen = seg_fake * mask + self.input['seg_mask_%s'%tar_idx] * (1-mask)
             self.output['seg_gen'] = seg_gen
-            self.output['seg_tar'] = self.input['seg_mask_%s'%tar_idx]
             s2d_out = self.netT_s2d(dec_input, seg_gen)
 
         if self.opt.which_model_s2d == 'unet':
@@ -355,6 +353,7 @@ class TwoStagePoseTransferModel(BaseModel):
         self.output['joint_c_tar'] = self.input['joint_c_%s'%tar_idx]
         self.output['stickman_tar'] = self.input['stickman_%s'%tar_idx]
         self.output['stickman_ref'] = self.input['stickman_%s'%ref_idx]
+        self.output['seg_tar'] = self.input['seg_mask_%s'%tar_idx]
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
         self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
 
@@ -422,7 +421,11 @@ class TwoStagePoseTransferModel(BaseModel):
             loss += self.output['loss_content'] * self.opt.loss_weight_content
         # style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, 'style')
+            if self.opt.masked_style:
+                mask = self.output['seg_tar'][:,3:5]
+            else:
+                mask = None
+            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, mask, 'style')
             loss += self.output['loss_style'] * self.opt.loss_weight_style
         # local style
         if self.opt.loss_weight_patch_style > 0:
@@ -475,7 +478,11 @@ class TwoStagePoseTransferModel(BaseModel):
         grad = self.output['img_out'].grad.clone()
         # style
         if self.opt.loss_weight_style > 0:
-            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, 'style')
+            if self.opt.masked_style:
+                mask = self.output['seg_tar'][:,3:5]
+            else:
+                mask = None
+            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, mask, 'style')
             (self.output['loss_style'] * self.opt.loss_weight_style).backward(retain_graph=True)
             self.output['grad_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
