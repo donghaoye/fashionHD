@@ -417,7 +417,7 @@ class TwoStagePoseTransferModel(BaseModel):
         loss += self.output['loss_L1'] * self.opt.loss_weight_L1
         # content
         if self.opt.loss_weight_content > 0:
-            self.output['loss_content'] = self.crit_vgg(img_out, img_tar, 'content')
+            self.output['loss_content'] = self.crit_vgg(img_out, img_tar, loss_type='content')
             loss += self.output['loss_content'] * self.opt.loss_weight_content
         # style
         if self.opt.loss_weight_style > 0:
@@ -425,7 +425,7 @@ class TwoStagePoseTransferModel(BaseModel):
                 mask = self.output['seg_tar'][:,3:5]
             else:
                 mask = None
-            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, mask, 'style')
+            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, mask, loss_type='style')
             loss += self.output['loss_style'] * self.opt.loss_weight_style
         # local style
         if self.opt.loss_weight_patch_style > 0:
@@ -472,7 +472,7 @@ class TwoStagePoseTransferModel(BaseModel):
         self.output['grad_L1'] = self.output['img_out'].grad.norm()
         grad = self.output['img_out'].grad.clone()
         # content 
-        self.output['loss_content'] = self.crit_vgg(img_out, img_tar, 'content')
+        self.output['loss_content'] = self.crit_vgg(img_out, img_tar, loss_type='content')
         (self.output['loss_content'] * self.opt.loss_weight_content).backward(retain_graph=True)
         self.output['grad_content'] = (self.output['img_out'].grad - grad).norm()
         grad = self.output['img_out'].grad.clone()
@@ -482,7 +482,7 @@ class TwoStagePoseTransferModel(BaseModel):
                 mask = self.output['seg_tar'][:,3:5]
             else:
                 mask = None
-            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, mask, 'style')
+            self.output['loss_style'] = self.crit_vgg(img_out, img_tar, mask, loss_type='style')
             (self.output['loss_style'] * self.opt.loss_weight_style).backward(retain_graph=True)
             self.output['grad_style'] = (self.output['img_out'].grad - grad).norm()
             grad = self.output['img_out'].grad.clone()
@@ -700,7 +700,7 @@ class TwoStagePoseTransferModel(BaseModel):
         bsz, npatch, c, h, w = patches_1.size()
         patches_1 = patches_1.view(bsz*npatch, c, h, w)
         patches_2 = patches_2.view(bsz*npatch, c, h, w)
-        loss_patch_style = self.crit_vgg(patches_1, patches_2, 'style')
+        loss_patch_style = self.crit_vgg(patches_1, patches_2, loss_type='style')
 
         # output = {
         #     'images_1': images_1.cpu(),
