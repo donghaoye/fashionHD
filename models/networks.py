@@ -419,12 +419,6 @@ class VGGLoss_v2(nn.Module):
         out = [h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]
         return out
 
-    def apply_mask(self, feat, mask):
-        if mask is None:
-            return feat
-        else:
-            return feat * F.adaptive_max_pool2d(mask, (feat.size(3), feat.size(4)))
-
     def forward(self, X, Y, mask=None, loss_type='content', device_mode=None):
         '''
         loss_type: 'content', 'style'
@@ -443,8 +437,8 @@ class VGGLoss_v2(nn.Module):
             features_x = self.compute_feature(self.normalize(X))
             features_y = self.compute_feature(self.normalize(Y))
             if mask is not None:
-                features_x = [feat * F.adaptive_max_pool2d(mask, (feat.size(3), feat.size(4))) for feat in features_x]
-                features_y = [feat * F.adaptive_max_pool2d(mask, (feat.size(3), feat.size(4))) for feat in features_y]
+                features_x = [feat * F.adaptive_max_pool2d(mask, (feat.size(2), feat.size(3))) for feat in features_x]
+                features_y = [feat * F.adaptive_max_pool2d(mask, (feat.size(2), feat.size(3))) for feat in features_y]
 
             # compute content loss
             if loss_type == 'content':
