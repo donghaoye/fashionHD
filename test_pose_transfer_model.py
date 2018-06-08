@@ -17,7 +17,7 @@ from collections import OrderedDict
 
 opt = TestPoseTransferOptions().parse()
 train_opt = io.load_json(os.path.join('checkpoints', opt.id, 'train_opt.json'))
-preserved_opt = {'gpu_ids', 'batch_size', 'is_train'}
+preserved_opt = {'gpu_ids', 'is_train'}
 for k, v in train_opt.iteritems():
     if k in opt and (k not in preserved_opt):
         setattr(opt, k, v)
