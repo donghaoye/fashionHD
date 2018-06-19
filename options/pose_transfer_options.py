@@ -147,6 +147,7 @@ class TestPoseTransferOptions(BasePoseTransferOptions):
         parser = self.parser
 
         parser.add_argument('--nbatch', type=int, default=-1, help='set number of minibatch used for test')
-        parser.add_argument('--save_output', action='store_true', help='save output images in the folder exp_dir/output/')
+        parser.add_argument('--save_output', action='store_true', help='save output images in the folder exp_dir/test/')
+        parser.add_argument('--save_seg', action='store_true', help='save segmentation outputs in the folder exp_dir/test_seg/')
         parser.add_argument('--vis_only', action='store_true', help='only viusal')
         parser.add_argument('--nvis', type = int, default = 64, help='number of visualized images')

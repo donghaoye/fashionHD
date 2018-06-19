@@ -89,6 +89,9 @@ loss_buffer = LossBuffer(size=len(val_loader))
 if opt.save_output:
     img_dir = os.path.join(model.save_dir, 'test')
     io.mkdir_if_missing(img_dir)
+    if opt.save_seg:
+        seg_dir = os.path.join(model.save_dir, 'test_seg')
+        io.mkdir_if_missing(seg_dir)
 
 for i, data in enumerate(val_loader):
     if opt.nbatch >= 0 and i == opt.nbatch:
@@ -107,6 +110,15 @@ for i, data in enumerate(val_loader):
         for (id1, id2), img in zip(id_list, images):
             img = img[:,:,[2,1,0]] # convert to BGR channel order for cv2
             cv2.imwrite(os.path.join(img_dir,'%s_%s.jpg' % (id1, id2)), img)
+
+        if opt.save_seg:
+            assert 'seg' in opt.output_type
+            segs = model.output['seg_out'].max(dim=1)[1] # size (bsz, h, w)
+            segs = segs.cpu().numpy().astype(np.uint8)
+            for (id1, id2), seg in zip(id_list, segs):
+                cv2.imwrite(os.path.join(seg_dir, '%s_%s.bmp' % (id1, id2)), seg)
+
+
 print('\n')
 
 test_error = loss_buffer.get_errors()

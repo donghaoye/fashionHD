@@ -35,7 +35,7 @@ def seg_to_rgb(seg_map, with_face=False):
     b,c,h,w = seg_map.size()
     assert c == 1
 
-    cmap = torch.Tensor([[73,0,255], [255,0,0], [255,0,219], [255, 219,0], [0,255,146], [0,146,255], [0,146,255], [0,255,0]])/255.
+    cmap = torch.Tensor([[73,0,255], [255,0,0], [255,0,219], [255, 219,0], [0,255,146], [0,146,255], [0,146,255], [255,127,80]])/255.
     cmap = cmap[0:(seg_map.max()+1)]
 
     rgb_map = cmap[seg_map.view(-1)]
@@ -466,23 +466,19 @@ class GANVisualizer_V3(BaseVisualizer):
     def __init__(self, opt):
         super(GANVisualizer_V3, self).__init__(opt)
 
-
-    def visualize_image(self, epoch, subset, visuals):
-        opt = self.opt
-        vis_dir = os.path.join('checkpoints', opt.id, 'vis')
-        io.mkdir_if_missing(vis_dir)
-        print('[%s] visualizing %s images' % (opt.id, subset))
-
+    @staticmethod
+    def merge_visual(visuals, kword_params={}):
         imgs = []
         vis_list = []
         for name, (vis, vis_type) in visuals.iteritems():
+            vis = vis.cpu()
             if vis_type == 'rgb':
                 pass
             elif vis_type == 'seg':
                 vis = seg_to_rgb(vis)
             elif vis_type == 'segf':
-                if 'shape_with_face' in self.opt:
-                    shape_with_face = self.opt.shape_with_face
+                if 'shape_with_face' in kword_params:
+                    shape_with_face = kword_params['shape_with_face']
                 else:
                     shape_with_face = False
                 vis = seg_to_rgb(vis, shape_with_face)
@@ -496,16 +492,24 @@ class GANVisualizer_V3(BaseVisualizer):
             elif vis_type == 'pose':
                 vis = vis.max(dim=1, keepdim=True)[0].expand(vis.size(0), 3, vis.size(2),vis.size(3))
                 
-            imgs.append(vis.cpu())
+            imgs.append(vis)
             vis_list.append(name)
 
-        # num_vis = min(opt.max_n_vis, imgs[0].size(0))
-        # imgs = torch.stack(imgs, dim=1)[0:num_vis]
         imgs = torch.stack(imgs, dim=1)
-        num_vis = imgs.size(0)
         imgs = imgs.view(imgs.size(0)*imgs.size(1), imgs.size(2), imgs.size(3), imgs.size(4))
         imgs.clamp_(-1.0, 1.0)
-        nrow = int(imgs.size(0)/num_vis)
+        return imgs, vis_list
+
+
+    def visualize_image(self, epoch, subset, visuals):
+        opt = self.opt
+        vis_dir = os.path.join('checkpoints', opt.id, 'vis')
+        io.mkdir_if_missing(vis_dir)
+        print('[%s] visualizing %s images' % (opt.id, subset))
+
+        self.merge_visual(visuals, kword_params={'shape_with_face': 'shape_with_face' in opt and opt.shape_with_face})
+
+        nrow = int(imgs.size(0)/len(visuals))
         fn_img = os.path.join(vis_dir, '%s_epoch%s.jpg' % (subset, epoch))
         torchvision.utils.save_image(imgs, fn_img, nrow = nrow, normalize = True)
         io.save_str_list(vis_list, os.path.join(vis_dir, 'vis_name_list.txt'))
