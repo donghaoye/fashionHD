@@ -23,6 +23,7 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--joint_radius', type=int, default=8, help='radius of joint map')
         parser.add_argument('--joint_mode', type=str, default='binary', choices=['binary', 'gaussian'])
         parser.add_argument('--seg_bin_size', type=int, default=1, help='bin size of downsampled seg mask')
+        parser.add_argument('--seg_nc', type=int, default=7, help='number of segmentation classes, 7 for ATR and 8 for LIP')
         parser.add_argument('--patch_indices', type=int, default=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,18,19,20,21,22,23,24,25,26,27,28], nargs='+', help='indices of joint points to extract patches. see misc.pose_util.py for details')
         parser.add_argument('--patch_indices_for_loss', type=int, default=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,18,19,20,21,22,23,24,25,26,27,28], nargs='+', help='indices of joint points to extract patches. see misc.pose_util.py for details')
         # parser.add_argument('--patch_indices', type=str, default='0-13', help='indices of joint points to extract patches. see misc.pose_util.py for details')

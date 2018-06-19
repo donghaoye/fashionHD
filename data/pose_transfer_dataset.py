@@ -298,8 +298,8 @@ class PoseTransferDataset(BaseDataset):
             'stickman_2': self.to_tensor(stickman_2),
             'seg_1': self.to_tensor(seg_1),
             'seg_2': self.to_tensor(seg_2),
-            'seg_mask_1': self.to_tensor(segmap_to_mask_v2(seg_1, nc=7, bin_size=self.opt.seg_bin_size)),
-            'seg_mask_2': self.to_tensor(segmap_to_mask_v2(seg_2, nc=7, bin_size=self.opt.seg_bin_size)),
+            'seg_mask_1': self.to_tensor(segmap_to_mask_v2(seg_1, nc=self.opt.seg_nc, bin_size=self.opt.seg_bin_size)),
+            'seg_mask_2': self.to_tensor(segmap_to_mask_v2(seg_2, nc=self.opt.seg_nc, bin_size=self.opt.seg_bin_size)),
             'id_1': sid_1,
             'id_2': sid_2
         }

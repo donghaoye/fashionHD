@@ -163,9 +163,9 @@ class VUnetPoseTransferModel(BaseModel):
         self.output['pose_tar'] = pose_tar
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
         self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
-        self.output['seg_tar'] = self.input['seg_%s'%tar_idx] #(bsz, 7, h, w)
+        self.output['seg_tar'] = self.input['seg_%s'%tar_idx] #(bsz, seg_nc, h, w)
         if 'seg' in self.opt.output_type:
-            self.output['seg_out'] = netT_output['seg'] #(bsz, 7, h, w)
+            self.output['seg_out'] = netT_output['seg'] #(bsz, seg_nc, h, w)
             
 
     def test(self, mode='transfer', compute_loss=False):
@@ -351,7 +351,7 @@ class VUnetPoseTransferModel(BaseModel):
             if item == 'image':
                 dim += 3
             elif item == 'seg':
-                dim += 7
+                dim += self.opt.seg_nc
             else:
                 raise Exception('invalid output type %s'%item)
         return dim
@@ -367,8 +367,8 @@ class VUnetPoseTransferModel(BaseModel):
                 rst['image'] = output[:,i:(i+3)]
                 i += 3
             elif item == 'seg':
-                rst['seg'] = output[:,i:(i+7)]
-                i += 7
+                rst['seg'] = output[:,i:(i+self.opt.seg_nc)]
+                i += self.opt.seg_nc
             else:
                 raise Exception('invalid output type %s'%item)
         return rst
@@ -383,7 +383,7 @@ class VUnetPoseTransferModel(BaseModel):
             elif item == 'joint_ext':
                 dim += 29
             elif item == 'seg':
-                dim += 7
+                dim += self.opt.seg_nc
             elif item == 'stickman':
                 dim += 3
             else:

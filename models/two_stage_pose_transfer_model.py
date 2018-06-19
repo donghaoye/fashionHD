@@ -91,7 +91,7 @@ class TwoStagePoseTransferModel(BaseModel):
             s2e_nof = 3
         elif opt.which_model_s2e == 'seg_embed':
             self.netT_s2e = networks.SegmentRegionEncoder(
-                seg_nc = 7,
+                seg_nc = self.opt.seg_nc,
                 input_nc = 3,
                 output_nc = opt.s2e_nof,
                 nf = opt.s2d_nf,
@@ -538,7 +538,7 @@ class TwoStagePoseTransferModel(BaseModel):
             if item == 'image':
                 dim += 3
             elif item == 'seg':
-                dim += 7
+                dim += self.opt.seg_nc
             else:
                 raise Exception('invalid output type %s'%item)
         return dim
@@ -554,15 +554,15 @@ class TwoStagePoseTransferModel(BaseModel):
                 rst['image'] = output[:,i:(i+3)]
                 i += 3
             elif item == 'seg':
-                rst['seg'] = output[:,i:(i+7)]
+                rst['seg'] = output[:,i:(i+self.opt.seg_nc)]
                 # convert raw output to seg_mask
                 max_index = rst['seg'].argmax(dim=1)
                 seg_mask = []
-                for idx in range(7):
+                for idx in range(self.opt.seg_nc):
                     seg_mask.append(max_index==idx)
                 rst['seg_mask'] = torch.stack(seg_mask, dim=1).float()
 
-                i += 7
+                i += self.opt.seg_nc
             else:
                 raise Exception('invalid output type %s'%item)
         return rst
@@ -577,7 +577,7 @@ class TwoStagePoseTransferModel(BaseModel):
             elif item == 'joint_ext':
                 dim += 29
             elif item == 'seg':
-                dim += 7
+                dim += self.opt.seg_nc
             elif item == 'stickman':
                 dim += 3
             else:
