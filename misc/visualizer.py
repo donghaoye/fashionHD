@@ -507,11 +507,9 @@ class GANVisualizer_V3(BaseVisualizer):
         io.mkdir_if_missing(vis_dir)
         print('[%s] visualizing %s images' % (opt.id, subset))
 
-        self.merge_visual(visuals, kword_params={'shape_with_face': 'shape_with_face' in opt and opt.shape_with_face})
-
-        nrow = int(imgs.size(0)/len(visuals))
+        imgs, vis_list = self.merge_visual(visuals, kword_params={'shape_with_face': 'shape_with_face' in opt and opt.shape_with_face})
         fn_img = os.path.join(vis_dir, '%s_epoch%s.jpg' % (subset, epoch))
-        torchvision.utils.save_image(imgs, fn_img, nrow = nrow, normalize = True)
+        torchvision.utils.save_image(imgs, fn_img, nrow = len(visuals), normalize = True)
         io.save_str_list(vis_list, os.path.join(vis_dir, 'vis_name_list.txt'))
 
     def visualize_image_matrix(self, imgs, imgs_title_top = None, imgs_title_left = None, label = 'default', vis_dir = 'vis'):
