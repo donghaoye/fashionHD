@@ -3,6 +3,7 @@ output/*
 checkpoints/*
 external/*
 temp/
+scripts/scnet_scripts/*
 !*.gitkeep
 
 *.pyc
@@ -17,7 +18,10 @@ temp/
 *.png
 *.mp4
 *.bmp
+
 *.mat
+*.mexa64
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
