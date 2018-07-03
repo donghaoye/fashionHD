@@ -17,6 +17,7 @@ temp/
 *.png
 *.mp4
 *.bmp
+*.mat
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
