@@ -103,7 +103,6 @@ class VUnetPoseTransferModel(BaseModel):
             for optim in self.optimizers:
                 self.schedulers.append(networks.get_scheduler(optim, opt))
 
-
     def set_input(self, data):
         input_list = [
             'img_1',
@@ -167,7 +166,6 @@ class VUnetPoseTransferModel(BaseModel):
         if 'seg' in self.opt.output_type:
             self.output['seg_out'] = netT_output['seg'] #(bsz, seg_nc, h, w)
             
-
     def test(self, mode='transfer', compute_loss=False):
         with torch.no_grad():
             self.forward(mode=mode)
@@ -368,6 +366,13 @@ class VUnetPoseTransferModel(BaseModel):
                 i += 3
             elif item == 'seg':
                 rst['seg'] = output[:,i:(i+self.opt.seg_nc)]
+                # convert raw output to seg_mask
+                max_index = rst['seg'].argmax(dim=1)
+                seg_mask = []
+                for idx in range(self.opt.seg_nc):
+                    seg_mask.append(max_index==idx)
+                rst['seg_mask'] = torch.stack(seg_mask, dim=1).float()
+
                 i += self.opt.seg_nc
             else:
                 raise Exception('invalid output type %s'%item)
@@ -484,7 +489,6 @@ class VUnetPoseTransferModel(BaseModel):
         patches = torch.stack(patches)#[bsz, npatch, c, hp, wp]
 
         return patches
-
 
     def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32, patch_indices=None):
         '''

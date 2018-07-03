@@ -955,11 +955,21 @@ class ResnetGenerator(nn.Module):
 
         self.model = nn.Sequential(*model)
 
-    def forward(self, input):
-        if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(self.model, input)
+    def forward(self, input, output_feature=False, single_device=False):
+        if len(self.gpu_ids) > 1 and (not single_device):
+            return nn.parallel.data_parallel(self, input, module_kwargs={'output_feature': output_feature, 'single_device': True})
         else:
-            return self.model(input)
+            if not output_feature:
+                return self.model(input)
+            else:
+                feat_idx = len(self.model)-6 if self.output_tanh else len(self.model)-5
+                x = input
+                for module_idx in range(len(self.model)):
+                    x = self.model[module_idx](x)
+                    if module_idx == feat_idx:
+                        feat = x.clone()
+                return x, feat
+
 
 class ConditionedResnetBlock(nn.Module):
     def __init__(self, x_dim, c_dim, padding_type, norm_layer, use_bias, activation=nn.ReLU(True), use_dropout=False, output_c=False):
@@ -1231,23 +1241,32 @@ class UnetGenerator_v2(nn.Module):
             inner_nc = min(max_nf, ngf*2**(l+1))
             innermost = (l==num_downs-1)
             unet_block = UnetSkipConnectionBlock(outer_nc, inner_nc, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout, innermost=innermost)
-        # self.model = unet_block
+
         model = [
-            nn.Conv2d(input_nc, ngf, kernel_size=7, padding=3, bias=use_bias),
-            norm_layer(ngf),
-            unet_block,
-            nn.ReLU(True),
-            nn.Conv2d(2*ngf, output_nc, kernel_size=7, padding=3)]
+            nn.Conv2d(input_nc, ngf, kernel_size=7, padding=3, bias=use_bias), #0
+            norm_layer(ngf), #1
+            unet_block, #2
+            nn.ReLU(True), #3
+            nn.Conv2d(2*ngf, output_nc, kernel_size=7, padding=3)] #4
         if output_tanh:
-            model.append(nn.Tanh())
+            model.append(nn.Tanh()) #5
 
         self.model = nn.Sequential(*model)
 
-    def forward(self, input):
-        if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
-            return nn.parallel.data_parallel(self.model, input)
+    def forward(self, input, output_feature=False, single_device=False):
+        if len(self.gpu_ids) > 1 and (not single_device):
+            return nn.parallel.data_parallel(self, input, module_kwargs={'output_feature': output_feature, 'single_device': True})
         else:
-            return self.model(input)
+            if not output_feature:
+                return self.model(input)
+            else:
+                x = input
+                for module_idx in range(len(self.model)):
+                    x = self.model[module_idx](x)
+                    if module_idx == 2:
+                        feat = x.clone()
+                return x, feat
+
 
 # Defines the PatchGAN discriminator with the specified arguments.
 class NLayerDiscriminator(nn.Module):

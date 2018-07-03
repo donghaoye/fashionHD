@@ -5,7 +5,6 @@ from base_dataset import *
 from misc.pose_util import get_joint_coord
 
 import cv2
-import PIL
 import numpy as np
 import os
 import util.io as io
@@ -284,7 +283,7 @@ class PoseTransferDataset(BaseDataset):
         # t_seg_mask_1 = self.to_tensor(segmap_to_mask_v2(seg_1, nc=7, bin_size=self.opt.seg_bin_size))
         # t_seg_mask_2 = self.to_tensor(segmap_to_mask_v2(seg_2, nc=7, bin_size=self.opt.seg_bin_size))
 
-        # ######################
+        ######################
         # output
         ######################
         data = {
