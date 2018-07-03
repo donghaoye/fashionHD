@@ -14,6 +14,7 @@ class BasePoseParsingOptions(BaseOptions):
         ##############################
         parser.add_argument('--which_model_PP', type=str, default='unet', choices=['unet', 'resnet'], help='model architecture')
         parser.add_argument('--pp_nf', type=int, default=32, help='')
+        parser.add_argument('--pp_nblocks', type=int, default=6, help='')
         parser.add_argument('--norm', type=str, default='batch', help='instance normalization or batch normalization [batch|instance|none]')
         ##############################
         # Pose Setting

@@ -29,7 +29,7 @@ class PoseParsingModel(BaseModel):
         if opt.which_model_PP == 'resnet':
             self.netPP = networks.ResnetGenerator(
                 input_nc = 3,
-                output_nc = self.get_pose_dimget_output_dim(opt.pp_pose_type),
+                output_nc = self.get_output_dim(opt.pp_pose_type),
                 ngf = opt.pp_nf,
                 norm_layer = networks.get_norm_layer(opt.norm),
                 activation = nn.ReLU,
