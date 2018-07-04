@@ -494,7 +494,7 @@ class GANVisualizer_V3(BaseVisualizer):
                 # vis = vis.max(dim=1, keepdim=True)[0].expand(vis.size(0), 3, vis.size(2),vis.size(3))
                 torch.save(vis, 'test.pth')
                 pose_maps = vis.cpu().numpy().transpose(0,2,3,1)
-                np_vis_ = np.stack([pose_util.draw_pose_from_map(m, radius=6)[0] for m in pose_maps])
+                np_vis_ = np.stack([pose_util.draw_pose_from_map(m, radius=6, threshold=0.)[0] for m in pose_maps])
                 vis_ = vis.new(np_vis_.transpose(0,3,1,2))
             imgs.append(vis_)
             vis_list.append(name)

@@ -44,7 +44,6 @@ for epoch in range(epoch_count, opt.niter + opt.niter_decay + 1):
     for i, data in enumerate(train_loader):
         total_steps += 1
         model.set_input(data)
-        model.forward()
         model.optimize_parameters()
 
         if total_steps % opt.display_freq == 0:
