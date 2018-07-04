@@ -28,8 +28,8 @@ class PoseParsingModel(BaseModel):
         ###################################
         if opt.which_model_PP == 'resnet':
             self.netPP = networks.ResnetGenerator(
-                input_nc = 3,
-                output_nc = self.get_output_dim(opt.pp_pose_type),
+                input_nc = self.get_data_dim(opt.pp_input_type),
+                output_nc = self.get_data_dim(opt.pp_pose_type),
                 ngf = opt.pp_nf,
                 norm_layer = networks.get_norm_layer(opt.norm),
                 activation = nn.ReLU,
@@ -40,8 +40,8 @@ class PoseParsingModel(BaseModel):
                 )
         elif opt.which_model_PP == 'unet':
             self.netPP = networks.UnetGenerator_v2(
-                input_nc = 3,
-                output_nc = self.get_output_dim(opt.pp_pose_type),
+                input_nc = self.get_data_dim(opt.pp_input_type),
+                output_nc = self.get_data_dim(opt.pp_pose_type),
                 num_downs = 8,
                 ngf = opt.pp_nf,
                 max_nf = opt.pp_nf*(2**3),
@@ -76,7 +76,8 @@ class PoseParsingModel(BaseModel):
     def set_input(self, data):
         input_list = [
             'img',
-            'joint',
+            'joint_input',
+            'joint_tar',
             'joint_c',
             'seg',
             'seg_mask',
@@ -88,20 +89,37 @@ class PoseParsingModel(BaseModel):
 
         self.input['id'] = data['id']
 
-    def get_output_dim(self, output_type):
+    def get_data_dim(self, data_type):
         dim = 0
-        output_items = output_type.split('+')
+        output_items = data_type.split('+')
         for item in output_items:
-            if item == 'seg':
+            if item == 'img':
+                dim += 3
+            elif item == 'seg':
                 dim += self.opt.seg_nc
             elif item == 'joint':
                 dim += self.opt.joint_nc
             else:
-                raise Exception('invalid output type %s'%item)
+                raise Exception('invalid data type %s'%item)
         return dim
 
+    def get_input(self, input_type):
+        inputs = []
+        input_items = input_type.split('+')
+        input_items.sort()
+        for item in input_items:
+            if item == 'img':
+                inputs.append(self.input['img'])
+            elif item == 'seg':
+                inputs.append(self.input['seg_mask'])
+            elif item == 'joint':
+                inputs.append(self.input['joint_input'])
+            else:
+                raise Exception('invalid data type %s'%item)
+        return torch.cat(inputs, dim=1)
+
     def parse_output(self, output, output_type):
-        assert output.size(1) == self.get_output_dim(output_type)
+        assert output.size(1) == self.get_data_dim(output_type)
         output_items = output_type.split('+')
         output_items.sort()
         i = 0
@@ -120,17 +138,17 @@ class PoseParsingModel(BaseModel):
                 rst['joint'] = output[:,i:(i+self.opt.joint_nc)]
                 i += self.opt.joint_nc
             else:
-                raise Exception('invalid output type %s'%item)
+                raise Exception('invalid data type %s'%item)
         return rst
 
     def compute_loss(self):
         loss = 0
         if 'seg' in self.opt.pp_pose_type:
-            self.output['loss_seg'] = F.cross_entropy(self.output['seg'], self.input['seg'].squeeze(dim=1).long())
+            self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.input['seg'].squeeze(dim=1).long())
             if 'loss_weight_seg' in self.opt:
                 loss += self.output['loss_seg'] * self.opt.loss_weight_seg
         if 'joint' in self.opt.pp_pose_type:
-            self.output['loss_joint'] = F.mse_loss(self.output['joint'], self.input['joint'])
+            self.output['loss_joint'] = F.mse_loss(self.output['joint_out'], self.input['joint_tar'])
             if 'loss_weight_joint' in self.opt:
                 loss += self.output['loss_joint'] * self.opt.loss_weight_joint
         
@@ -141,7 +159,9 @@ class PoseParsingModel(BaseModel):
             self.netPP.train()
         else:
             self.netPP.eval()
-        output, feat = self.netPP(self.input['img'], output_feature=True)
+
+        input = self.get_input(self.opt.pp_input_type)
+        output, feat = self.netPP(input, output_feature=True)
         output = self.parse_output(output, self.opt.pp_pose_type)
 
         self.output['feat'] = feat
@@ -179,7 +199,7 @@ class PoseParsingModel(BaseModel):
             visuals['seg_gt'] = [self.input['seg'].data.cpu(), 'seg']
             visuals['seg_out'] = [self.output['seg_out'].data.cpu(), 'seg']
         if 'joint' in self.output:
-            visuals['joint_gt'] = [self.input['joint'].data.cpu(), 'pose']
+            visuals['joint_gt'] = [self.input['joint_tar'].data.cpu(), 'pose']
             visuals['joint_out'] = [self.output['joint_out'].data.cpu(), 'pose']
 
         return visuals
