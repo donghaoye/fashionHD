@@ -100,7 +100,14 @@ def init_weights(net, init_type='normal'):
         net.apply(weights_init_orthogonal)
     else:
         raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
-
+###############################################################################
+# layers
+###############################################################################
+class Identity(nn.Module):
+    def __init__(self, dim=None):
+        super(Identity, self).__init__()
+    def forward(self, x):
+        return x
 ###############################################################################
 # functions
 ###############################################################################
@@ -731,7 +738,6 @@ class ClassificationAccuracy():
         num_hit = (pred_k_hot * label_one_hot).sum()
         return num_hit / num_sample * 100.
 
-
 ###############################################################################
 # Optimizer and Scheduler
 ###############################################################################
@@ -854,7 +860,7 @@ def get_norm_layer(norm_type = 'instance'):
     elif norm_type == 'instance':
         norm_layer = functools.partial(nn.InstanceNorm2d, affine =False)
     elif norm_type == 'none':
-        norm_layer = None
+        norm_layer = Identity
     else:
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer

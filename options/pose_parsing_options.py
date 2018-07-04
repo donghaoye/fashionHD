@@ -19,6 +19,7 @@ class BasePoseParsingOptions(BaseOptions):
         ##############################
         # Pose Setting
         ##############################
+        parser.add_argument('--pp_input_type', type=str, default='img')
         parser.add_argument('--pp_pose_type', type=str, default='seg+joint')
         parser.add_argument('--seg_nc', type=int, default=8, help='number of segmentation classes, 7 for ATR and 8 for LIP')
         parser.add_argument('--joint_nc', type=int, default=18, help='number of joint keys, 18 for OpenPose setting')
