@@ -127,10 +127,12 @@ class PoseParsingModel(BaseModel):
         loss = 0
         if 'seg' in self.opt.pp_pose_type:
             self.output['loss_seg'] = F.cross_entropy(self.output['seg'], self.input['seg'].squeeze(dim=1).long())
-            loss += self.output['loss_seg'] * self.opt.loss_weight_seg
+            if 'loss_weight_seg' in self.opt:
+                loss += self.output['loss_seg'] * self.opt.loss_weight_seg
         if 'joint' in self.opt.pp_pose_type:
             self.output['loss_joint'] = F.mse_loss(self.output['joint'], self.input['joint'])
-            loss += self.output['loss_joint'] * self.opt.loss_weight_joint
+            if 'loss_weight_joint' in self.opt:
+                loss += self.output['loss_joint'] * self.opt.loss_weight_joint
         
         return loss
 

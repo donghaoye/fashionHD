@@ -11,6 +11,7 @@ from util.pavi import PaviClient
 from options.base_options import opt_to_str
 import numpy as np
 from collections import OrderedDict
+from misc import pose_util
 
 
 def seg_to_rgb(seg_map, with_face=False):
@@ -473,26 +474,29 @@ class GANVisualizer_V3(BaseVisualizer):
         for name, (vis, vis_type) in visuals.iteritems():
             vis = vis.cpu()
             if vis_type == 'rgb':
-                pass
+                vis_ = vis
             elif vis_type == 'seg':
-                vis = seg_to_rgb(vis)
+                vis_ = seg_to_rgb(vis)
             elif vis_type == 'segf':
                 if 'shape_with_face' in kword_params:
                     shape_with_face = kword_params['shape_with_face']
                 else:
                     shape_with_face = False
-                vis = seg_to_rgb(vis, shape_with_face)
+                vis_ = seg_to_rgb(vis, shape_with_face)
             elif vis_type == 'edge':
                 size = list(vis.size())
                 size[1] = 3
-                vis = vis.expand(size)
+                vis_ = vis.expand(size)
             elif vis_type == 'color':
                 if vis.size(1) == 6:
-                    vis = vis[:,0:3] + vis[:,3::]
+                    vis_ = vis[:,0:3] + vis[:,3::]
             elif vis_type == 'pose':
-                vis = vis.max(dim=1, keepdim=True)[0].expand(vis.size(0), 3, vis.size(2),vis.size(3))
-                
-            imgs.append(vis)
+                # vis = vis.max(dim=1, keepdim=True)[0].expand(vis.size(0), 3, vis.size(2),vis.size(3))
+                torch.save(vis, 'test.pth')
+                pose_maps = vis.cpu().numpy().transpose(0,2,3,1)
+                np_vis_ = np.stack([pose_util.draw_pose_from_map(m, radius=6)[0] for m in pose_maps])
+                vis_ = vis.new(np_vis_.transpose(0,3,1,2))
+            imgs.append(vis_)
             vis_list.append(name)
 
         imgs = torch.stack(imgs, dim=1)
