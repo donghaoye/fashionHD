@@ -97,7 +97,7 @@ for epoch in range(epoch_count, opt.niter + opt.niter_decay + 1):
             else:
                 for name, item in v.iteritems():
                     visuals[name][0] = torch.cat((visuals[name][0], item[0]), dim=0)
-        visualizer.visualize_image(epoch=epoch, subset='train', visuals=visuals)
+        visualizer.visualize_image(epoch=epoch, subset='test', visuals=visuals)
 
     if epoch % opt.save_epoch_freq == 0:
         model.save(epoch)

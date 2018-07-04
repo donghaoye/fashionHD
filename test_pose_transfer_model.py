@@ -46,7 +46,7 @@ pavi_lower_list = ['loss_L1', 'loss_content', 'loss_style', 'loss_G', 'loss_D', 
 
 # visualize
 if opt.nvis > 0:
-    print('visulizing first %d samples' % opt.nvis)
+    print('visualizing first %d samples' % opt.nvis)
     num_vis_batch = int(np.ceil(1.0*opt.nvis/opt.batch_size))
     val_visuals = None
     for i, data in enumerate(val_loader):
@@ -94,7 +94,7 @@ if opt.save_output:
         io.mkdir_if_missing(seg_dir)
 
 for i, data in enumerate(val_loader):
-    if opt.nbatch >= 0 and i == opt.nbatch:
+    if opt.nbatch > 0 and i == opt.nbatch:
         break
 
     model.set_input(data)

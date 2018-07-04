@@ -72,7 +72,7 @@ class TrainPoseParsingOptions(BasePoseParsingOptions):
 
 class TestPoseParsingOptions(BasePoseParsingOptions):
     def initialize(self):
-        suerp(TestPoseParsingOptions, self).initialize()
+        super(TestPoseParsingOptions, self).initialize()
         self.is_train = False
         parser = self.parser
         parser.add_argument('--nbatch', type=int, default=-1, help='set number of minibatch used for test')
