@@ -491,7 +491,6 @@ class GANVisualizer_V3(BaseVisualizer):
                     vis = vis[:,0:3] + vis[:,3::]
             elif vis_type == 'pose':
                 vis = vis.max(dim=1, keepdim=True)[0].expand(vis.size(0), 3, vis.size(2),vis.size(3))
-                vis = vis / vis.max()
                 
             imgs.append(vis)
             vis_list.append(name)

@@ -64,7 +64,7 @@ for i, data in enumerate(tqdm.tqdm(val_loader)):
     if opt.nbatch>0 and i == opt.nbatch:
         break
     model.set_input(data)
-    model.test(compute_loss=False)
+    model.test(compute_loss=True)
     loss_buffer.add(model.get_current_errors())
 test_error = loss_buffer.get_errors()
 visualizer.print_error(test_error)
