@@ -66,7 +66,7 @@ class PoseParsingModel(BaseModel):
         # optimizers and schedulers
         ###################################
         if self.is_train:
-            self.optim = torch.optim.Adam(self.netPP.parameters(), lr=opt.lr, betas=(0.9, 0.999))
+            self.optim = torch.optim.Adam(self.netPP.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
             self.optimizers = [self.optim]
 
             self.schedulers = []
@@ -146,14 +146,14 @@ class PoseParsingModel(BaseModel):
 
         self.output['feat'] = feat
         if 'seg' in output:
-            self.output['seg'] = output['seg']
+            self.output['seg_out'] = output['seg']
             self.output['seg_mask'] = output['seg_mask']
         if 'joint' in output:
-            self.output['joint'] = F.sigmoid(output['joint']) # normalize to range(0,1)
+            self.output['joint_out'] = output['joint'] # normalize to range(0,1)
 
     def optimize_parameters(self):
         self.output = {}
-        self.forward()
+        self.forward(mode='train')
         loss = self.compute_loss()
         loss.backward()
         self.optim.step()
@@ -177,10 +177,10 @@ class PoseParsingModel(BaseModel):
             ('img', [self.input['img'].data.cpu(), 'rgb'])])
         if 'seg' in self.output:
             visuals['seg_gt'] = [self.input['seg'].data.cpu(), 'seg']
-            visuals['seg_gen'] = [self.output['seg'].data.cpu(), 'seg']
+            visuals['seg_out'] = [self.output['seg_out'].data.cpu(), 'seg']
         if 'joint' in self.output:
             visuals['joint_gt'] = [self.input['joint'].data.cpu(), 'pose']
-            visuals['joint_gen'] = [self.output['joint'].data.cpu(), 'pose']
+            visuals['joint_out'] = [self.output['joint_out'].data.cpu(), 'pose']
 
         return visuals
 
