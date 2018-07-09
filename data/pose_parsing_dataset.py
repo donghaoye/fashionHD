@@ -71,9 +71,8 @@ class PoseParsingDataset(BaseDataset):
         ######################
         # create pose representation
         ######################
-        # follow the settings in LIP: 400*N([x,y], diag([64, 64]))
         joint_input = pose_to_map(img_sz=(img.shape[1], img.shape[0]), label=joint_c, mode='gaussian', radius=8)
-        joint_tar = pose_to_map(img_sz=(img.shape[1], img.shape[0]), label=joint_c, mode='gaussian', radius=11.3137)
+        joint_tar = pose_to_map(img_sz=(img.shape[1], img.shape[0]), label=joint_c, mode='gaussian', radius=11.3137)# follow the settings in LIP: 400*N([x,y], diag([64, 64]))
         ######################
         # output
         ######################
@@ -83,7 +82,7 @@ class PoseParsingDataset(BaseDataset):
             'joint_tar': self.to_tensor(joint_tar),
             'joint_c': torch.Tensor(joint_c),
             'seg': self.to_tensor(seg),
-            'set_mask': self.to_tensor(segmap_to_mask_v2(seg, nc=self.opt.seg_nc, bin_size=1)),
+            'seg_mask': self.to_tensor(segmap_to_mask_v2(seg, nc=self.opt.seg_nc, bin_size=1)),
             'id': sid,
         }
 

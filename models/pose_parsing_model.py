@@ -169,7 +169,7 @@ class PoseParsingModel(BaseModel):
             self.output['seg_out'] = output['seg']
             self.output['seg_mask'] = output['seg_mask']
         if 'joint' in output:
-            self.output['joint_out'] = output['joint'] # normalize to range(0,1)
+            self.output['joint_out'] = output['joint']
 
     def optimize_parameters(self):
         self.output = {}
@@ -195,10 +195,10 @@ class PoseParsingModel(BaseModel):
     def get_current_visuals(self):
         visuals = OrderedDict([
             ('img', [self.input['img'].data.cpu(), 'rgb'])])
-        if 'seg' in self.output:
+        if 'seg_out' in self.output:
             visuals['seg_gt'] = [self.input['seg'].data.cpu(), 'seg']
             visuals['seg_out'] = [self.output['seg_out'].data.cpu(), 'seg']
-        if 'joint' in self.output:
+        if 'joint_out' in self.output:
             visuals['joint_gt'] = [self.input['joint_tar'].data.cpu(), 'pose']
             visuals['joint_out'] = [self.output['joint_out'].data.cpu(), 'pose']
 

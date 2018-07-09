@@ -60,8 +60,6 @@ def search_image(query_fn_list, gallery_fn_list, output_dir, method='cos'):
 
 
 
-
-
 def similarity_cos(img_1, img_2):
     img_1 = img_1.flatten().astype(np.float)/255.
     img_2 = img_2.flatten().astype(np.float)/255.
@@ -87,6 +85,45 @@ def prepro_image(img_dir, output_dir):
             img_out[((h_out-h1)//2):((h_out-h1)//2+h1),:,:] = img_rsz
         cv2.imwrite(output_dir+fn, img_out)
 
+def search_image_in_subset(result, train_pair_list, train_image_list, test_pair_list, test_image_list):
+    train_pairs = set([' '.join(p) for p in train_pair_list])
+    train_images = set(train_image_list)
+    test_pairs = set([' '.join(p) for p in test_pair_list])
+    test_images = set(test_image_list)
+
+    sample_list = []
+    for n, i in enumerate(range(0,len(result),2)):
+        name_1 = os.path.basename(result[i].split()[1])
+        sid_1 = os.path.basename(result[i].split()[2])[0:7]
+        name_2 = os.path.basename(result[i+1].split()[1])
+        sid_2 = os.path.basename(result[i+1].split()[2])[0:7]
+
+        if sid_1 in train_images:
+            split_image_1 = 'train'
+        elif sid_1 in test_images:
+            split_image_1 = 'test'
+        else:
+            split_image_1 = 'unknown'
+
+        if sid_2 in train_images:
+            split_image_2 = 'train'
+        elif sid_2 in test_images:
+            split_image_2 = 'test'
+        else:
+            split_image_2 = 'unknown'
+
+        if ' '.join([sid_1, sid_2]) in train_pairs:
+            split_pair = 'train'
+        elif ' '.join([sid_1, sid_2]) in test_pairs:
+            split_pair = 'test'
+        elif ' '.join([sid_2, sid_1]) in train_pairs:
+            split_pair = 'train'
+        elif ' '.join([sid_2, sid_1]) in test_pairs:
+            split_pair = 'test'            
+        else:
+            split_pair = 'unknown'
+
+        print('%d: %s-%s (%s - %s) s1: %-8s s2: %-8s sp: %-8s\n' % (n, name_1, name_2, sid_1, sid_2, split_image_1, split_image_2, split_pair))
 
 if __name__ == '__main__':
     #############################
@@ -108,12 +145,23 @@ if __name__ == '__main__':
     # output_dir = 'temp/search_image/deformableGAN_query/'
     # prepro_image(img_dir, output_dir)
     # search
-    split = io.load_json('datasets/DF_Pose/Label/split.json')
-    id_list = split['train'] + split['test']
-    gallery_dir = 'datasets/DF_Pose/Img/img_df/'
-    gallery_fn_list = [gallery_dir + '%s.jpg'%sid for sid in id_list]
-    query_dir = 'temp/search_image/deformableGAN_query/'
-    query_fn_list = [query_dir+fn for fn in os.listdir(query_dir)]
-    query_fn_list.sort()
-    output_dir = 'temp/search_image/deformableGAN/'
-    search_image(query_fn_list, gallery_fn_list, output_dir)
+    # split = io.load_json('datasets/DF_Pose/Label/split.json')
+    # id_list = split['train'] + split['test']
+    # gallery_dir = 'datasets/DF_Pose/Img/img_df/'
+    # gallery_fn_list = [gallery_dir + '%s.jpg'%sid for sid in id_list]
+    # query_dir = 'temp/search_image/deformableGAN_query/'
+    # query_fn_list = [query_dir+fn for fn in os.listdir(query_dir)]
+    # query_fn_list.sort()
+    # output_dir = 'temp/search_image/deformableGAN/'
+    # search_image(query_fn_list, gallery_fn_list, output_dir)
+
+    # search in subsets
+    result = io.load_str_list('temp/search_image/deformableGAN/result.txt')
+    pair_split = io.load_json('datasets/DF_Pose/Label/pair_split.json')
+    train_pair_list = pair_split['train']
+    test_pair_list = pair_split['test']
+    image_split = io.load_json('datasets/DF_Pose/Label/split.json')
+    train_image_list = image_split['train']
+    test_image_list = image_split['test']
+
+    search_image_in_subset(result, train_pair_list, train_image_list, test_pair_list, test_image_list)

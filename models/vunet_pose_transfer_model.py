@@ -162,6 +162,7 @@ class VUnetPoseTransferModel(BaseModel):
         self.output['pose_tar'] = pose_tar
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
         self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
+        self.output['seg_ref'] = self.input['seg_%s'%ref_idx] #(bsz, seg_nc, h, w)
         self.output['seg_tar'] = self.input['seg_%s'%tar_idx] #(bsz, seg_nc, h, w)
         if 'seg' in self.opt.output_type:
             self.output['seg_out'] = netT_output['seg'] #(bsz, seg_nc, h, w)
@@ -544,8 +545,9 @@ class VUnetPoseTransferModel(BaseModel):
             ('img_out', [self.output['img_out'].data.cpu(), 'rgb']),
             ])
         if 'seg' in self.opt.output_type:
-            visuals['seg_out'] = [self.output['seg_out'], 'seg']
+            visuals['seg_ref'] = [self.output['seg_ref'], 'seg']
             visuals['seg_tar'] = [self.output['seg_tar'], 'seg']
+            visuals['seg_out'] = [self.output['seg_out'], 'seg']
         return visuals
 
     def save(self, label):
