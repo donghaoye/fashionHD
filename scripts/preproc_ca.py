@@ -130,8 +130,6 @@ def create_category_label():
     io.save_data(cat_label, design_root + 'Label/ca_cat_label.pkl')
     print('create category label')
 
-
-
 def create_split():
     '''
     Create split following the original partition
@@ -159,7 +157,6 @@ def create_split():
         'test': split['test']
     }
     io.save_json(split_trainval, design_root + 'Split/ca_split_trainval.json')
-
 
 def create_attr_entry():
     '''
@@ -189,7 +186,6 @@ def create_attr_entry():
             })
 
     io.save_json(attr_entry, design_root + 'Label/attr_entry.json')
-
 
 def visualize_samples():
 
