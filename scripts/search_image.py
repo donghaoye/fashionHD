@@ -58,13 +58,10 @@ def search_image(query_fn_list, gallery_fn_list, output_dir, method='cos'):
 
     io.save_str_list(result, output_dir+'result.txt')
 
-
-
 def similarity_cos(img_1, img_2):
     img_1 = img_1.flatten().astype(np.float)/255.
     img_2 = img_2.flatten().astype(np.float)/255.
     return np.dot(img_1, img_2)/np.sqrt(np.dot(img_1, img_1) * np.dot(img_2, img_2))
-
 
 def prepro_image(img_dir, output_dir):
 
@@ -156,12 +153,12 @@ if __name__ == '__main__':
     # search_image(query_fn_list, gallery_fn_list, output_dir)
 
     # search in subsets
-    result = io.load_str_list('temp/search_image/deformableGAN/result.txt')
-    pair_split = io.load_json('datasets/DF_Pose/Label/pair_split.json')
-    train_pair_list = pair_split['train']
-    test_pair_list = pair_split['test']
-    image_split = io.load_json('datasets/DF_Pose/Label/split.json')
-    train_image_list = image_split['train']
-    test_image_list = image_split['test']
+    # result = io.load_str_list('temp/search_image/deformableGAN/result.txt')
+    # pair_split = io.load_json('datasets/DF_Pose/Label/pair_split.json')
+    # train_pair_list = pair_split['train']
+    # test_pair_list = pair_split['test']
+    # image_split = io.load_json('datasets/DF_Pose/Label/split.json')
+    # train_image_list = image_split['train']
+    # test_image_list = image_split['test']
 
-    search_image_in_subset(result, train_pair_list, train_image_list, test_pair_list, test_image_list)
+    # search_image_in_subset(result, train_pair_list, train_image_list, test_pair_list, test_image_list)

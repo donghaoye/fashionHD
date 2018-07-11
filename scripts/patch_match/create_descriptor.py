@@ -5,6 +5,7 @@ import numpy as np
 import imageio
 import tqdm
 import cv2
+import os
 
 ####################################
 # global config
@@ -330,11 +331,92 @@ def create_descriptor_inhomogeneous_seg():
     scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gt_inhomoseg.mat', data_dict_gt)
     scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_inhomoseg.mat', data_dict_gen)
 
+def create_descriptor_vunet():
+    '''
+    use variational unet feature as descriptor
+    '''
+    import torch
+    from models.vunet_pose_transfer_model import VUnetPoseTransferModel
+    from data.data_loader import CreateDataLoader
+    from options.pose_transfer_options import TestPoseTransferOptions
+    # load image info
+    image_info = io.load_json('temp/patch_matching/label/image_info.json')
+    # load model
+    opt = TestPoseTransferOptions().parse(ord_str = '--which_model_T vunet --id 7.5 --gpu_ids 0,1,2,3 --batch_size 16', save_to_file = False, display = False, set_gpu = True)
+    train_opt = io.load_json(os.path.join('checkpoints', opt.id, 'train_opt.json'))
+    for k, v in train_opt.iteritems():
+        if k in opt and (k not in {'gpu_ids', 'is_train'}):
+            setattr(opt, k, v)
+    model = VUnetPoseTransferModel()
+    model.initialize(opt)
+    # create data set
+    val_loader = CreateDataLoader(opt, split='test')
+    id_list = [[sid_1, sid_2] for sid_1, sid_2 in zip(image_info['id_1'], image_info['id_2'])]
+    val_loader.dataset.id_list = id_list
 
+    # extract descriptor
+    print('extracing descriptors ...')
+    desc = {
+        'img_1': [],
+        'img_2': [],
+        'feat1_1': [],
+        'feat1_2': [],
+        'feat2_1': [],
+        'feat2_2': [],
+    }
+    for i, data in enumerate(tqdm.tqdm(val_loader)):
+        model.set_input(data)
+        appr_1 = model.get_appearance(model.opt.appearance_type, index='1')
+        appr_2 = model.get_appearance(model.opt.appearance_type, index='2')
+        pose_1 = model.get_pose(model.opt.pose_type, index='1')
+        pose_2 = model.get_pose(model.opt.pose_type, index='2')
+        # desc_1 (ref)
+        output, ps, qs, ds = model.netT(appr_1, pose_1, pose_1, mode='transfer', output_feature=True)
+        output = model.parse_output(output, model.opt.output_type)
+        img = torch.nn.functional.tanh(output['image'])
+        desc['img_1'].append(img.detach().cpu())
+        desc['feat1_1'].append(ds[-1].detach().cpu())
+        desc['feat2_1'].append(ds[-2].detach().cpu())
+        # desc_2 (tar)
+        output, ps, qs, ds = model.netT(appr_1, pose_1, pose_2, mode='transfer', output_feature=True)
+        output = model.parse_output(output, model.opt.output_type)
+        img = torch.nn.functional.tanh(output['image'])
+        desc['img_2'].append(img.detach().cpu())
+        desc['feat1_2'].append(ds[-1].detach().cpu())
+        desc['feat2_2'].append(ds[-2].detach().cpu())
+    
+    for k, v in desc.iteritems():
+        desc[k] = torch.cat(v).numpy().transpose(0,2,3,1)
 
+    # save descriptor
+    data_dict_img = {
+        'desc_1': desc['img_1'],
+        'desc_2': desc['img_2'],
+        'name': 'gen_vunet_img'
+    }
+    data_dict_feat1 = {
+        'desc_1': desc['feat1_1'],
+        'desc_2': desc['feat1_2'],
+        'name': 'gen_vunet_feat1'
+    }
+    data_dict_feat2 = {
+        'desc_1': desc['feat2_1'],
+        'desc_2': desc['feat2_2'],
+        'name': 'gen_vunet_feat2'
+    }
 
+    scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_vunet_img.mat', data_dict_img)
+    scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_vunet_feat1.mat', data_dict_feat1)
+    scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_vunet_feat2.mat', data_dict_feat2)
 
-
+    # visualize desc_img
+    vis_dir = 'temp/patch_matching/descriptor/vis_gen_vunet_img/'
+    io.mkdir_if_missing(vis_dir)
+    imgs_1 = (desc['img_1']*127.5 + 127.5).astype(np.uint8)
+    imgs_2 = (desc['img_2']*127.5 + 127.5).astype(np.uint8)
+    for i in range(imgs_1.shape[0]):
+        imageio.imwrite(vis_dir+'%d_1.jpg'%i, imgs_1[i])
+        imageio.imwrite(vis_dir+'%d_2.jpg'%i, imgs_2[i])
 
 
 
@@ -347,4 +429,6 @@ if __name__ == '__main__':
     # create_descriptor_rgb()
     # create_descriptor_vgg()
     # create_descriptor_segment_guided_rgb()
-    create_descriptor_inhomogeneous_seg()
+    # create_descriptor_inhomogeneous_seg()
+
+    create_descriptor_vunet()

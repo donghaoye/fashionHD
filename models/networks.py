@@ -2024,7 +2024,7 @@ class VariationalUnet(nn.Module):
                 else:
                     # four autoregressively modeled groups
                     if training:
-                        z_posterior_groups = self.space_to_depth(zs_posterior[0], scale=2) # the or of zs_posterior is from LR to HR
+                        z_posterior_groups = self.space_to_depth(zs_posterior[0], scale=2) # the order of zs_posterior is from LR to HR
                         split_size = z_posterior_groups.size(1)//4
                         z_posterior_groups = list(z_posterior_groups.split(split_size, dim=1))
                     p_groups = []
@@ -2111,14 +2111,14 @@ class VariationalUnet(nn.Module):
         gs = self.dec_up(c_tar)
         ds, ps, zs_prior = self.dec_down(gs, zs_posterior, training=True)
         img = self.dec_to_image(ds[-1])
-        return img, qs, ps
+        return img, qs, ps, ds
 
     def test_forward_pass(self, c_tar):
         # decoder
         gs = self.dec_up(c_tar)
         ds, ps, zs_prior = self.dec_down(gs, [], training=False)
         img = self.dec_to_image(ds[-1])
-        return img
+        return img, ds
 
     def transfer_pass(self, x_ref, c_ref, c_tar):
         use_mean = True
@@ -2133,21 +2133,30 @@ class VariationalUnet(nn.Module):
         else:
             ds, ps, zs_prior = self.dec_down(gs, zs_posterior, training=True)
         img = self.dec_to_image(ds[-1])
-        return img, qs, ps
+        return img, qs, ps, ds
 
-    def forward(self, x_ref, c_ref, c_tar, mode='train', single_device=False):
+    def forward(self, x_ref, c_ref, c_tar, mode='train', output_feature=False, single_device=False):
         if len(self.gpu_ids) > 1 and not single_device:
-            return nn.parallel.data_parallel(self, (x_ref, c_ref, c_tar), module_kwargs={'mode':mode, 'single_device':True})
+            return nn.parallel.data_parallel(self, (x_ref, c_ref, c_tar), module_kwargs={'mode':mode, 'single_device':True, 'output_feature': output_feature})
         else:
             if mode == 'train':
-                # return: img, qs, ps
-                return self.train_forward_pass(x_ref, c_ref, c_tar)
+                img, qs, ps, ds = self.train_forward_pass(x_ref, c_ref, c_tar)
+                if output_feature:
+                    return img, qs, ps, ds
+                else:
+                    return img, qs, ps
             elif mode == 'test':
-                # return: img
-                return self.test_forward_pass(c_tar)
+                img, ds = self.test_forward_pass(c_tar)
+                if output_feature:
+                    return img, ds
+                else:
+                    return img
             elif mode == 'transfer':
-                # return: img
-                return self.transfer_pass(x_ref, c_ref, c_tar)
+                img, qs, ps, ds = self.transfer_pass(x_ref, c_ref, c_tar)
+                if output_feature:
+                    return img, qs, ps, ds
+                else:
+                    return img, qs, ps
             else:
                 raise NotImplementedError()
 

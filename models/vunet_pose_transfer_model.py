@@ -74,7 +74,7 @@ class VUnetPoseTransferModel(BaseModel):
             self.optimizers =[]
             self.crit_vgg = networks.VGGLoss_v2(self.gpu_ids, opt.content_layer_weight, opt.style_layer_weight, opt.shifted_style)
             # self.crit_vgg_old = networks.VGGLoss(self.gpu_ids)
-            self.optim = torch.optim.Adam(self.netT.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
+            self.optim = torch.optim.Adam(self.netT.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2), weight_decay=opt.weight_decay)
             self.optimizers += [self.optim]
 
             if self.use_GAN:

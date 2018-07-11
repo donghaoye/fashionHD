@@ -107,6 +107,7 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--lr_D', type = float, default = 2e-5, help = 'only use lr_D for netD when loss_weight_gan > 0')
         parser.add_argument('--beta1', type = float, default = 0.5, help = 'momentum1 term for Adam')
         parser.add_argument('--beta2', type = float, default = 0.999, help = 'momentum2 term for Adam')
+        parser.add_argument('--weight_decay', type=float, default=0, help='weight decay')
         # scheduler
         parser.add_argument('--lr_policy', type=str, default='step', choices = ['step', 'plateau', 'lambda'], help='learning rate policy: lambda|step|plateau')
         # parser.add_argument('--epoch_count', type=int, default=1, help='the starting epoch count, we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>, ...')

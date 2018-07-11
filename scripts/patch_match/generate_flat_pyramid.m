@@ -12,7 +12,7 @@ function [flat_pyramid, mask] = generate_flat_pyramid(x, default_value)
         w = int32(W*s);
         H_out = max(H_out, h);
         W_out = W_out + w;
-        p = imresize(x,[N*h, w]);
+        p = imresize(x,[N*h, w], 'nearest');
         p = permute(reshape(p,[h,N,w,C]), [2,1,3,4]);
         pyramid{i} = p;
     end
