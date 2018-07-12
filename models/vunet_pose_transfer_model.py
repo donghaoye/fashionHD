@@ -149,7 +149,6 @@ class VUnetPoseTransferModel(BaseModel):
         pose_ref = self.get_pose(self.opt.pose_type, index=ref_idx)
         pose_tar = self.get_pose(self.opt.pose_type, index=tar_idx)
         img_tar = self.input['img_%s'%tar_idx]
-        self.output['joint_tar'] = self.input['joint_%s'%tar_idx]
         self.output['joint_c_tar'] = self.input['joint_c_%s'%tar_idx]
         self.output['stickman_tar'] = self.input['stickman_%s'%tar_idx]
         self.output['stickman_ref'] = self.input['stickman_%s'%ref_idx]
@@ -166,6 +165,9 @@ class VUnetPoseTransferModel(BaseModel):
         self.output['seg_tar'] = self.input['seg_%s'%tar_idx] #(bsz, seg_nc, h, w)
         if 'seg' in self.opt.output_type:
             self.output['seg_out'] = netT_output['seg'] #(bsz, seg_nc, h, w)
+        if 'joint' in self.opt.output_type:
+            self.output['joint_out'] = F.sigmoid(netT_output['joint'])
+            self.output['joint_tar'] = self.get_pose('joint', index=tar_idx)
             
     def test(self, mode='transfer', compute_loss=False):
         with torch.no_grad():
@@ -255,6 +257,10 @@ class VUnetPoseTransferModel(BaseModel):
         if 'seg' in self.opt.output_type:
             self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.output['seg_tar'].squeeze(dim=1).long())
             loss += self.output['loss_seg'] * self.opt.loss_weight_seg
+        # joint
+        if 'joint' in self.opt.output_type:
+            self.output['loss_joint'] = F.binary_cross_entropy(self.output['joint_out'], self.output['joint_tar'])
+            loss += self.output['loss_joint'] * self.opt.loss_weight_joint
         # color (only Lab)
         if 'loss_in_lab' in self.opt and self.opt.loss_in_lab:
             self.output['loss_color'] = F.mse_loss(color_out, color_tar)
@@ -324,6 +330,10 @@ class VUnetPoseTransferModel(BaseModel):
         if 'seg' in self.opt.output_type:
             self.output['loss_seg'] = F.cross_entropy(self.output['seg_out'], self.output['seg_tar'].squeeze(dim=1).long())
             (self.output['loss_seg'] * self.opt.loss_weight_seg).backward(retain_graph=True)
+        # joint
+        if 'joint' in self.opt.output_type:
+            self.output['loss_joint'] = F.binary_cross_entropy(self.output['joint_out'], self.output['joint_tar'])
+            (self.output['loss_joint'] * self.opt.loss_weight_join).backward(retain_graph=True)
         # KL
         self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
         (self.output['loss_kl'] * self.opt.loss_weight_kl).backward()
@@ -351,6 +361,8 @@ class VUnetPoseTransferModel(BaseModel):
                 dim += 3
             elif item == 'seg':
                 dim += self.opt.seg_nc
+            elif item == 'joint':
+                dim += self.opt.joint_nc
             else:
                 raise Exception('invalid output type %s'%item)
         return dim
@@ -375,6 +387,9 @@ class VUnetPoseTransferModel(BaseModel):
                 rst['seg_mask'] = torch.stack(seg_mask, dim=1).float()
 
                 i += self.opt.seg_nc
+            elif item == 'joint':
+                rst['joint'] = output[:,i:(i+self.opt.joint_nc)]
+                i += self.opt.joint_nc
             else:
                 raise Exception('invalid output type %s'%item)
         return rst
@@ -529,7 +544,7 @@ class VUnetPoseTransferModel(BaseModel):
         return loss_patch_style
 
     def get_current_errors(self):
-        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_patch_style', 'loss_kl', 'loss_G', 'loss_D', 'loss_seg', 'loss_color', 'grad_L1', 'grad_content', 'grad_style', 'grad_patch_style', 'grad_gan', 'grad_color']
+        error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_patch_style', 'loss_kl', 'loss_G', 'loss_D', 'loss_seg', 'loss_joint', 'loss_color', 'grad_L1', 'grad_content', 'grad_style', 'grad_patch_style', 'grad_gan', 'grad_color']
         errors = OrderedDict()
         for item in error_list:
             if item in self.output:
@@ -548,6 +563,9 @@ class VUnetPoseTransferModel(BaseModel):
             visuals['seg_ref'] = [self.output['seg_ref'], 'seg']
             visuals['seg_tar'] = [self.output['seg_tar'], 'seg']
             visuals['seg_out'] = [self.output['seg_out'], 'seg']
+        if 'joint' in self.opt.output_type:
+            visuals['joint_tar'] = [self.output['joint_tar'], 'pose']
+            visuals['joint_out'] = [self.output['joint_out'], 'pose']
         return visuals
 
     def save(self, label):

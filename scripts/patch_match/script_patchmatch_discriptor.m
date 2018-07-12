@@ -18,13 +18,13 @@ image_size = 256;
 src_1 = 'gt'; % 'gt'
 src_2 = 'gen'; % 'gt' or 'gen'
 % test_id = sprintf('%s_seg+vgg_h1+h2_pw1(7)', src_2);
-test_id = sprintf('%s_vunet_feat1_pw15', src_2);
+test_id = sprintf('%s_vunet_feat2_pw15', src_2);
 % patchmatch setting
 patch_w = 15; % patch_size at base level
 patch_w_vote = 15;% patch_size for voting 
 normalize_desc = false; % normalize each descriptor searately
-seg_guided = true; % segmentation guided descriptor
-seg_penalty = 1; % distance penalty for pixels with mismatched segmentation. set to value range of each channel. (2 for rgb)
+seg_guided = false; % segmentation guided descriptor
+seg_penalty = 2; % distance penalty for pixels with mismatched segmentation. set to value range of each channel. (2 for rgb)
 descriptor_pyramid_scales = []; % compute a descriptor pyramid at each pixel
 use_image_pyramid = false; % use [0.75, 1, 1.25] image pyramid of img_1
 use_bds = false; % use bidirectional similarity in voting
@@ -32,7 +32,8 @@ use_bds = false; % use bidirectional similarity in voting
 % descriptor file list
 dir_desc = '/data2/ynli/Fashion/fashionHD/temp/patch_matching/descriptor/';
 desc_list = {};
-desc_list = [desc_list, {sprintf('%s_vunet_feat1', src_2)}];
+desc_list = [desc_list, {sprintf('%s_vunet_feat2', src_2)}];
+% desc_list = [desc_list, {sprintf('%s_vunet_feat1', src_2)}];
 % desc_list = [desc_list, {sprintf('%s_vunet_img', src_2)}];
 % desc_list = [desc_list, {sprintf('%s_inhomoseg', src_2)}];
 % desc_list = [desc_list, {sprintf('%s_rgb', src_2)}];

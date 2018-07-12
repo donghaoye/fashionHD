@@ -22,6 +22,7 @@ class BasePoseTransferOptions(BaseOptions):
         parser.add_argument('--pose_type', type=str, default='joint', help='pose format, combination ("+") of [joint, stickman, seg]')
         parser.add_argument('--joint_radius', type=int, default=8, help='radius of joint map')
         parser.add_argument('--joint_mode', type=str, default='binary', choices=['binary', 'gaussian'])
+        parser.add_argument('--joint_nc', type=int, default=18, help='number of joint keys. 18 for OpenPose result')
         parser.add_argument('--seg_bin_size', type=int, default=1, help='bin size of downsampled seg mask')
         parser.add_argument('--seg_nc', type=int, default=7, help='number of segmentation classes, 7 for ATR and 8 for LIP')
         parser.add_argument('--patch_indices', type=int, default=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,18,19,20,21,22,23,24,25,26,27,28], nargs='+', help='indices of joint points to extract patches. see misc.pose_util.py for details')
@@ -136,6 +137,7 @@ class TrainPoseTransferOptions(BasePoseTransferOptions):
         parser.add_argument('--loss_weight_gan', type=float, default=0., help='set loss_weight_gan > 0 to enable GAN loss')
         parser.add_argument('--loss_weight_kl', type=float, default=1e-6, help='vunet setting: kl loss weight')
         parser.add_argument('--loss_weight_seg', type=float, default=0.1, help='weight of cross entropy loss on additional segmentation outputs')
+        parser.add_argument('--loss_weight_joint', type=float, default=0.1, help='weight of BCE loss on additional joint prediction')
         parser.add_argument('--loss_weight_color', type=float, default=1., help='weight of color L2 loss. only valid when loss_in_lab==1')
         
         # train 2-stage model
