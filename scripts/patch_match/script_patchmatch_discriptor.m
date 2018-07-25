@@ -1,5 +1,5 @@
 % PatchMatch with given descriptor
-% clear all;
+clear all;
 warning off;
 %% patchmatch path
 addpath(genpath('/data2/ynli/patch_matching_and_flow/patchmatch-2.1/'));
@@ -18,21 +18,36 @@ image_size = 256;
 src_1 = 'gt'; % 'gt'
 src_2 = 'gen'; % 'gt' or 'gen'
 % test_id = sprintf('%s_seg+vgg_h1+h2_pw1(7)', src_2);
-test_id = sprintf('%s_vunet_feat2_pw15', src_2);
+% test_id = sprintf('%s_scale_inhomoseg-v2-0.5_pw15_sparse-nms-0.0', src_2);
+test_id = sprintf('%s_scale_vunet-7.9_feat2_pw15_sparse-nms-0.0', src_2);
 % patchmatch setting
 patch_w = 15; % patch_size at base level
 patch_w_vote = 15;% patch_size for voting 
 normalize_desc = false; % normalize each descriptor searately
 seg_guided = false; % segmentation guided descriptor
-seg_penalty = 2; % distance penalty for pixels with mismatched segmentation. set to value range of each channel. (2 for rgb)
+seg_penalty = 1; % distance penalty for pixels with mismatched segmentation. set to value range of each channel. (2 for rgb)
 descriptor_pyramid_scales = []; % compute a descriptor pyramid at each pixel
 use_image_pyramid = false; % use [0.75, 1, 1.25] image pyramid of img_1
 use_bds = false; % use bidirectional similarity in voting
+img1_size_normalize = true;
+rc_method = 'vote';% re-construction method (vote, warp)
+% rc_method = 'warp';% re-construction method (vote, warp)
+
+% sparsify nn field
+% sparsify_method = 'none';
+sparsify_method = 'nms';
+% sparsify_method = 'grid';
+sparsify_overlap = 0.0;
+
 
 % descriptor file list
 dir_desc = '/data2/ynli/Fashion/fashionHD/temp/patch_matching/descriptor/';
 desc_list = {};
-desc_list = [desc_list, {sprintf('%s_vunet_feat2', src_2)}];
+% desc_list = [desc_list, {sprintf('%s_inhomoseg-v2-0.5', src_2)}];
+% desc_list = [desc_list, {sprintf('%s_inhomoseg-v2-1.0', src_2)}];
+desc_list = [desc_list, {sprintf('%s_vunet-7.9_feat2', src_2)}];
+% desc_list = [desc_list, {sprintf('%s_vunet-7.9_feat1', src_2)}];
+% desc_list = [desc_list, {sprintf('%s_vunet_feat2', src_2)}];
 % desc_list = [desc_list, {sprintf('%s_vunet_feat1', src_2)}];
 % desc_list = [desc_list, {sprintf('%s_vunet_img', src_2)}];
 % desc_list = [desc_list, {sprintf('%s_inhomoseg', src_2)}];
@@ -43,8 +58,8 @@ desc_list = [desc_list, {sprintf('%s_vunet_feat2', src_2)}];
 % desc_list = [desc_list, {sprintf('%s_vgg_h3', src_2)}];
 % desc_list = [desc_list, {sprintf('%s_vgg_h4', src_2)}];
 % desc_list = [desc_list, {sprintf('%s_vgg_h5', src_2)}];
-%% load image
-image_info = load('/data2/ynli/Fashion/fashionHD/temp/patch_matching/label/image_info.mat');
+
+%% load image and segmentation map
 % data_dict = {
 %         'id_1': np.array(id_1, dtype=np.object),
 %         'id_2': np.array(id_2, dtype=np.object),
@@ -54,6 +69,8 @@ image_info = load('/data2/ynli/Fashion/fashionHD/temp/patch_matching/label/image
 %         'model_id': model_id,
 %     }
 
+% load image
+image_info = load('/data2/ynli/Fashion/fashionHD/temp/patch_matching/label/image_info.mat');
 images.images_1 = uint8(zeros(num_sample, image_size, image_size, 3));
 images.images_2 = uint8(zeros(num_sample, image_size, image_size, 3));
 images.images_gen = uint8(zeros(num_sample, image_size, image_size, 3));
@@ -72,6 +89,18 @@ else
     fprintf('invalid src_2');
     return;
 end
+
+% load segmentation map for mask
+desc_seg = load([dir_desc, sprintf('desc_%s_seg.mat', src_2)]);
+if size(desc_seg.desc_1, 4) == 8
+    masks_1_upper = desc_seg.desc_1(:,:,:,4) + desc_seg.desc_1(:,:,:,8);
+    masks_2_upper = desc_seg.desc_2(:,:,:,4) + desc_seg.desc_2(:,:,:,8);
+else
+    masks_1_upper = desc_seg.desc_1(:,:,:,4);
+    masks_2_upper = desc_seg.desc_2(:,:,:,4);
+end
+masks_1_full = masks_1_upper + desc_seg.desc_1(:,:,:,5);
+masks_2_full = masks_2_upper + desc_seg.desc_2(:,:,:,5);
 
 %% load descriptor
 desc_1 = [];
@@ -111,13 +140,6 @@ for i=1:length(desc_list)
 end
 
 %% create segmentation guided descriptor
-desc_seg = load([dir_desc, sprintf('desc_%s_seg.mat', src_2)]);
-if size(desc_seg.desc_2, 4) == 8
-    mask_tar = desc_seg.desc_2(:,:,:,4) + desc_seg.desc_2(:,:,:,8);
-else
-    mask_tar = desc_seg.desc_2(:,:,:,4);
-end
-
 if seg_guided
     desc_1 = expand_descriptor_by_seg(desc_1, desc_seg.desc_1, seg_penalty);
     desc_2 = expand_descriptor_by_seg(desc_2, desc_seg.desc_2, seg_penalty);
@@ -152,6 +174,24 @@ if use_image_pyramid
 else
     mask_ref = [];
 end
+
+%% size normalization & convert matrix into cell (to allow different image size for each sample)
+images_1_cell = cell(num_sample);
+images_2_cell = cell(num_sample);
+desc_1_cell = cell(num_sample);
+desc_2_cell = cell(num_sample);
+for i=1:num_sample
+    images_1_cell{i} = squeeze(images_1(i,:,:,:));
+    images_2_cell{i} = squeeze(images_2(i,:,:,:));
+    desc_1_cell{i} = squeeze(desc_1(i,:,:,:));
+    desc_2_cell{i} = squeeze(desc_2(i,:,:,:));
+    s = image_info.scale_2over1{i};
+    if img1_size_normalize && s > 0
+        images_1_cell{i} = imresize(images_1_cell{i}, s);
+        desc_1_cell{i} = imresize(desc_1_cell{i}, s, 'Method', 'nearest');
+    end
+end
+
 %% apply patchmatch and reconstruction
 images_2_vote = cell(1, num_sample);
 nn_1to2 = cell(1, num_sample);
@@ -159,35 +199,52 @@ nn_2to1 = cell(1, num_sample);
 % parfor i=1:num_sample
 parfor i=1:num_sample
     fprintf('processing image %d/%d\n', i, num_sample);
-%     img_1 = images_1{i};
-%     img_2 = images_2{i};
-%     nn_1to2 = nnmex(img_1, img_2, 'cputiled', patch_w, 16);
-%     nn_2to1 = nnmex(img_2, img_1, 'cputiled', patch_w, 16);
-    img_1 = squeeze(images_1(i,:,:,:));
-    d1 = squeeze(desc_1(i,:,:,:));
-    d2 = squeeze(desc_2(i,:,:,:));
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % normal
-    nn_1to2{i} = nnmex(d1, d2, 'cpu', patch_w, 16);
+    img_1 = images_1_cell{i};
+    img_2 = images_2_cell{i};
+    d1 = desc_1_cell{i};
+    d2 = desc_2_cell{i};
+    mask_2_upper = squeeze(masks_2_upper(i,:,:,:));
+    mask_2_upper = imtranslate(mask_2_upper, [-floor(patch_w/2), -floor(patch_w/2)], 'FillValues', 0, 'method', 'nearest');
+    mask_2_full = squeeze(masks_2_full(i,:,:,:));
+    mask_2_full = imtranslate(mask_2_full, [-floor(patch_w/2), -floor(patch_w/2)], 'FillValues', 0, 'method', 'nearest');
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % compute nn field
     nn_2to1{i} = nnmex(d2, d1, 'cpu', patch_w, 16);
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % with nn_prev
-%     [XX,YY] = meshgrid(1:size(d2,2), 1:size(d2,1));
-%     nn_prev = zeros(size(d2,1), size(d2,2), 3);
-%     nn_prev(:,:,1)=XX;
-%     nn_prev(:,:,2)=YY;
-%     nn_prev = int32(nn_prev);
-%     nn_1to2{i} = nnmex(d1, d2, 'cpu', patch_w, 16, [], [], [], [], [], [], [], nn_prev);
-%     nn_2to1{i} = nnmex(d2, d1, 'cpu', patch_w, 16, [], [], [], [], [], [], [], nn_prev);
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % with rotation+scale
-%     nn_1to2{i} = nnmex(d1, d2, 'rotscale', patch_w, 16, [], [], [], [], [], [], [], [], [], [], [], [], [], 2);
-%     nn_2to1{i} = nnmex(d2, d1, 'rotscale', patch_w, 16, [], [], [], [], [], [], [], [], [], [], [], [], [], 2);
-    
-    if use_bds
-        images_2_vote{i} = votemex(img_1, nn_2to1{i}, nn_1to2{i}, 'cpu', patch_w_vote);
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % sparsify nn field
+    if strcmp(sparsify_method, 'nms')
+        nn_dist = compute_nn_dist(d2, d1, nn_2to1{i}, patch_w);
+        nn_score = - nn_dist;
+        mask_2_supp = supp_nnfield_nms(nn_score,patch_w_vote, sparsify_overlap, mask_2_full);
+    elseif strcmp(sparsify_method, 'grid')
+        mask_2_supp = zeros(size(mask_2_full));
+        delta = round(patch_w_vote * (1 - sparsify_overlap));
+        mask_2_supp(1:(2*delta):end,1:delta:end) = 1;
+        mask_2_supp((1+delta):(2*delta):end,(1+round(delta/2)):delta:end)=1;
+        mask_2_supp = mask_2_supp .* mask_2_full;
     else
-        images_2_vote{i} = votemex(img_1, nn_2to1{i}, [], 'cpu', patch_w_vote);
+        assert(strcmp(sparsify_method, 'none'), 'invalid sparsify_method');
+        mask_2_supp = mask_2_full;
+    end
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % reconstruct image
+    if strcmp(rc_method, 'vote')
+        % format mask_2_supp for votemex function
+        mask_2_field = ones(size(mask_2_supp,1), size(mask_2_supp,2), 3);
+        for k=1:3
+            mask_2_field(:,:,k) = 1 - mask_2_supp;
+        end
+        if use_bds
+            nn_1to2{i} = nnmex(d1, d2, 'cpu', patch_w, 16);
+            images_2_vote{i} = votemex(img_1, nn_2to1{i}, nn_1to2{i}, 'cpu', patch_w_vote, [], [], [], [], mask_2_field, [], img_2);
+        else
+            images_2_vote{i} = votemex(img_1, nn_2to1{i}, [], 'cpu', patch_w_vote, [], [], [], [], mask_2_field, [], img_2);
+%             images_2_vote{i} = votemex(img_1, nn_2to1{i}, [], 'cpu', patch_w_vote);
+        end
+    elseif strcmp(rc_method, 'warp')
+        images_2_vote{i} = warpImage(img_1, nn_2to1{i});
+    else
+        assert(false, 'invalid rc_method');
     end
 end
 %% evaluation and visualization
@@ -222,7 +279,8 @@ for i=1:num_sample
     fn_out = sprintf('%s/%d_%s_%s.jpg', dir_out, i, image_info.id_1{i}, image_info.id_2{i});
     imwrite(images_2_vote{i}, fn_out);
     fn_match = sprintf('%s/%d_%s_%s_m.jpg', dir_out, i, image_info.id_1{i}, image_info.id_2{i});
-    save_nn_match(nn_2to1{i}, squeeze(images_1(i,:,:,:)), images_2_vote{i}, 15, squeeze(mask_tar(i,:,:,:)), fn_match);
-    
+    mask_2_upper = squeeze(masks_2_upper(i,:,:,:));
+    mask_2_upper = imtranslate(mask_2_upper, [-floor(patch_w/2), -floor(patch_w/2)], 'FillValues', 0, 'method', 'nearest');
+    save_nn_match(nn_2to1{i}, images_1_cell{i}, images_2_vote{i}, 15, mask_2_upper, fn_match);
 end
 

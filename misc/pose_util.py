@@ -97,3 +97,27 @@ def draw_pose_from_map(pose_map, threshold=0.1, radius=2, draw_joints=True):
     coords = map_to_coords(pose_map, threshold)
     return draw_pose_from_coords(coords, img_size, radius, draw_joints)
 
+
+def relative_scale_from_pose(pose, pose_std, skeleton_def=None):
+    if skeleton_def is None:
+        skeleton_def = [(2,3), (5,6), (2,8), (5,11)]
+    scale = []
+    for t1, t2 in skeleton_def:
+        if np.all([pose[t1]>=0, pose[t2]>=0, pose_std[t1]>=0, pose_std[t2]>=0]):
+            s = np.linalg.norm(pose[t1]-pose[t2]) / np.linalg.norm(pose_std[t1]-pose_std[t2])
+            scale.append(s)
+    if scale:
+        return np.mean(scale)
+    else:
+        return -1
+
+def relative_vertical_offset_from_pose(pose, pose_std, keypoint_def=None):
+    if keypoint_def is None:
+        keypoint_def = [0,1,2,5,8,11]
+
+    valid = (pose[keypoint_def, 1] >=0) & (pose_std[keypoint_def, 1]>=0)
+    if valid.any():
+        offset = pose[[keypoint_def],1] - pose_std[[keypoint_def], 1]
+        return np.mean(offset[valid])
+    else:
+        return None

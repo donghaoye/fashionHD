@@ -4,7 +4,7 @@ function CE = expand_descriptor_by_seg(C, S, seg_penalty)
     assert(all(size(S)==[n,h,w,s]));
     CE = zeros(n,h,w,c+s);
     CE(:,:,:,1:c) = C;
-    CE(:,:,:,(c+1):end) = S*seg_penalty*sqrt(c/2.0);    
+    CE(:,:,:,(c+1):end) = S*seg_penalty*sqrt(c/2.0);
 end
 
 % function desc_exp = expand_descriptor_by_seg(desc, seg, fillvalue)

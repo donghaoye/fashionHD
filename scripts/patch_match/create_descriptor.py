@@ -6,6 +6,7 @@ import imageio
 import tqdm
 import cv2
 import os
+from misc import pose_util
 
 ####################################
 # global config
@@ -32,17 +33,22 @@ def create_image_info():
     image_gen_dir = '/data2/ynli/Fashion/fashionHD/checkpoints/%s/test/' % model_id
 
     pair_indices = io.load_json('datasets/DF_Pose/Label/pair_split.json')['test'][0:num_sample]
+    pose_label = io.load_data('datasets/DF_Pose/Label/pose_label.pkl')
     id_1 = [p[0] for p in pair_indices]
     id_2 = [p[1] for p in pair_indices]
     image_1 = []
     image_2 = []
     image_gen = []
+    scale_2over1 = []
 
     for i in range(num_sample):
         image_1.append(image_dir + id_1[i] + '.jpg')
         image_2.append(image_dir + id_2[i] + '.jpg')
         image_gen.append(image_gen_dir + '%s_%s.jpg'%(id_1[i], id_2[i]))
-
+        pose_1 = np.array(pose_label[id_1[i]])
+        pose_2 = np.array(pose_label[id_2[i]])
+        scale_2over1.append(pose_util.relative_scale_from_pose(pose_2, pose_1))
+    
     image_info = {
         'id_1': id_1,
         'id_2': id_2,
@@ -50,6 +56,7 @@ def create_image_info():
         'image_2': image_2,
         'image_gen': image_gen,
         'model_id': model_id,
+        'scale_2over1': scale_2over1
     }
     data_dict = {k:np.array(v, dtype=np.object) for k,v in image_info.iteritems()}
     io.save_json(image_info, 'temp/patch_matching/label/image_info.json') # for other functions in this script
@@ -331,6 +338,67 @@ def create_descriptor_inhomogeneous_seg():
     scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gt_inhomoseg.mat', data_dict_gt)
     scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_inhomoseg.mat', data_dict_gen)
 
+def create_descriptor_inhomogeneous_seg_v2():
+
+    alpha = 1.0
+
+    image_info = io.load_json('temp/patch_matching/label/image_info.json')
+    pose_label = io.load_data('datasets/DF_Pose/Label/pose_label.pkl')
+
+    pose_np = np.array(pose_label.values())
+    valid_index = (pose_np[:,[2,5,8,11],0]>=0).all(axis=1)
+    pose_np = pose_np[valid_index, ...]
+    mean_R = 0.5 * (np.linalg.norm(pose_np[:,2,:]-pose_np[:,8,:], axis=1).mean() + np.linalg.norm(pose_np[:,5,:]-pose_np[:,11,:], axis=1).mean())
+    
+    img_size = 256
+    
+    def _RBF(r, R, img_size):
+        rx, ry = r
+        gx, gy = np.meshgrid(range(img_size), range(img_size), indexing='xy')
+        rbf = np.exp(-((gx-rx)**2 + (gy-ry)**2)/R**2)
+        return rbf
+
+
+    desc = {}
+    kp_indices = [2,5,8,11,3,6]
+    for subset in ['1', '2', 'gen']:
+        print(subset)
+        desc[subset] = []
+        for i in range(num_sample):            
+            if subset == '1':
+                pose = np.array(pose_label[image_info['id_1'][i]])
+            else:
+                pose = np.array(pose_label[image_info['id_2'][i]])
+
+            if (pose[[2,5,8,11],:] >=0).all():
+                R = 0.5*(np.linalg.norm(pose[2,:]-pose[8,:]) + np.linalg.norm(pose[5,:]-pose[11,:]))
+            else:
+                R = mean_R
+            m = np.zeros((img_size, img_size, len(kp_indices)))
+            for i_kp, (x_kp, y_kp) in enumerate(pose[kp_indices,:]):
+                valid = pose_label[image_info['id_1'][i]][i_kp][0] >= 0 and pose_label[image_info['id_2'][i]][i_kp][0] >= 0
+                if valid:
+                    m[..., i_kp] = _RBF(r=[x_kp, y_kp], R=R*alpha, img_size=img_size)
+            desc[subset].append(m)
+        desc[subset] = np.stack(desc[subset])
+
+    data_dict_gt =  {
+        'desc_1': desc['1'],
+        'desc_2': desc['2'],
+        'name': 'gt_inhomoseg-v2-1.0'
+    }
+    data_dict_gen = {
+        'desc_1': desc['1'],
+        'desc_2': desc['gen'],
+        'name': 'gen_inhomoseg-v2-1.0'
+    }
+
+    scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gt_inhomoseg-v2-1.0.mat', data_dict_gt)
+    scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_inhomoseg-v2-1.0.mat', data_dict_gen)
+
+
+
+
 def create_descriptor_vunet():
     '''
     use variational unet feature as descriptor
@@ -342,7 +410,8 @@ def create_descriptor_vunet():
     # load image info
     image_info = io.load_json('temp/patch_matching/label/image_info.json')
     # load model
-    opt = TestPoseTransferOptions().parse(ord_str = '--which_model_T vunet --id 7.5 --gpu_ids 0,1,2,3 --batch_size 16', save_to_file = False, display = False, set_gpu = True)
+    # opt = TestPoseTransferOptions().parse(ord_str = '--which_model_T vunet --id 7.5 --gpu_ids 0,1,2,3 --batch_size 16', save_to_file = False, display = False, set_gpu = True)
+    opt = TestPoseTransferOptions().parse(ord_str = '--which_model_T vunet --id 7.9 --gpu_ids 0,1,2,3 --batch_size 16', save_to_file = False, display = False, set_gpu = True)
     train_opt = io.load_json(os.path.join('checkpoints', opt.id, 'train_opt.json'))
     for k, v in train_opt.iteritems():
         if k in opt and (k not in {'gpu_ids', 'is_train'}):
@@ -405,9 +474,9 @@ def create_descriptor_vunet():
         'name': 'gen_vunet_feat2'
     }
 
-    scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_vunet_img.mat', data_dict_img)
-    scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_vunet_feat1.mat', data_dict_feat1)
-    scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_vunet_feat2.mat', data_dict_feat2)
+    scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_vunet-7.9_img.mat', data_dict_img)
+    scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_vunet-7.9_feat1.mat', data_dict_feat1)
+    scipy.io.matlab.savemat('temp/patch_matching/descriptor/desc_gen_vunet-7.9_feat2.mat', data_dict_feat2)
 
     # visualize desc_img
     vis_dir = 'temp/patch_matching/descriptor/vis_gen_vunet_img/'
@@ -420,15 +489,17 @@ def create_descriptor_vunet():
 
 
 
+
 if __name__ == '__main__':
     ###########################
     # patchmatch functions
     ###########################
-    # create_image_info()
+    create_image_info()
     # create_descriptor_seg()
     # create_descriptor_rgb()
     # create_descriptor_vgg()
     # create_descriptor_segment_guided_rgb()
     # create_descriptor_inhomogeneous_seg()
 
-    create_descriptor_vunet()
+    # create_descriptor_vunet()
+    # create_descriptor_inhomogeneous_seg_v2()

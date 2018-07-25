@@ -5,9 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 import networks
-from torch.autograd import Variable
 from misc.image_pool import ImagePool
 from misc.color_space import rgb2lab
+from misc import pose_util
 from base_model import BaseModel
 from misc import pose_util
 
@@ -137,13 +137,18 @@ class VUnetPoseTransferModel(BaseModel):
         return kl_loss
 
     def forward(self, mode='train'):
-        ''' mode in {'train', 'transfer', 'transfer_gt'} '''
-        if self.opt.supervised or mode == 'transfer':
-            ref_idx = '1'
-            tar_idx = '2'
-        else:
+        ''' mode in {'train', 'transfer', 'reconstruct_ref'} '''
+        if mode == 'reconstruct_ref' or (mode == 'train' and not self.opt.supervised):
             ref_idx = '1'
             tar_idx = '1'
+        else:
+            ref_idx = '1'
+            tar_idx = '2'
+
+        if mode == 'train':
+            vunet_mode = 'train'
+        else:
+            vunet_mode = 'transfer'
         
         appr_ref = self.get_appearance(self.opt.appearance_type, index=ref_idx)
         pose_ref = self.get_pose(self.opt.pose_type, index=ref_idx)
@@ -154,13 +159,13 @@ class VUnetPoseTransferModel(BaseModel):
         self.output['stickman_ref'] = self.input['stickman_%s'%ref_idx]
 
 
-        netT_output, self.output['ps'], self.output['qs'] = self.netT(appr_ref, pose_ref, pose_tar, mode)
+        netT_output, self.output['ps'], self.output['qs'] = self.netT(appr_ref, pose_ref, pose_tar, vunet_mode)
         netT_output = self.parse_output(netT_output, self.opt.output_type)
         self.output['img_out'] = F.tanh(netT_output['image'])
         self.output['img_tar'] = img_tar
         self.output['pose_tar'] = pose_tar
         self.output['PSNR'] = self.crit_psnr(self.output['img_out'], self.output['img_tar'])
-        self.output['SSIM'] = Variable(self.Tensor(1).fill_(0)) # to save time, do not compute ssim during training
+        self.output['SSIM'] = self.Tensor(1).fill_(0) # to save time, do not compute ssim during training
         self.output['seg_ref'] = self.input['seg_%s'%ref_idx] #(bsz, seg_nc, h, w)
         self.output['seg_tar'] = self.input['seg_%s'%tar_idx] #(bsz, seg_nc, h, w)
         if 'seg' in self.opt.output_type:
@@ -333,7 +338,7 @@ class VUnetPoseTransferModel(BaseModel):
         # joint
         if 'joint' in self.opt.output_type:
             self.output['loss_joint'] = F.binary_cross_entropy(self.output['joint_out'], self.output['joint_tar'])
-            (self.output['loss_joint'] * self.opt.loss_weight_join).backward(retain_graph=True)
+            (self.output['loss_joint'] * self.opt.loss_weight_joint).backward(retain_graph=True)
         # KL
         self.output['loss_kl'] = self.compute_kl_loss(self.output['ps'], self.output['qs'])
         (self.output['loss_kl'] * self.opt.loss_weight_kl).backward()
@@ -506,17 +511,17 @@ class VUnetPoseTransferModel(BaseModel):
 
         return patches
 
-    def compute_patch_style_loss(self, images_1, c_1, images_2, c_2, patch_size=32, patch_indices=None):
+    def compute_patch_style_loss(self, images_1, coords_1, images_2, coords_2, patch_size=32, patch_indices=None):
         '''
         images_1: (bsz, h, w, h)
         images_2: (bsz, h, w, h)
-        c_1: (bsz, 18, 2) # patch center coordinates of images_1
-        c_2: (bsz, 18, 2) # patch center coordinates of images_2
+        coords_1: (bsz, 18, 2) # patch center coordinates of images_1
+        coords_2: (bsz, 18, 2) # patch center coordinates of images_2
         '''
         # remove invalid joint point
-        c_invalid = (c_1 < 0) | (c_2 < 0)
-        vc_1 = c_1.clone()
-        vc_2 = c_2.clone()
+        c_invalid = (coords_1 < 0) | (coords_2 < 0)
+        vc_1 = coords_1.clone()
+        vc_2 = coords_2.clone()
         vc_1[c_invalid] = -1
         vc_2[c_invalid] = -1
         # get patches
@@ -531,8 +536,8 @@ class VUnetPoseTransferModel(BaseModel):
         # output = {
         #     'images_1': images_1.cpu(),
         #     'images_2': images_2.cpu(),
-        #     'c_1': c_1.cpu(),
-        #     'c_2': c_2.cpu(),
+        #     'coords_1': coords_1.cpu(),
+        #     'coords_2': coords_2.cpu(),
         #     'patches_1': patches_1.cpu(),
         #     'patches_2': patches_2.cpu(),
         #     'npatch': npatch,
@@ -542,6 +547,27 @@ class VUnetPoseTransferModel(BaseModel):
         # torch.save(output, 'data.pth')
         # exit()
         return loss_patch_style
+
+    def batch_scale_alignment(self, images, pose, pose_std):
+        '''
+        resize image to proper scale according to its pose coordinates and target pose coordinates.
+        Input:
+            images: (bsz, h, w, h)
+            pose:   (bsz, 18, 2)
+            pose_std: (bsz, 18, 2)
+        Output:
+            images_out: (bsz, h, w, h)
+            pose_out: (bsz, 18, 2)
+        '''
+        # bsz, c, h, w = images.size()
+        # pose_np = pose.cpu().numpy()
+        # pose_std_np = pose_std.cpu().numpy()
+
+        # images_out = []
+        # pose_out = []
+        pass
+
+
 
     def get_current_errors(self):
         error_list = ['PSNR', 'SSIM', 'loss_L1', 'loss_content', 'loss_style', 'loss_patch_style', 'loss_kl', 'loss_G', 'loss_D', 'loss_seg', 'loss_joint', 'loss_color', 'grad_L1', 'grad_content', 'grad_style', 'grad_patch_style', 'grad_gan', 'grad_color']
