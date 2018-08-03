@@ -6,14 +6,11 @@ import numpy as np
 import cv2
 
 
-def readFlow(name):
+def readFlow(fn):
     """
     Derived from flownet2.0    
     """
-    if name.endswith('.pfm') or name.endswith('.PFM'):
-        return readPFM(name)[0][:,:,0:2]
-
-    f = open(name, 'rb')
+    f = open(fn, 'rb')
 
     header = f.read(4)
     if header.decode("utf-8") != 'PIEH':
@@ -26,17 +23,43 @@ def readFlow(name):
 
     return flow.astype(np.float32)
 
-def writeFlow(name, flow):
+def writeFlow(fn, flow):
     """
     Derived from flownet2.0    
     """
-    f = open(name, 'wb')
+    f = open(fn, 'wb')
     f.write('PIEH'.encode('utf-8'))
     np.array([flow.shape[1], flow.shape[0]], dtype=np.int32).tofile(f)
     flow = flow.astype(np.float32)
     flow.tofile(f)
     f.flush()
     f.close()
+
+
+def write_flow_and_mask(fn, flow, mask):
+    '''
+    Save flow (float data) and mask (uint data) to one file.
+    Input:
+        fn: fine name
+        flow: (H, W, 2), float32
+        mask: (H, W), uint8
+    '''
+    assert flow.shape[:2]==mask.shape
+    with open(fn, 'wb') as f:
+        np.array([flow.shape[1], flow.shape[0]], dtype=np.int32).tofile(f)
+        flow.astype(np.float32).tofile(f)
+        mask.astype(np.uint8).tofile(f)
+
+def read_flow_and_mask(fn):
+    '''
+    Recover flow and mask saved by "write_flow_and_mask"
+    '''
+    with open(fn, 'rb') as f:
+        width = np.fromfile(f, np.int32, 1).squeeze()
+        height = np.fromfile(f, np.int32, 1).squeeze()
+        flow = np.fromfile(f, np.float32, width*height*2).reshape((height, width, 2))
+        mask = np.fromfile(f, np.uint8, width*height).reshape((height, width))
+    return flow, mask
 
 
 def warp_image(img, flow):
