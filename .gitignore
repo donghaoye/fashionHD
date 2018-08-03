@@ -12,6 +12,7 @@ scripts/scnet_scripts/*
 *.pkl
 *.pth
 *.sublime*
+*.fam
 
 
 *.jpg
